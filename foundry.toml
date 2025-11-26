@@ -1,0 +1,55 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+evm_version = "cancun"
+
+auto_detect_remappings = false # remappings seem to cause problems
+optimizer = true
+
+optimizer_runs = 700 # 500 builds & tests but 200 deploys
+
+# via_ir = true   # makes the compiler run 7-10 times slower, is good at reducing code size or lower gas usage
+deny = "warnings" # enable to stop compilations if there are warnings
+
+fuzz.gas_report_samples = 64 # gas report doesn't need so many test cases
+gas_reports_ignore = [
+  "ERC20Mock",
+  "ERC1967Proxy",
+  "MockBaoAccessControl",
+  "TestTokenDistributor",
+  "Useful",
+  "MockAggregator",
+  "MockWrappedPriceOracle",
+]
+
+fs_permissions = [
+  { access = "read", path = "./" },
+  { access = "read-write", path = "./results" },
+  { access = "read-write", path = "./log" },
+]
+
+gas_limit = "18446744073709551615"
+
+# slither building profile - removes vyper
+[profile.novyper]
+skip = ["**/*.vy"]
+
+[vyper]
+path = ".venv/bin/vyper"
+# version = "0.3.10"
+# evm_version = "shanghai" # or "london", "cancun" depending on your target
+optimize = "gas"
+# optimize_runs = 700
+# via_ir = false           # you can enable this later if needed
+
+
+[etherscan]
+mainnet = { key = "${ETHERSCAN_KEY}" }
+
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+mainnet = "${MAINNET_RPC_URL}"
+local = "${LOCAL_URL}"
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
