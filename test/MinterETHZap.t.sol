@@ -248,7 +248,8 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         assertGt(peggedOut, 0, "Should receive pegged tokens");
         assertEq(peggedBalAfter, peggedBalBefore + peggedOut, "Pegged balance mismatch");
         assertGt(wstEthBalAfter, wstEthBalBefore, "wstETH should be deposited");
-        assertEq(userStEthBalAfter, userStEthBalBefore - stEthAmount, "stETH not deducted");
+        // stETH is a rebasing token, so allow 1 wei tolerance for rebasing
+        assertApproxEqAbs(userStEthBalAfter, userStEthBalBefore - stEthAmount, 1, "stETH not deducted");
 
         // Allowances should be cleared
         assertEq(IERC20(STETH).allowance(address(zap), WSTETH), 0, "stETH allowance not cleared");
@@ -350,7 +351,8 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         assertGt(leveragedOut, 0, "Should receive leveraged tokens");
         assertEq(leveragedBalAfter, leveragedBalBefore + leveragedOut, "Leveraged balance mismatch");
         assertGt(wstEthBalAfter, wstEthBalBefore, "wstETH should be deposited");
-        assertEq(userStEthBalAfter, userStEthBalBefore - stEthAmount, "stETH not deducted");
+        // stETH is a rebasing token, so allow 1 wei tolerance for rebasing
+        assertApproxEqAbs(userStEthBalAfter, userStEthBalBefore - stEthAmount, 1, "stETH not deducted");
 
         // Allowances should be cleared
         assertEq(IERC20(STETH).allowance(address(zap), WSTETH), 0, "stETH allowance not cleared");

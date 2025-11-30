@@ -183,3 +183,5 @@ echo "  2. (Optional) Update Lido referral for ETH zaps:"
 echo "     cast send $GENESIS_ETH_ZAP \"setReferral(address)\" <NEW_REFERRAL> --rpc-url $RPC_URL --private-key $PRIVATE_KEY"
 echo "     cast send $MINTER_ETH_ZAP \"setReferral(address)\" <NEW_REFERRAL> --rpc-url $RPC_URL --private-key $PRIVATE_KEY"
 
+
+

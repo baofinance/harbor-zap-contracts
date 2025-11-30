@@ -1,0 +1,25 @@
+# Foundry build artifacts
+out/
+cache/
+
+# Test results
+results/
+
+# Dependencies (if not using git submodules)
+# lib/
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+

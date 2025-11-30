@@ -70,7 +70,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         uint256 genBalBefore = IGenesis(genesis).balanceOf(receiver);
         uint256 fxBalBefore = IERC20(FXSAVE).balanceOf(genesis);
 
-        uint256 collateralAmount = zap.zapUsdcToGenesis(usdcAmount, receiver);
+        uint256 collateralAmount = zap.zapUsdcToGenesis(usdcAmount, 0, receiver);
 
         vm.stopPrank();
 
@@ -100,7 +100,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), type(uint256).max);
 
         vm.expectRevert(GenesisUSDCZapV2.ZeroAmount.selector);
-        zap.zapUsdcToGenesis(0, receiver);
+        zap.zapUsdcToGenesis(0, 0, receiver);
 
         vm.stopPrank();
     }
@@ -112,7 +112,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), usdcAmount);
 
         vm.expectRevert(GenesisUSDCZapV2.InvalidAddress.selector);
-        zap.zapUsdcToGenesis(usdcAmount, address(0));
+        zap.zapUsdcToGenesis(usdcAmount, 0, address(0));
 
         vm.stopPrank();
     }
@@ -126,7 +126,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         vm.expectEmit(true, true, true, false);
         emit GenesisUSDCZapV2.USDCZappedToGenesis(user1, genesis, receiver, usdcAmount, 0, 0);
 
-        zap.zapUsdcToGenesis(usdcAmount, receiver);
+        zap.zapUsdcToGenesis(usdcAmount, 0, receiver);
 
         vm.stopPrank();
     }
@@ -138,8 +138,8 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), type(uint256).max);
 
-        uint256 col1 = zap.zapUsdcToGenesis(amt1, receiver);
-        uint256 col2 = zap.zapUsdcToGenesis(amt2, receiver);
+        uint256 col1 = zap.zapUsdcToGenesis(amt1, 0, receiver);
+        uint256 col2 = zap.zapUsdcToGenesis(amt2, 0, receiver);
 
         vm.stopPrank();
 
@@ -161,7 +161,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         uint256 genBalBefore = IGenesis(genesis).balanceOf(receiver);
         uint256 fxBalBefore = IERC20(FXSAVE).balanceOf(genesis);
 
-        uint256 collateralAmount = zap.zapFxUsdToGenesis(fxUsdAmount, receiver);
+        uint256 collateralAmount = zap.zapFxUsdToGenesis(fxUsdAmount, 0, receiver);
 
         vm.stopPrank();
 
@@ -193,7 +193,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         IERC20(FXUSD).approve(address(zap), type(uint256).max);
 
         vm.expectRevert(GenesisUSDCZapV2.ZeroAmount.selector);
-        zap.zapFxUsdToGenesis(0, receiver);
+        zap.zapFxUsdToGenesis(0, 0, receiver);
 
         vm.stopPrank();
     }
@@ -206,7 +206,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
         vm.expectRevert(GenesisUSDCZapV2.InvalidAddress.selector);
-        zap.zapFxUsdToGenesis(fxUsdAmount, address(0));
+        zap.zapFxUsdToGenesis(fxUsdAmount, 0, address(0));
 
         vm.stopPrank();
     }
@@ -221,7 +221,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         vm.expectEmit(true, true, true, false);
         emit GenesisUSDCZapV2.FXUSDZappedToGenesis(user1, genesis, receiver, fxUsdAmount, 0, 0);
 
-        zap.zapFxUsdToGenesis(fxUsdAmount, receiver);
+        zap.zapFxUsdToGenesis(fxUsdAmount, 0, receiver);
 
         vm.stopPrank();
     }
@@ -234,8 +234,8 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(FXUSD).approve(address(zap), type(uint256).max);
 
-        uint256 col1 = zap.zapFxUsdToGenesis(amt1, receiver);
-        uint256 col2 = zap.zapFxUsdToGenesis(amt2, receiver);
+        uint256 col1 = zap.zapFxUsdToGenesis(amt1, 0, receiver);
+        uint256 col2 = zap.zapFxUsdToGenesis(amt2, 0, receiver);
 
         vm.stopPrank();
 

@@ -188,7 +188,8 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         assertLe(collateralAmount, stEthAmount, "wstETH cannot exceed stETH");
         assertEq(genesisBalAfter, genesisBalBefore + collateralAmount, "Shares mismatch");
         assertEq(wstEthBalAfter, wstEthBalBefore + collateralAmount, "wstETH not deposited");
-        assertEq(userStEthBalAfter, userStEthBalBefore - stEthAmount, "stETH not deducted");
+        // stETH is a rebasing token, so allow 1 wei tolerance for rebasing
+        assertApproxEqAbs(userStEthBalAfter, userStEthBalBefore - stEthAmount, 1, "stETH not deducted");
 
         // Allowances should be cleared
         assertEq(IERC20(STETH).allowance(address(zap), WSTETH), 0, "stETH allowance not cleared");
