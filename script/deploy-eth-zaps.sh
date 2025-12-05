@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
-# Harbor ETH/wstETH Zap Contracts Deployment Script v2
-# Deploys GenesisETHZap_v2 and MinterETHZap_v2
+# Harbor ETH/wstETH Zap Contracts Deployment Script
+# Deploys GenesisETHZap (v2 or v3) and MinterETHZap_v2
+# Set VERSION=v3 to deploy V3, otherwise defaults to V2
 
 # Use full path to forge/cast
 FORGE=${FORGE:-$HOME/.foundry/bin/forge}
@@ -29,7 +30,11 @@ MINTER_ETH=${MINTER_ETH:-0x6d64EC8B95Eeab780745d3bDF5BB06D08e38cC29}
 # Lido referral address (defaults to Harbor's referral)
 REFERRAL_ETH=${REFERRAL_ETH:-0x3dFc49e5112005179Da613BdE5973229082dAc35}
 
+# Version selection (v2 or v3, defaults to v2)
+VERSION=${VERSION:-v2}
+
 echo "=== Deploying ETH/wstETH Zap Contracts ==="
+echo "Version: $VERSION"
 echo ""
 
 # Helper function to deploy zap contract
@@ -65,22 +70,35 @@ deploy_zap() {
   fi
 }
 
-# 1. Deploy GenesisETHZap_v2
+# 1. Deploy GenesisETHZap (v2 or v3)
 # Constructor: (address genesis_, address referral_)
-echo "1. Deploying GenesisETHZap_v2..."
-GENESIS_ETH_ZAP_OUT=$("$FORGE" create src/minter/GenesisETHZap_v2.sol:GenesisETHZapV2 \
-  --rpc-url "$RPC_URL" \
-  --private-key "$PRIVATE_KEY" \
-  --broadcast \
-  --constructor-args "$GENESIS_ETH" "$REFERRAL_ETH" 2>&1)
+if [[ "$VERSION" == "v3" ]]; then
+  echo "1. Deploying GenesisETHZap_v3..."
+  GENESIS_ETH_ZAP_OUT=$("$FORGE" create src/minter/GenesisETHZap_v3.sol:GenesisETHZapV3 \
+    --rpc-url "$RPC_URL" \
+    --private-key "$PRIVATE_KEY" \
+    --broadcast \
+    --constructor-args "$GENESIS_ETH" "$REFERRAL_ETH" 2>&1)
+  
+  CONTRACT_NAME="GenesisETHZap_v3"
+else
+  echo "1. Deploying GenesisETHZap_v2..."
+  GENESIS_ETH_ZAP_OUT=$("$FORGE" create src/minter/GenesisETHZap_v2.sol:GenesisETHZapV2 \
+    --rpc-url "$RPC_URL" \
+    --private-key "$PRIVATE_KEY" \
+    --broadcast \
+    --constructor-args "$GENESIS_ETH" "$REFERRAL_ETH" 2>&1)
+  
+  CONTRACT_NAME="GenesisETHZap_v2"
+fi
 
 if echo "$GENESIS_ETH_ZAP_OUT" | grep -q "Deployed to:"; then
   GENESIS_ETH_ZAP_ADDR=$(echo "$GENESIS_ETH_ZAP_OUT" | grep -oE "Deployed to: 0x[a-fA-F0-9]{40}" | awk '{print $3}')
-  echo "  ✓ GenesisETHZap_v2 deployed to: $GENESIS_ETH_ZAP_ADDR"
+  echo "  ✓ $CONTRACT_NAME deployed to: $GENESIS_ETH_ZAP_ADDR"
 elif echo "$GENESIS_ETH_ZAP_OUT" | grep -q "Contract:"; then
-  echo "  ✓ GenesisETHZap_v2 deployment prepared"
+  echo "  ✓ $CONTRACT_NAME deployment prepared"
 else
-  echo "  ✗ GenesisETHZap_v2 deployment failed"
+  echo "  ✗ $CONTRACT_NAME deployment failed"
   echo "$GENESIS_ETH_ZAP_OUT" | grep -E "(Error|error|revert)" | head -3
   exit 1
 fi
@@ -131,8 +149,8 @@ if [[ -n "${GENESIS_ETH_ZAP_ADDR:-}" ]] && [[ -n "${MINTER_ETH_ZAP_ADDR:-}" ]]; 
   echo "=== VERIFICATION ==="
   echo ""
   
-  # Verify GenesisETHZap_v2
-  echo "GenesisETHZap_v2 ($GENESIS_ETH_ZAP_ADDR):"
+  # Verify GenesisETHZap
+  echo "$CONTRACT_NAME ($GENESIS_ETH_ZAP_ADDR):"
   GENESIS_CHECK=$("$CAST" call "$GENESIS_ETH_ZAP_ADDR" "GENESIS()(address)" --rpc-url "$RPC_URL" 2>/dev/null || echo "ERROR")
   OWNER_CHECK=$("$CAST" call "$GENESIS_ETH_ZAP_ADDR" "owner()(address)" --rpc-url "$RPC_URL" 2>/dev/null || echo "ERROR")
   REFERRAL_CHECK=$("$CAST" call "$GENESIS_ETH_ZAP_ADDR" "referral()(address)" --rpc-url "$RPC_URL" 2>/dev/null || echo "ERROR")
@@ -153,6 +171,23 @@ if [[ -n "${GENESIS_ETH_ZAP_ADDR:-}" ]] && [[ -n "${MINTER_ETH_ZAP_ADDR:-}" ]]; 
     echo "  ✓ Referral: $REFERRAL_CHECK"
   else
     echo "  ✗ Referral: $REFERRAL_CHECK (expected: $REFERRAL_ETH)"
+  fi
+  
+  # V3 specific view function checks
+  if [[ "$VERSION" == "v3" ]]; then
+    echo ""
+    echo "  V3 View Functions:"
+    TOTAL_VALUE=$("$CAST" call "$GENESIS_ETH_ZAP_ADDR" "totalValueETH()(uint256)" --rpc-url "$RPC_URL" 2>/dev/null || echo "ERROR")
+    if [[ "$TOTAL_VALUE" != "ERROR" ]]; then
+      echo "  ✓ totalValueETH(): $TOTAL_VALUE"
+    else
+      echo "  ✗ totalValueETH(): Failed to read"
+    fi
+    echo ""
+    echo "  Note: V3 functions require minWstEthOut parameter for slippage protection:"
+    echo "    - zapEth(receiver, minWstEthOut)"
+    echo "    - zapStEth(stEthAmount, receiver, minWstEthOut)"
+    echo "    Use previewDepositETH() or previewDepositStETH() to get expected output"
   fi
   
   echo ""
@@ -180,6 +215,13 @@ if [[ -n "${GENESIS_ETH_ZAP_ADDR:-}" ]] && [[ -n "${MINTER_ETH_ZAP_ADDR:-}" ]]; 
   else
     echo "  ✗ Referral: $REFERRAL_CHECK2 (expected: $REFERRAL_ETH)"
   fi
+  
+  echo ""
+  echo "  Note: MinterETHZap_v2 functions require minWstEthOut parameter for slippage protection:"
+  echo "    - zapEthToPegged(receiver, minPeggedOut, minWstEthOut)"
+  echo "    - zapEthToLeveraged(receiver, minLeveragedOut, minWstEthOut)"
+  echo "    - zapStEthToPegged(stEthAmount, receiver, minPeggedOut, minWstEthOut)"
+  echo "    - zapStEthToLeveraged(stEthAmount, receiver, minLeveragedOut, minWstEthOut)"
 fi
 
 echo ""

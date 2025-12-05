@@ -129,6 +129,8 @@ contract MinterETHZapV2 is ReentrancyGuard {
 
     error Unauthorized();
     error FunctionNotFound();
+    error NoStETHReceived();
+    error SlippageTooHigh();
 
     // ============ Constructor ============
 
@@ -171,22 +173,30 @@ contract MinterETHZapV2 is ReentrancyGuard {
     /// @dev Flow: ETH → stETH → wstETH → Minter mint pegged
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
+    /// @param minWstEthOut Minimum amount of wstETH to receive (slippage protection)
     /// @return peggedOut Amount of pegged tokens minted
     function zapEthToPegged(
         address receiver,
-        uint256 minPeggedOut
+        uint256 minPeggedOut,
+        uint256 minWstEthOut
     ) external payable nonReentrant returns (uint256 peggedOut) {
         if (msg.value == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
 
         uint256 ethAmount = msg.value;
 
-        // 1. ETH → stETH via Lido
-        uint256 stEthReceived = ISTETHV2(STETH).submit{value: ethAmount}(referral);
+        // 1. ETH → stETH via Lido (never trust return value)
+        uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
+        ISTETHV2(STETH).submit{value: ethAmount}(referral);
+        uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
+        if (stEthReceived == 0) revert NoStETHReceived();
 
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthReceived);
         uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthReceived);
+        
+        // Slippage protection for wstETH wrapping
+        if (wstEthAmount < minWstEthOut) revert SlippageTooHigh();
 
         // 3. wstETH → Minter mint pegged
         IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
@@ -203,22 +213,30 @@ contract MinterETHZapV2 is ReentrancyGuard {
     /// @dev Flow: ETH → stETH → wstETH → Minter mint leveraged
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
+    /// @param minWstEthOut Minimum amount of wstETH to receive (slippage protection)
     /// @return leveragedOut Amount of leveraged tokens minted
     function zapEthToLeveraged(
         address receiver,
-        uint256 minLeveragedOut
+        uint256 minLeveragedOut,
+        uint256 minWstEthOut
     ) external payable nonReentrant returns (uint256 leveragedOut) {
         if (msg.value == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
 
         uint256 ethAmount = msg.value;
 
-        // 1. ETH → stETH via Lido
-        uint256 stEthReceived = ISTETHV2(STETH).submit{value: ethAmount}(referral);
+        // 1. ETH → stETH via Lido (never trust return value)
+        uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
+        ISTETHV2(STETH).submit{value: ethAmount}(referral);
+        uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
+        if (stEthReceived == 0) revert NoStETHReceived();
 
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthReceived);
         uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthReceived);
+        
+        // Slippage protection for wstETH wrapping
+        if (wstEthAmount < minWstEthOut) revert SlippageTooHigh();
 
         // 3. wstETH → Minter mint leveraged
         IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
@@ -236,11 +254,13 @@ contract MinterETHZapV2 is ReentrancyGuard {
     /// @param stEthAmount Amount of stETH to zap
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
+    /// @param minWstEthOut Minimum amount of wstETH to receive (slippage protection)
     /// @return peggedOut Amount of pegged tokens minted
     function zapStEthToPegged(
         uint256 stEthAmount,
         address receiver,
-        uint256 minPeggedOut
+        uint256 minPeggedOut,
+        uint256 minWstEthOut
     ) external nonReentrant returns (uint256 peggedOut) {
         if (stEthAmount == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
@@ -251,6 +271,9 @@ contract MinterETHZapV2 is ReentrancyGuard {
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthAmount);
         uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthAmount);
+        
+        // Slippage protection for wstETH wrapping
+        if (wstEthAmount < minWstEthOut) revert SlippageTooHigh();
 
         // 3. wstETH → Minter mint pegged
         IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
@@ -268,11 +291,13 @@ contract MinterETHZapV2 is ReentrancyGuard {
     /// @param stEthAmount Amount of stETH to zap
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
+    /// @param minWstEthOut Minimum amount of wstETH to receive (slippage protection)
     /// @return leveragedOut Amount of leveraged tokens minted
     function zapStEthToLeveraged(
         uint256 stEthAmount,
         address receiver,
-        uint256 minLeveragedOut
+        uint256 minLeveragedOut,
+        uint256 minWstEthOut
     ) external nonReentrant returns (uint256 leveragedOut) {
         if (stEthAmount == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
@@ -283,6 +308,9 @@ contract MinterETHZapV2 is ReentrancyGuard {
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthAmount);
         uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthAmount);
+        
+        // Slippage protection for wstETH wrapping
+        if (wstEthAmount < minWstEthOut) revert SlippageTooHigh();
 
         // 3. wstETH → Minter mint leveraged
         IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);

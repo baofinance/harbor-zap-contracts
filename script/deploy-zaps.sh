@@ -89,8 +89,9 @@ deploy_zap() {
   echo "$DEPLOYED"
 }
 
-# 1. Deploy GenesisETHZap_v2
+# 1. Deploy GenesisETHZap_v2 (or use VERSION=v3 for GenesisETHZap_v3)
 # Constructor: (address genesis_, address referral_)
+# Note: To deploy v3, use: src/minter/GenesisETHZap_v3.sol:GenesisETHZapV3
 GENESIS_ETH_ZAP=$(deploy_zap "GenesisETHZap_v2" \
   "src/minter/GenesisETHZap_v2.sol:GenesisETHZapV2" \
   "$GENESIS_ETH $REFERRAL_ETH")
@@ -170,6 +171,19 @@ echo -n "  MinterETHZap referral: "
 "$CAST" call "$MINTER_ETH_ZAP" "referral()(address)" --rpc-url "$RPC_URL" 2>/dev/null || echo "ERROR"
 
 echo ""
+echo "=== FUNCTION SIGNATURE NOTES ==="
+echo ""
+echo "MinterETHZap_v2 functions now require minWstEthOut parameter:"
+echo "  - zapEthToPegged(receiver, minPeggedOut, minWstEthOut)"
+echo "  - zapEthToLeveraged(receiver, minLeveragedOut, minWstEthOut)"
+echo "  - zapStEthToPegged(stEthAmount, receiver, minPeggedOut, minWstEthOut)"
+echo "  - zapStEthToLeveraged(stEthAmount, receiver, minLeveragedOut, minWstEthOut)"
+echo ""
+echo "GenesisETHZap_v3 functions require minWstEthOut parameter:"
+echo "  - zapEth(receiver, minWstEthOut)"
+echo "  - zapStEth(stEthAmount, receiver, minWstEthOut)"
+echo "  Use previewDepositETH() or previewDepositStETH() to get expected output"
+echo ""
 echo "✅ Deployment complete!"
 echo ""
 echo "Next steps:"
@@ -182,6 +196,8 @@ echo ""
 echo "  2. (Optional) Update Lido referral for ETH zaps:"
 echo "     cast send $GENESIS_ETH_ZAP \"setReferral(address)\" <NEW_REFERRAL> --rpc-url $RPC_URL --private-key $PRIVATE_KEY"
 echo "     cast send $MINTER_ETH_ZAP \"setReferral(address)\" <NEW_REFERRAL> --rpc-url $RPC_URL --private-key $PRIVATE_KEY"
+
+
 
 
 
