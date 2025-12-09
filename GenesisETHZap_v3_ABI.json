@@ -1,0 +1,115 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "receiver",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "minWstEthOut",
+        "type": "uint256"
+      }
+    ],
+    "name": "zapEth",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "sharesOut",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "stEthAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "receiver",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "minWstEthOut",
+        "type": "uint256"
+      }
+    ],
+    "name": "zapStEth",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "sharesOut",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "ethAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "previewDepositETH",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "genesisSharesOut",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "ethValueNow",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "stEthValueNow",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "stEthAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "previewDepositStETH",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "genesisSharesOut",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "ethValueNow",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "stEthValueNow",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]
+
+

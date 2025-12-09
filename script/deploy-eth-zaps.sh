@@ -6,13 +6,40 @@ set -euo pipefail
 # Deploys GenesisETHZap (v2 or v3) and MinterETHZap_v2
 # Set VERSION=v3 to deploy V3, otherwise defaults to V2
 
+# Load environment variables from .env.local if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+if [[ -f .env.local ]]; then
+  set -a
+  source .env.local
+  set +a
+fi
+
 # Use full path to forge/cast
 FORGE=${FORGE:-$HOME/.foundry/bin/forge}
 CAST=${CAST:-$HOME/.foundry/bin/cast}
 
-RPC_URL=${RPC_URL:-http://127.0.0.1:8545}
-PRIVATE_KEY=${PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
-OWNER=${OWNER:-0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266}
+# Load required variables from .env.local (no hardcoded defaults)
+RPC_URL=${RPC_URL}
+PRIVATE_KEY=${PRIVATE_KEY}
+OWNER=${OWNER}
+
+# Validate required variables
+if [[ -z "${RPC_URL:-}" ]]; then
+  echo "ERROR: RPC_URL must be set in .env.local or as environment variable"
+  exit 1
+fi
+
+if [[ -z "${PRIVATE_KEY:-}" ]]; then
+  echo "ERROR: PRIVATE_KEY must be set in .env.local or as environment variable"
+  exit 1
+fi
+
+if [[ -z "${OWNER:-}" ]]; then
+  echo "ERROR: OWNER must be set in .env.local or as environment variable"
+  exit 1
+fi
 
 # Check network
 CHAIN_ID=$("$CAST" chain-id --rpc-url "$RPC_URL" 2>/dev/null || echo "unknown")
@@ -22,13 +49,23 @@ echo "RPC URL: $RPC_URL"
 echo "Chain ID: $CHAIN_ID"
 echo ""
 
-# Contract addresses (Ethereum mainnet)
-# Can be overridden via environment variables if needed
-GENESIS_ETH=${GENESIS_ETH:-0x59C2776E88fF80841c88138a2CD0f375F544EeaE}
-MINTER_ETH=${MINTER_ETH:-0x6d64EC8B95Eeab780745d3bDF5BB06D08e38cC29}
+# Contract addresses - must be set in .env.local
+GENESIS_ETH=${GENESIS_ETH}
+MINTER_ETH=${MINTER_ETH}
 
-# Lido referral address (defaults to Harbor's referral)
-REFERRAL_ETH=${REFERRAL_ETH:-0x3dFc49e5112005179Da613BdE5973229082dAc35}
+# Validate required contract addresses
+if [[ -z "${GENESIS_ETH:-}" ]]; then
+  echo "ERROR: GENESIS_ETH must be set in .env.local or as environment variable"
+  exit 1
+fi
+
+if [[ -z "${MINTER_ETH:-}" ]]; then
+  echo "ERROR: MINTER_ETH must be set in .env.local or as environment variable"
+  exit 1
+fi
+
+# Lido referral address (optional, can be set in .env.local)
+REFERRAL_ETH=${REFERRAL_ETH:-0x0000000000000000000000000000000000000000}
 
 # Version selection (v2 or v3, defaults to v2)
 VERSION=${VERSION:-v2}

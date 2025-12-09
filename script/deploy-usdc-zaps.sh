@@ -5,13 +5,40 @@ set -euo pipefail
 # Harbor USDC/fxSAVE Zap Contracts Deployment Script v2
 # Deploys GenesisUSDCZap_v2 and MinterUSDCZap_v2
 
+# Load environment variables from .env.local if it exists
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+if [[ -f .env.local ]]; then
+  set -a
+  source .env.local
+  set +a
+fi
+
 # Use full path to forge/cast
 FORGE=${FORGE:-$HOME/.foundry/bin/forge}
 CAST=${CAST:-$HOME/.foundry/bin/cast}
 
-RPC_URL=${RPC_URL:-http://127.0.0.1:8545}
-PRIVATE_KEY=${PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
-OWNER=${OWNER:-0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266}
+# Load required variables from .env.local (no hardcoded defaults)
+RPC_URL=${RPC_URL}
+PRIVATE_KEY=${PRIVATE_KEY}
+OWNER=${OWNER}
+
+# Validate required variables
+if [[ -z "${RPC_URL:-}" ]]; then
+  echo "ERROR: RPC_URL must be set in .env.local or as environment variable"
+  exit 1
+fi
+
+if [[ -z "${PRIVATE_KEY:-}" ]]; then
+  echo "ERROR: PRIVATE_KEY must be set in .env.local or as environment variable"
+  exit 1
+fi
+
+if [[ -z "${OWNER:-}" ]]; then
+  echo "ERROR: OWNER must be set in .env.local or as environment variable"
+  exit 1
+fi
 
 # Check network
 CHAIN_ID=$("$CAST" chain-id --rpc-url "$RPC_URL" 2>/dev/null || echo "unknown")
@@ -21,18 +48,18 @@ echo "RPC URL: $RPC_URL"
 echo "Chain ID: $CHAIN_ID"
 echo ""
 
-# Contract addresses (Ethereum mainnet)
-GENESIS_USDC=${GENESIS_USDC:-0x0000000000000000000000000000000000000000}
-MINTER_USDC=${MINTER_USDC:-0x0000000000000000000000000000000000000000}
+# Contract addresses - must be set in .env.local
+GENESIS_USDC=${GENESIS_USDC}
+MINTER_USDC=${MINTER_USDC}
 
 # Validate required addresses
-if [[ "$GENESIS_USDC" == "0x0000000000000000000000000000000000000000" ]]; then
-  echo "ERROR: GENESIS_USDC must be set to a valid Genesis contract address"
+if [[ -z "${GENESIS_USDC:-}" ]]; then
+  echo "ERROR: GENESIS_USDC must be set in .env.local or as environment variable"
   exit 1
 fi
 
-if [[ "$MINTER_USDC" == "0x0000000000000000000000000000000000000000" ]]; then
-  echo "ERROR: MINTER_USDC must be set to a valid Minter contract address"
+if [[ -z "${MINTER_USDC:-}" ]]; then
+  echo "ERROR: MINTER_USDC must be set in .env.local or as environment variable"
   exit 1
 fi
 
