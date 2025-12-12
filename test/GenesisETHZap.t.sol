@@ -16,6 +16,12 @@ import {MockERC20} from "test/mock/MockERC20.sol";
 /// @notice Interface for stETH submit function
 interface ISTETHV2 {
     function submit(address referral) external payable returns (uint256);
+    function getSharesByPooledEth(uint256 _ethAmount) external view returns (uint256);
+}
+
+/// @notice Interface for wstETH
+interface IWstETHV2 {
+    function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
 }
 
 contract GenesisETHZapForkTest is TestMinterSetUp {
@@ -65,6 +71,19 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         vm.deal(user1, 100 ether);
     }
 
+    /// @notice Helper to calculate expected wstETH from ETH amount (for slippage protection)
+    function _calculateMinWstEthFromEth(uint256 ethAmount) internal view returns (uint256) {
+        uint256 stEthShares = ISTETHV2(STETH).getSharesByPooledEth(ethAmount);
+        uint256 wstEthAmount = IWstETHV2(WSTETH).getWstETHByStETH(stEthShares);
+        return wstEthAmount * 99 / 100; // 1% slippage buffer
+    }
+
+    /// @notice Helper to calculate expected wstETH from stETH amount (for slippage protection)
+    function _calculateMinWstEthFromStEth(uint256 stEthAmount) internal view returns (uint256) {
+        uint256 wstEthAmount = IWstETHV2(WSTETH).getWstETHByStETH(stEthAmount);
+        return wstEthAmount * 99 / 100; // 1% slippage buffer
+    }
+
     function test_ZapEth_Success() public {
         uint256 ethAmount = 1 ether;
 
@@ -73,9 +92,8 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         uint256 genesisBalBefore = IGenesis(genesis).balanceOf(receiver);
         uint256 wstEthBalBefore = IERC20(WSTETH).balanceOf(genesis);
 
-        // Get preview to set reasonable minWstEthOut (allow 1% slippage)
-        (uint256 previewShares,,) = zap.previewDepositETH(ethAmount);
-        uint256 minWstEthOut = previewShares * 99 / 100;
+        // Calculate minWstEthOut with 1% slippage buffer
+        uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
         
         uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut);
 
@@ -127,9 +145,8 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
 
-        // Get preview for minWstEthOut
-        (uint256 previewShares,,) = zap.previewDepositETH(ethAmount);
-        uint256 minWstEthOut = previewShares * 99 / 100;
+        // Calculate minWstEthOut with 1% slippage buffer
+        uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
 
         // Check that event is emitted with correct user and receiver
         vm.expectEmit(true, true, false, false);
@@ -146,11 +163,9 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
 
-        // Get previews for minWstEthOut
-        (uint256 preview1,,) = zap.previewDepositETH(eth1);
-        (uint256 preview2,,) = zap.previewDepositETH(eth2);
-        uint256 minWstEthOut1 = preview1 * 99 / 100;
-        uint256 minWstEthOut2 = preview2 * 99 / 100;
+        // Calculate minWstEthOut with 1% slippage buffer
+        uint256 minWstEthOut1 = _calculateMinWstEthFromEth(eth1);
+        uint256 minWstEthOut2 = _calculateMinWstEthFromEth(eth2);
 
         uint256 shares1 = zap.zapEth{value: eth1}(receiver, minWstEthOut1);
         uint256 shares2 = zap.zapEth{value: eth2}(receiver, minWstEthOut2);
@@ -183,9 +198,8 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         uint256 wstEthBalBefore = IERC20(WSTETH).balanceOf(genesis);
         uint256 userStEthBalBefore = IERC20(STETH).balanceOf(user1);
 
-        // Get preview to set reasonable minWstEthOut (allow 1% slippage)
-        (uint256 previewShares,,) = zap.previewDepositStETH(stEthAmount);
-        uint256 minWstEthOut = previewShares * 99 / 100;
+        // Calculate minWstEthOut with 1% slippage buffer
+        uint256 minWstEthOut = _calculateMinWstEthFromStEth(stEthAmount);
         
         uint256 sharesOut = zap.zapStEth(stEthAmount, receiver, minWstEthOut);
 
@@ -258,9 +272,8 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), stEthAmount);
 
-        // Get preview for minWstEthOut
-        (uint256 previewShares,,) = zap.previewDepositStETH(stEthAmount);
-        uint256 minWstEthOut = previewShares * 99 / 100;
+        // Calculate minWstEthOut with 1% slippage buffer
+        uint256 minWstEthOut = _calculateMinWstEthFromStEth(stEthAmount);
 
         // Check that event is emitted with correct user and receiver
         vm.expectEmit(true, true, false, false);
@@ -284,11 +297,9 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), type(uint256).max);
 
-        // Get previews for minWstEthOut
-        (uint256 preview1,,) = zap.previewDepositStETH(amt1);
-        (uint256 preview2,,) = zap.previewDepositStETH(amt2);
-        uint256 minWstEthOut1 = preview1 * 99 / 100;
-        uint256 minWstEthOut2 = preview2 * 99 / 100;
+        // Calculate minWstEthOut with 1% slippage buffer
+        uint256 minWstEthOut1 = _calculateMinWstEthFromStEth(amt1);
+        uint256 minWstEthOut2 = _calculateMinWstEthFromStEth(amt2);
 
         uint256 shares1 = zap.zapStEth(amt1, receiver, minWstEthOut1);
         uint256 shares2 = zap.zapStEth(amt2, receiver, minWstEthOut2);
@@ -306,8 +317,7 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         uint256 ethAmount = 1 ether;
 
         vm.startPrank(user1);
-        (uint256 previewShares,,) = zap.previewDepositETH(ethAmount);
-        uint256 minWstEthOut = previewShares * 99 / 100;
+        uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
         uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut);
         vm.stopPrank();
 
@@ -324,8 +334,7 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         uint256 ethAmount = 1 ether;
 
         vm.startPrank(user1);
-        (uint256 previewShares,,) = zap.previewDepositETH(ethAmount);
-        uint256 minWstEthOut = previewShares * 99 / 100;
+        uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
         uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut);
         vm.stopPrank();
 
@@ -343,10 +352,8 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
         // Get previews for minWstEthOut
-        (uint256 preview1,,) = zap.previewDepositETH(ethAmount1);
-        (uint256 preview2,,) = zap.previewDepositETH(ethAmount2);
-        uint256 minWstEthOut1 = preview1 * 99 / 100;
-        uint256 minWstEthOut2 = preview2 * 99 / 100;
+        uint256 minWstEthOut1 = _calculateMinWstEthFromEth(ethAmount1);
+        uint256 minWstEthOut2 = _calculateMinWstEthFromEth(ethAmount2);
         
         uint256 shares1 = zap.zapEth{value: ethAmount1}(receiver, minWstEthOut1);
         uint256 shares2 = zap.zapEth{value: ethAmount2}(receiver, minWstEthOut2);
@@ -359,25 +366,6 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         assertGe(totalValue, (ethAmount1 + ethAmount2) * 90 / 100, "Total value should be reasonable");
     }
 
-    function test_PreviewDepositETH() public {
-        uint256 ethAmount = 1 ether;
-
-        (uint256 previewShares, uint256 previewETH, uint256 previewStETH) = zap.previewDepositETH(ethAmount);
-
-        assertGt(previewShares, 0, "Preview shares should be > 0");
-        assertGt(previewETH, 0, "Preview ETH should be > 0");
-        assertGt(previewStETH, 0, "Preview stETH should be > 0");
-
-        // Now actually deposit and compare
-        vm.startPrank(user1);
-        uint256 minWstEthOut = previewShares * 99 / 100;
-        uint256 actualShares = zap.zapEth{value: ethAmount}(receiver, minWstEthOut);
-        vm.stopPrank();
-
-        // Preview should be close to actual (within 20% due to rebasing differences)
-        // The preview uses calculated rates, but actual submit may have slight rebasing differences
-        assertApproxEqRel(previewShares, actualShares, 0.20e18, "Preview should match actual");
-    }
 
     function test_BalanceOfETH_ZeroBalance() public {
         uint256 balance = zap.balanceOfETH(receiver);
@@ -390,29 +378,4 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         assertEq(totalValue, 0, "Total value should be 0 when no deposits");
     }
 
-    function test_PreviewDepositStETH() public {
-        vm.deal(user1, 100 ether);
-        vm.startPrank(user1);
-        ISTETHV2(STETH).submit{value: 100 ether}(address(0));
-        vm.stopPrank();
-
-        uint256 stEthBalance = IERC20(STETH).balanceOf(user1);
-        uint256 stEthAmount = stEthBalance / 10; // Use 10% of the stETH
-
-        (uint256 previewShares, uint256 previewETH, uint256 previewStETH) = zap.previewDepositStETH(stEthAmount);
-
-        assertGt(previewShares, 0, "Preview shares should be > 0");
-        assertGt(previewETH, 0, "Preview ETH should be > 0");
-        assertGt(previewStETH, 0, "Preview stETH should be > 0");
-
-        // Now actually deposit and compare
-        vm.startPrank(user1);
-        IERC20(STETH).approve(address(zap), stEthAmount);
-        uint256 minWstEthOut = previewShares * 99 / 100;
-        uint256 actualShares = zap.zapStEth(stEthAmount, receiver, minWstEthOut);
-        vm.stopPrank();
-
-        // Preview should be close to actual (within 20% due to rebasing differences)
-        assertApproxEqRel(previewShares, actualShares, 0.20e18, "Preview should match actual");
-    }
 }

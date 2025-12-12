@@ -108,9 +108,9 @@ if [[ "$DEPOSIT_TYPE" == "eth" ]]; then
   # ETH → Zap through GenesisETHZap contract
   echo "=== STEP 2: Zapping ETH through Zap Contract ==="
   
-  # Get preview
-  PREVIEW_OUT=$("$CAST" call "$ZAP_CONTRACT" "previewDepositETH(uint256)(uint256,uint256,uint256)" "$DEPOSIT_AMOUNT" --rpc-url "$RPC_URL")
-  PREVIEW_SHARES=$(echo "$PREVIEW_OUT" | head -1 | awk '{print $1}')
+  # Calculate expected wstETH using stETH and wstETH contracts (with 1% slippage buffer)
+  STETH_SHARES=$("$CAST" call "$STETH" "getSharesByPooledEth(uint256)(uint256)" "$DEPOSIT_AMOUNT" --rpc-url "$RPC_URL" | head -1 | awk '{print $1}')
+  PREVIEW_SHARES=$("$CAST" call "$WSTETH" "getWstETHByStETH(uint256)(uint256)" "$STETH_SHARES" --rpc-url "$RPC_URL" | head -1 | awk '{print $1}')
   MIN_WSTETH_OUT=$(echo "$PREVIEW_SHARES * 99 / 100" | bc)
   
   echo "  Expected wstETH out:  $("$CAST" --to-unit "$PREVIEW_SHARES" ether) wstETH"
@@ -136,9 +136,8 @@ elif [[ "$DEPOSIT_TYPE" == "steth" ]]; then
   # stETH → Zap through GenesisETHZap contract
   echo "=== STEP 2: Zapping stETH through Zap Contract ==="
   
-  # Get preview
-  PREVIEW_OUT=$("$CAST" call "$ZAP_CONTRACT" "previewDepositStETH(uint256)(uint256,uint256,uint256)" "$DEPOSIT_AMOUNT" --rpc-url "$RPC_URL")
-  PREVIEW_SHARES=$(echo "$PREVIEW_OUT" | head -1 | awk '{print $1}')
+  # Calculate expected wstETH using wstETH contract (with 1% slippage buffer)
+  PREVIEW_SHARES=$("$CAST" call "$WSTETH" "getWstETHByStETH(uint256)(uint256)" "$DEPOSIT_AMOUNT" --rpc-url "$RPC_URL" | head -1 | awk '{print $1}')
   MIN_WSTETH_OUT=$(echo "$PREVIEW_SHARES * 99 / 100" | bc)
   
   echo "  Expected wstETH out:  $("$CAST" --to-unit "$PREVIEW_SHARES" ether) wstETH"

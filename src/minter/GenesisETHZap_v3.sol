@@ -148,17 +148,24 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
         if (stEthAmount == 0) revert ZeroAmount();
         if (receiver == address(0)) revert ZeroAddress();
 
+        // 1. Transfer stETH from user
         IERC20(STETH).safeTransferFrom(msg.sender, address(this), stEthAmount);
+
+        // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthAmount);
         sharesOut = wstETH.wrap(stEthAmount);
 
+        // 3. Slippage protection
         if (sharesOut < minWstEthOut) revert SlippageTooHigh();
 
+        // 4. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
 
+        // 5. Emit real-time values for indexers/frontends
         (uint256 ethNow, uint256 stETHNow) = _getCurrentValues(sharesOut);
         emit ZappedStETH(msg.sender, receiver, stEthAmount, sharesOut, ethNow, stETHNow);
 
+        // Clean up
         IERC20(STETH).forceApprove(WSTETH, 0);
     }
 
@@ -181,38 +188,6 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     // =================================================================
     // ====================== VIEW FUNCTIONS (FRONTEND) ===============
     // =================================================================
-
-    /// @notice Preview exact outcome of zapping ETH today
-    /// @dev 100% accurate as of Dec 2025 (uses share-based math)
-    /// @param ethAmount Amount of ETH to zap
-    /// @return genesisSharesOut Exact wstETH/Genesis shares user will receive
-    /// @return ethValueNow Current redeemable ETH value
-    /// @return stEthValueNow Current stETH-equivalent value
-    function previewDepositETH(uint256 ethAmount) external view returns (
-        uint256 genesisSharesOut,
-        uint256 ethValueNow,
-        uint256 stEthValueNow
-    ) {
-        if (ethAmount == 0) return (0, 0, 0);
-
-        // Critical: convert ETH → stETH shares → wstETH (correct for 2025+ ratio)
-        uint256 stEthShares = stETH.getSharesByPooledEth(ethAmount);
-        genesisSharesOut = wstETH.getWstETHByStETH(stEthShares);
-
-        (ethValueNow, stEthValueNow) = _getCurrentValues(genesisSharesOut);
-    }
-
-    /// @notice Preview stETH → wstETH → Genesis deposit
-    function previewDepositStETH(uint256 stEthAmount) external view returns (
-        uint256 genesisSharesOut,
-        uint256 ethValueNow,
-        uint256 stEthValueNow
-    ) {
-        if (stEthAmount == 0) return (0, 0, 0);
-
-        genesisSharesOut = wstETH.getWstETHByStETH(stEthAmount);
-        (ethValueNow, stEthValueNow) = _getCurrentValues(genesisSharesOut);
-    }
 
     /// @notice Real-time user balance in growing ETH terms (primary display value)
     function balanceOfETH(address user) external view returns (uint256) {
@@ -259,6 +234,5 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     // =================================================================
     // ====================== RECEIVE ETH ==============================
     // =================================================================
-
     receive() external payable {}
 }
