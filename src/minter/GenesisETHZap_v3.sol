@@ -5,30 +5,32 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IGenesis} from "src/interfaces/IGenesis.sol";
 
 // ========== Interfaces ==========
-interface IStETH is IERC20 {
+/// @notice Interface for stETH submit function
+interface ISTETHV2 {
     function submit(address referral) external payable returns (uint256);
+}
+
+interface IStETH is IERC20 {
     function getPooledEthByShares(uint256 _sharesAmount) external view returns (uint256);
     function getSharesByPooledEth(uint256 _ethAmount) external view returns (uint256);
 }
 
-interface IWstETH is IERC20 {
+/// @notice Interface for wstETH wrap function
+interface IWstETHWrapV2 {
     function wrap(uint256 stEthAmount) external returns (uint256);
+}
+
+interface IWstETH is IERC20 {
     function getStETHByWstETH(uint256 wstEthAmount) external view returns (uint256);
     function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
     function stETH() external view returns (address);
 }
 
-interface IGenesis {
-    function WRAPPED_COLLATERAL_TOKEN() external view returns (address);
-    function deposit(uint256 amount, address receiver) external;
-}
-
 /// @title GenesisETHZap V3
 /// @notice One-click zapper: ETH or stETH → wstETH → Genesis vault
-/// @dev Uses correct share-based conversion (critical for 2025+ stETH ratio)
-/// @dev Includes slippage protection, accurate previews, and real-time value tracking
 /// @author Harbor Finance
 contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
@@ -74,7 +76,6 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     error ZeroAddress();
     error NoStETHReceived();
     error SlippageTooHigh();
-    error InvalidGenesisCollateral();
 
     // ========== Constructor ==========
     /// @notice Deploy zapper locked to a specific Genesis vault
@@ -82,8 +83,7 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     /// @param referral_ Optional Lido referral (use address(0) for default)
     constructor(address genesis_, address referral_) Ownable(msg.sender) {
         if (genesis_ == address(0)) revert ZeroAddress();
-        if (IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN() != WSTETH)
-            revert InvalidGenesisCollateral();
+        
 
         GENESIS = genesis_;
         stETH = IStETH(STETH);
@@ -98,9 +98,8 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     // =================================================================
 
     /// @notice Zap ETH → stETH → wstETH → Genesis in one transaction
-    /// @dev Includes slippage protection against front-running/MEV
     /// @param receiver Address receiving Genesis vault shares
-    /// @param minWstEthOut Minimum acceptable wstETH (use preview for 0.1-0.5% buffer)
+    /// @param minWstEthOut Minimum acceptable wstETH out
     /// @return sharesOut Exact amount of Genesis shares minted
     function zapEth(
         address receiver,
@@ -111,15 +110,25 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
 
         uint256 ethIn = msg.value;
 
-        // 1. ETH → stETH via Lido (never trust return value)
-        uint256 stEthBefore = stETH.balanceOf(address(this));
-        stETH.submit{value: ethIn}(referral);
-        uint256 stEthReceived = stETH.balanceOf(address(this)) - stEthBefore;
+        // 1. ETH → stETH via Lido
+        uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
+        ISTETHV2(STETH).submit{value: ethIn}(referral);
+        uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
         if (stEthReceived == 0) revert NoStETHReceived();
 
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthReceived);
-        sharesOut = wstETH.wrap(stEthReceived);
+        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
+        sharesOut = IWstETHWrapV2(WSTETH).wrap(stEthReceived);
+        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
+        uint256 wstEthReceived = wstEthAfter - wstEthBefore;
+        
+        // Verify we received wstETH
+        if (wstEthReceived == 0) revert NoStETHReceived();
+        if (wstEthReceived != sharesOut) {
+            // Use actual balance if different
+            sharesOut = wstEthReceived;
+        }
 
         // 3. Slippage protection
         if (sharesOut < minWstEthOut) revert SlippageTooHigh();
@@ -153,7 +162,17 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
 
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthAmount);
-        sharesOut = wstETH.wrap(stEthAmount);
+        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
+        sharesOut = IWstETHWrapV2(WSTETH).wrap(stEthAmount);
+        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
+        uint256 wstEthReceived = wstEthAfter - wstEthBefore;
+        
+        // Verify we received wstETH
+        if (wstEthReceived == 0) revert NoStETHReceived();
+        if (wstEthReceived != sharesOut) {
+            // Use actual balance if different
+            sharesOut = wstEthReceived;
+        }
 
         // 3. Slippage protection
         if (sharesOut < minWstEthOut) revert SlippageTooHigh();
@@ -174,9 +193,43 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     // =================================================================
 
     function _depositToGenesis(uint256 amount, address receiver) internal {
-        IERC20(WSTETH).forceApprove(GENESIS, amount);
+        // Verify contract has sufficient balance before deposit
+        uint256 balanceBefore = IERC20(WSTETH).balanceOf(address(this));
+        if (balanceBefore < amount) revert NoStETHReceived();
+        
+        // Double-check receiver is not zero (defensive)
+        if (receiver == address(0)) revert ZeroAddress();
+        
+        // Reset approval first if needed
+        uint256 currentAllowance = IERC20(WSTETH).allowance(address(this), GENESIS);
+        if (currentAllowance > 0) {
+            IERC20(WSTETH).approve(GENESIS, 0);
+        }
+        // Approve the amount
+        IERC20(WSTETH).approve(GENESIS, amount);
+        
+        // Genesis deposit function pulls tokens via safeTransferFrom
         IGenesis(GENESIS).deposit(amount, receiver);
-        IERC20(WSTETH).forceApprove(GENESIS, 0);
+        
+        // Verify tokens were actually transferred to Genesis
+        uint256 balanceAfter = IERC20(WSTETH).balanceOf(address(this));
+        uint256 balanceDiff = balanceBefore - balanceAfter;
+        
+        // Verify the exact amount was transferred
+        if (balanceDiff != amount) {
+            revert("Genesis deposit did not transfer correct amount");
+        }
+        
+        // Verify receiver has shares in Genesis (allow for rounding/fees)
+        // Note: Balance diff check above is stricter; this is a secondary safety check
+        uint256 receiverShares = IGenesis(GENESIS).balanceOf(receiver);
+        // Allow small tolerance (1 wei) for rounding or fees in Genesis vault
+        if (receiverShares + 1 < amount) {
+            revert("Genesis deposit did not credit receiver shares");
+        }
+        
+        // Reset approval after successful deposit
+        IERC20(WSTETH).approve(GENESIS, 0);
     }
 
     /// @dev Returns real-time redeemable values for any wstETH amount
@@ -209,6 +262,27 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
         if (totalWstEth == 0) return 0;
         (uint256 eth,) = _getCurrentValues(totalWstEth);
         return eth;
+    }
+
+    /// @notice Preview expected wstETH output for a given ETH input
+    /// @dev Note: This is an approximation. Actual output may vary slightly due to stETH rebasing
+    /// @param ethIn Amount of ETH to zap
+    /// @return expectedWstEthOut Expected wstETH amount (for slippage calculation)
+    function previewZapEth(uint256 ethIn) external view returns (uint256 expectedWstEthOut) {
+        // 1. ETH → stETH: Lido submit returns stETH based on current share price
+        // Convert ETH to stETH shares, then back to stETH tokens (accounts for rebasing)
+        uint256 stEthShares = stETH.getSharesByPooledEth(ethIn);
+        uint256 expectedStEth = stETH.getPooledEthByShares(stEthShares);
+        // 2. stETH → wstETH
+        expectedWstEthOut = wstETH.getWstETHByStETH(expectedStEth);
+    }
+
+    /// @notice Preview expected wstETH output for a given stETH input
+    /// @param stEthIn Amount of stETH to zap
+    /// @return expectedWstEthOut Expected wstETH amount (for slippage calculation)
+    function previewZapStEth(uint256 stEthIn) external view returns (uint256 expectedWstEthOut) {
+        // stETH → wstETH
+        expectedWstEthOut = wstETH.getWstETHByStETH(stEthIn);
     }
 
     // =================================================================
