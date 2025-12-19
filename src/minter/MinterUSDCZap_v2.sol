@@ -4,7 +4,6 @@ pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {ReentrancyGuard} from "src/util/ReentrancyGuard.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 
@@ -141,6 +140,7 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
     error CollateralMismatch(address expected, address provided);
 
     error Unauthorized();
+    error MintFailed();
     error FunctionNotFound();
 
     // ============ Constructor ============
@@ -215,34 +215,17 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
 
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, USDC, 0, address(this));
 
-        uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
-        uint256 fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
-        
-        // Verify we received fxSAVE
-        if (fxSaveAmount == 0) revert InvalidAddress();
+        uint256 fxSaveAmount = IERC20(FXSAVE).balanceOf(address(this)) - fxSaveBalanceBefore;
 
         // 3. fxSAVE → Minter mint pegged
-        // Verify contract has sufficient balance before minting
-        uint256 fxSaveBalanceBeforeMint = IERC20(FXSAVE).balanceOf(address(this));
-        if (fxSaveBalanceBeforeMint < fxSaveAmount) revert InvalidAddress();
-        
-        // Reset approval first if needed
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), MINTER);
-        if (currentAllowance > 0) {
-            IERC20(FXSAVE).forceApprove(MINTER, 0);
-        }
-        // Approve the amount
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        uint256 peggedBalanceBefore = IERC20(peggedToken).balanceOf(receiver);
         IERC20(FXSAVE).forceApprove(MINTER, fxSaveAmount);
-        
         peggedOut = IMinter(MINTER).mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
         
-        // Verify tokens were actually transferred to Minter
-        uint256 fxSaveBalanceAfterMint = IERC20(FXSAVE).balanceOf(address(this));
-        uint256 fxSaveBalanceDiff = fxSaveBalanceBeforeMint - fxSaveBalanceAfterMint;
-        
-        // Verify the exact amount was transferred
-        if (fxSaveBalanceDiff != fxSaveAmount) {
-            revert("Minter mint did not transfer correct amount");
+        // Validate that tokens were actually minted
+        if (IERC20(peggedToken).balanceOf(receiver) - peggedBalanceBefore != peggedOut || peggedOut == 0) {
+            revert MintFailed();
         }
 
         emit USDCZappedToPegged(msg.sender, MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut);
@@ -292,34 +275,17 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
 
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, USDC, 0, address(this));
 
-        uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
-        uint256 fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
-        
-        // Verify we received fxSAVE
-        if (fxSaveAmount == 0) revert InvalidAddress();
+        uint256 fxSaveAmount = IERC20(FXSAVE).balanceOf(address(this)) - fxSaveBalanceBefore;
 
         // 3. fxSAVE → Minter mint leveraged
-        // Verify contract has sufficient balance before minting
-        uint256 fxSaveBalanceBeforeMint = IERC20(FXSAVE).balanceOf(address(this));
-        if (fxSaveBalanceBeforeMint < fxSaveAmount) revert InvalidAddress();
-        
-        // Reset approval first if needed
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), MINTER);
-        if (currentAllowance > 0) {
-            IERC20(FXSAVE).forceApprove(MINTER, 0);
-        }
-        // Approve the amount
+        address leveragedToken = IMinter(MINTER).LEVERAGED_TOKEN();
+        uint256 leveragedBalanceBefore = IERC20(leveragedToken).balanceOf(receiver);
         IERC20(FXSAVE).forceApprove(MINTER, fxSaveAmount);
-        
         leveragedOut = IMinter(MINTER).mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
         
-        // Verify tokens were actually transferred to Minter
-        uint256 fxSaveBalanceAfterMint = IERC20(FXSAVE).balanceOf(address(this));
-        uint256 fxSaveBalanceDiff = fxSaveBalanceBeforeMint - fxSaveBalanceAfterMint;
-        
-        // Verify the exact amount was transferred
-        if (fxSaveBalanceDiff != fxSaveAmount) {
-            revert("Minter mint did not transfer correct amount");
+        // Validate that tokens were actually minted
+        if (IERC20(leveragedToken).balanceOf(receiver) - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
+            revert MintFailed();
         }
 
         emit USDCZappedToLeveraged(msg.sender, MINTER, receiver, usdcAmount, fxSaveAmount, leveragedOut);
@@ -370,34 +336,17 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
 
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, FXUSD, 0, address(this));
 
-        uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
-        uint256 fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
-        
-        // Verify we received fxSAVE
-        if (fxSaveAmount == 0) revert InvalidAddress();
+        uint256 fxSaveAmount = IERC20(FXSAVE).balanceOf(address(this)) - fxSaveBalanceBefore;
 
         // 3. fxSAVE → Minter mint pegged
-        // Verify contract has sufficient balance before minting
-        uint256 fxSaveBalanceBeforeMint = IERC20(FXSAVE).balanceOf(address(this));
-        if (fxSaveBalanceBeforeMint < fxSaveAmount) revert InvalidAddress();
-        
-        // Reset approval first if needed
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), MINTER);
-        if (currentAllowance > 0) {
-            IERC20(FXSAVE).forceApprove(MINTER, 0);
-        }
-        // Approve the amount
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        uint256 peggedBalanceBefore = IERC20(peggedToken).balanceOf(receiver);
         IERC20(FXSAVE).forceApprove(MINTER, fxSaveAmount);
-        
         peggedOut = IMinter(MINTER).mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
         
-        // Verify tokens were actually transferred to Minter
-        uint256 fxSaveBalanceAfterMint = IERC20(FXSAVE).balanceOf(address(this));
-        uint256 fxSaveBalanceDiff = fxSaveBalanceBeforeMint - fxSaveBalanceAfterMint;
-        
-        // Verify the exact amount was transferred
-        if (fxSaveBalanceDiff != fxSaveAmount) {
-            revert("Minter mint did not transfer correct amount");
+        // Validate that tokens were actually minted
+        if (IERC20(peggedToken).balanceOf(receiver) - peggedBalanceBefore != peggedOut || peggedOut == 0) {
+            revert MintFailed();
         }
 
         emit FXUSDZappedToPegged(msg.sender, MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut);
@@ -448,34 +397,17 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
 
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, FXUSD, 0, address(this));
 
-        uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
-        uint256 fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
-        
-        // Verify we received fxSAVE
-        if (fxSaveAmount == 0) revert InvalidAddress();
+        uint256 fxSaveAmount = IERC20(FXSAVE).balanceOf(address(this)) - fxSaveBalanceBefore;
 
         // 3. fxSAVE → Minter mint leveraged
-        // Verify contract has sufficient balance before minting
-        uint256 fxSaveBalanceBeforeMint = IERC20(FXSAVE).balanceOf(address(this));
-        if (fxSaveBalanceBeforeMint < fxSaveAmount) revert InvalidAddress();
-        
-        // Reset approval first if needed
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), MINTER);
-        if (currentAllowance > 0) {
-            IERC20(FXSAVE).forceApprove(MINTER, 0);
-        }
-        // Approve the amount
+        address leveragedToken = IMinter(MINTER).LEVERAGED_TOKEN();
+        uint256 leveragedBalanceBefore = IERC20(leveragedToken).balanceOf(receiver);
         IERC20(FXSAVE).forceApprove(MINTER, fxSaveAmount);
-        
         leveragedOut = IMinter(MINTER).mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
         
-        // Verify tokens were actually transferred to Minter
-        uint256 fxSaveBalanceAfterMint = IERC20(FXSAVE).balanceOf(address(this));
-        uint256 fxSaveBalanceDiff = fxSaveBalanceBeforeMint - fxSaveBalanceAfterMint;
-        
-        // Verify the exact amount was transferred
-        if (fxSaveBalanceDiff != fxSaveAmount) {
-            revert("Minter mint did not transfer correct amount");
+        // Validate that tokens were actually minted
+        if (IERC20(leveragedToken).balanceOf(receiver) - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
+            revert MintFailed();
         }
 
         emit FXUSDZappedToLeveraged(msg.sender, MINTER, receiver, fxUsdAmount, fxSaveAmount, leveragedOut);
@@ -483,56 +415,6 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         // Reset allowances to limit exposure
         fxUsdToken.forceApprove(FXUSD_DIAMOND, 0);
         IERC20(FXSAVE).forceApprove(MINTER, 0);
-    }
-
-    // ============ View Functions (Preview) ============
-
-    /// @notice Preview expected fxSAVE output for a given USDC input
-    /// @dev Note: This is an approximation using ERC4626 previewDeposit
-    /// @dev Actual output may vary due to fxUSD Diamond conversion logic
-    /// @param usdcAmount Amount of USDC to zap
-    /// @return expectedFxSaveOut Expected fxSAVE amount (for slippage calculation)
-    function previewZapUsdc(uint256 usdcAmount) external view returns (uint256 expectedFxSaveOut) {
-        // Use ERC4626 previewDeposit if available (fxSAVE is ERC4626)
-        // Note: This assumes direct deposit, actual conversion via diamond may differ
-        try IERC4626(FXSAVE).previewDeposit(usdcAmount) returns (uint256 shares) {
-            expectedFxSaveOut = shares;
-        } catch {
-            // Fallback: assume 1:1 if previewDeposit not available
-            // Users should use on-chain simulation for accurate values
-            expectedFxSaveOut = usdcAmount;
-        }
-    }
-
-    /// @notice Preview expected fxSAVE output for a given fxUSD input
-    /// @dev Note: This is an approximation using ERC4626 previewDeposit
-    /// @dev Actual output may vary due to fxUSD Diamond conversion logic
-    /// @param fxUsdAmount Amount of fxUSD to zap
-    /// @return expectedFxSaveOut Expected fxSAVE amount (for slippage calculation)
-    function previewZapFxUsd(uint256 fxUsdAmount) external view returns (uint256 expectedFxSaveOut) {
-        // Use ERC4626 previewDeposit if available (fxSAVE is ERC4626)
-        // Note: This assumes direct deposit, actual conversion via diamond may differ
-        try IERC4626(FXSAVE).previewDeposit(fxUsdAmount) returns (uint256 shares) {
-            expectedFxSaveOut = shares;
-        } catch {
-            // Fallback: assume 1:1 if previewDeposit not available
-            // Users should use on-chain simulation for accurate values
-            expectedFxSaveOut = fxUsdAmount;
-        }
-    }
-
-    /// @notice Preview expected pegged tokens for a given fxSAVE input
-    /// @param fxSaveAmount Amount of fxSAVE to mint with
-    /// @return expectedPeggedOut Expected pegged tokens (for slippage calculation)
-    function previewMintPegged(uint256 fxSaveAmount) external view returns (uint256 expectedPeggedOut) {
-        (,,,expectedPeggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(fxSaveAmount);
-    }
-
-    /// @notice Preview expected leveraged tokens for a given fxSAVE input
-    /// @param fxSaveAmount Amount of fxSAVE to mint with
-    /// @return expectedLeveragedOut Expected leveraged tokens (for slippage calculation)
-    function previewMintLeveraged(uint256 fxSaveAmount) external view returns (uint256 expectedLeveragedOut) {
-        (,,,uint256 collateralUsed,expectedLeveragedOut,,) = IMinter(MINTER).mintLeveragedTokenDryRun(fxSaveAmount);
     }
 
     // ============ Owner Functions ============

@@ -21,6 +21,7 @@ interface ISTETHV2 {
 
 /// @notice Interface for wstETH
 interface IWstETHV2 {
+    // forge-lint: disable-next-line(mixed-case-function)
     function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
 }
 
@@ -322,10 +323,10 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         vm.stopPrank();
 
         uint256 ethBalance = zap.balanceOfETH(receiver);
-        uint256 stETHBalance = zap.balanceOfStETH(receiver);
+        uint256 stEthBalance = zap.balanceOfStETH(receiver);
 
         assertGt(ethBalance, 0, "ETH balance should be > 0");
-        assertGt(stETHBalance, 0, "stETH balance should be > 0");
+        assertGt(stEthBalance, 0, "stETH balance should be > 0");
         // ETH balance should be close to the deposited amount (may vary due to conversion rates)
         assertGe(ethBalance, ethAmount * 90 / 100, "ETH balance should be reasonable");
     }
@@ -338,12 +339,12 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut);
         vm.stopPrank();
 
-        uint256 stETHBalance = zap.balanceOfStETH(receiver);
+        uint256 stEthBalance = zap.balanceOfStETH(receiver);
         
-        assertGt(stETHBalance, 0, "stETH balance should be > 0");
+        assertGt(stEthBalance, 0, "stETH balance should be > 0");
         // stETH balance can be higher than shares due to appreciation
         // Just verify it's reasonable
-        assertGt(stETHBalance, sharesOut * 90 / 100, "stETH balance should be reasonable");
+        assertGt(stEthBalance, sharesOut * 90 / 100, "stETH balance should be reasonable");
     }
 
     function test_TotalValueETH() public {

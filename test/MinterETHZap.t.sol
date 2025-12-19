@@ -70,7 +70,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         uint256 peggedBalBefore = IERC20(peggedToken).balanceOf(receiver);
         uint256 wstEthBalBefore = IERC20(WSTETH).balanceOf(minter);
 
-        uint256 peggedOut = zap.zapEthToPegged{value: ethAmount}(receiver, 0, 0);
+        uint256 peggedOut = zap.zapEthToPegged{value: ethAmount}(receiver, 0);
 
         vm.stopPrank();
 
@@ -103,7 +103,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(MinterETHZapV2.ZeroAmount.selector);
-        zap.zapEthToPegged{value: 0}(receiver, 0, 0);
+        zap.zapEthToPegged{value: 0}(receiver, 0);
 
         vm.stopPrank();
     }
@@ -114,7 +114,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(MinterETHZapV2.InvalidAddress.selector);
-        zap.zapEthToPegged{value: ethAmount}(address(0), 0, 0);
+        zap.zapEthToPegged{value: ethAmount}(address(0), 0);
 
         vm.stopPrank();
     }
@@ -127,7 +127,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.expectEmit(true, true, true, false);
         emit MinterETHZapV2.ETHZappedToPegged(user1, minter, receiver, ethAmount, 0, 0);
 
-        zap.zapEthToPegged{value: ethAmount}(receiver, 0, 0);
+        zap.zapEthToPegged{value: ethAmount}(receiver, 0);
 
         vm.stopPrank();
     }
@@ -142,7 +142,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         uint256 leveragedBalBefore = IERC20(leveragedToken).balanceOf(receiver);
         uint256 wstEthBalBefore = IERC20(WSTETH).balanceOf(minter);
 
-        uint256 leveragedOut = zap.zapEthToLeveraged{value: ethAmount}(receiver, 0, 0);
+        uint256 leveragedOut = zap.zapEthToLeveraged{value: ethAmount}(receiver, 0);
 
         vm.stopPrank();
 
@@ -175,7 +175,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(MinterETHZapV2.ZeroAmount.selector);
-        zap.zapEthToLeveraged{value: 0}(receiver, 0, 0);
+        zap.zapEthToLeveraged{value: 0}(receiver, 0);
 
         vm.stopPrank();
     }
@@ -186,7 +186,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(MinterETHZapV2.InvalidAddress.selector);
-        zap.zapEthToLeveraged{value: ethAmount}(address(0), 0, 0);
+        zap.zapEthToLeveraged{value: ethAmount}(address(0), 0);
 
         vm.stopPrank();
     }
@@ -199,7 +199,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.expectEmit(true, true, true, false);
         emit MinterETHZapV2.ETHZappedToLeveraged(user1, minter, receiver, ethAmount, 0, 0);
 
-        zap.zapEthToLeveraged{value: ethAmount}(receiver, 0, 0);
+        zap.zapEthToLeveraged{value: ethAmount}(receiver, 0);
 
         vm.stopPrank();
     }
@@ -225,7 +225,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         uint256 wstEthBalBefore = IERC20(WSTETH).balanceOf(minter);
         uint256 userStEthBalBefore = IERC20(STETH).balanceOf(user1);
 
-        uint256 peggedOut = zap.zapStEthToPegged(stEthAmount, receiver, 0, 0);
+        uint256 peggedOut = zap.zapStEthToPegged(stEthAmount, receiver, 0);
 
         vm.stopPrank();
 
@@ -266,7 +266,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         IERC20(STETH).approve(address(zap), type(uint256).max);
 
         vm.expectRevert(MinterETHZapV2.ZeroAmount.selector);
-        zap.zapStEthToPegged(0, receiver, 0, 0);
+        zap.zapStEthToPegged(0, receiver, 0);
 
         vm.stopPrank();
     }
@@ -283,7 +283,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         IERC20(STETH).approve(address(zap), stEthAmount);
 
         vm.expectRevert(MinterETHZapV2.InvalidAddress.selector);
-        zap.zapStEthToPegged(stEthAmount, address(0), 0, 0);
+        zap.zapStEthToPegged(stEthAmount, address(0), 0);
 
         vm.stopPrank();
     }
@@ -302,7 +302,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.expectEmit(true, true, true, false);
         emit MinterETHZapV2.STETHZappedToPegged(user1, minter, receiver, stEthAmount, 0, 0);
 
-        zap.zapStEthToPegged(stEthAmount, receiver, 0, 0);
+        zap.zapStEthToPegged(stEthAmount, receiver, 0);
 
         vm.stopPrank();
     }
@@ -328,7 +328,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         uint256 wstEthBalBefore = IERC20(WSTETH).balanceOf(minter);
         uint256 userStEthBalBefore = IERC20(STETH).balanceOf(user1);
 
-        uint256 leveragedOut = zap.zapStEthToLeveraged(stEthAmount, receiver, 0, 0);
+        uint256 leveragedOut = zap.zapStEthToLeveraged(stEthAmount, receiver, 0);
 
         vm.stopPrank();
 
@@ -369,7 +369,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         IERC20(STETH).approve(address(zap), type(uint256).max);
 
         vm.expectRevert(MinterETHZapV2.ZeroAmount.selector);
-        zap.zapStEthToLeveraged(0, receiver, 0, 0);
+        zap.zapStEthToLeveraged(0, receiver, 0);
 
         vm.stopPrank();
     }
@@ -386,7 +386,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         IERC20(STETH).approve(address(zap), stEthAmount);
 
         vm.expectRevert(MinterETHZapV2.InvalidAddress.selector);
-        zap.zapStEthToLeveraged(stEthAmount, address(0), 0, 0);
+        zap.zapStEthToLeveraged(stEthAmount, address(0), 0);
 
         vm.stopPrank();
     }
@@ -405,7 +405,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.expectEmit(true, true, true, false);
         emit MinterETHZapV2.STETHZappedToLeveraged(user1, minter, receiver, stEthAmount, 0, 0);
 
-        zap.zapStEthToLeveraged(stEthAmount, receiver, 0, 0);
+        zap.zapStEthToLeveraged(stEthAmount, receiver, 0);
 
         vm.stopPrank();
     }

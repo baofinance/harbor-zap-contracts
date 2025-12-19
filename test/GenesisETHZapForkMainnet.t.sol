@@ -6,7 +6,6 @@ import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {GenesisETHZapV3} from "src/minter/GenesisETHZap_v3.sol";
-import {IGenesis} from "src/interfaces/IGenesis.sol";
 
 /// @notice Interface for stETH submit function
 interface ISTETHV2 {
@@ -16,6 +15,7 @@ interface ISTETHV2 {
 
 /// @notice Interface for wstETH
 interface IWstETHV2 {
+    // forge-lint: disable-next-line(mixed-case-function)
     function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
 }
 
@@ -114,6 +114,8 @@ contract GenesisETHZapForkMainnetTest is Test {
             console.log("=== SUCCESS ===");
             console.log("wstETH Received (sharesOut):", sharesOut);
             console.log("Zap wstETH After:", zapWstEthBalAfter);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            // forge-lint: disable-next-line(unsafe-typecast)
             console.log("Zap wstETH Change:", int256(zapWstEthBalAfter) - int256(zapWstEthBalBefore));
             console.log("User ETH After:", userEthAfter);
             console.log("User ETH Spent:", userEthBefore - userEthAfter);

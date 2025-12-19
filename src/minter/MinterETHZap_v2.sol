@@ -17,16 +17,6 @@ interface IWstETHWrapV2 {
     function wrap(uint256 stEthAmount) external returns (uint256);
 }
 
-interface IStETH is IERC20 {
-    function getPooledEthByShares(uint256 _sharesAmount) external view returns (uint256);
-    function getSharesByPooledEth(uint256 _ethAmount) external view returns (uint256);
-}
-
-interface IWstETH is IERC20 {
-    function getStETHByWstETH(uint256 wstEthAmount) external view returns (uint256);
-    function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
-}
-
 /// @title MinterETHZapV2
 /// @notice One-click zapper for minting pegged or leveraged tokens with ETH or stETH via wstETH
 /// @dev Enables users to mint pegged or leveraged tokens in a single transaction
@@ -138,9 +128,8 @@ contract MinterETHZapV2 is ReentrancyGuard {
     error WstETHMismatch(address expected, address provided);
 
     error Unauthorized();
+    error MintFailed();
     error FunctionNotFound();
-    error NoStETHReceived();
-    error SlippageTooHigh();
 
     // ============ Constructor ============
 
@@ -183,140 +172,78 @@ contract MinterETHZapV2 is ReentrancyGuard {
     /// @dev Flow: ETH → stETH → wstETH → Minter mint pegged
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
-    /// @param minWstEthOut Minimum amount of wstETH to receive (slippage protection)
     /// @return peggedOut Amount of pegged tokens minted
     function zapEthToPegged(
         address receiver,
-        uint256 minPeggedOut,
-        uint256 minWstEthOut
+        uint256 minPeggedOut
     ) external payable nonReentrant returns (uint256 peggedOut) {
         if (msg.value == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
 
         uint256 ethAmount = msg.value;
 
-        // 1. ETH → stETH via Lido (never trust return value)
-        uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
-        ISTETHV2(STETH).submit{value: ethAmount}(referral);
-        uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
-        if (stEthReceived == 0) revert NoStETHReceived();
+        // 1. ETH → stETH via Lido
+        uint256 stEthReceived = ISTETHV2(STETH).submit{value: ethAmount}(referral);
 
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthReceived);
-        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
         uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthReceived);
-        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthReceived = wstEthAfter - wstEthBefore;
-        
-        // Verify we received wstETH
-        if (wstEthReceived == 0) revert NoStETHReceived();
-        if (wstEthReceived != wstEthAmount) {
-            // Use actual balance if different
-            wstEthAmount = wstEthReceived;
-        }
-        
-        // Slippage protection for wstETH wrapping
-        if (wstEthAmount < minWstEthOut) revert SlippageTooHigh();
 
         // 3. wstETH → Minter mint pegged
-        // Verify contract has sufficient balance before minting
-        uint256 wstEthBalanceBefore = IERC20(WSTETH).balanceOf(address(this));
-        if (wstEthBalanceBefore < wstEthAmount) revert NoStETHReceived();
-        
-        // Reset approval first if needed
-        uint256 currentAllowance = IERC20(WSTETH).allowance(address(this), MINTER);
-        if (currentAllowance > 0) {
-            IERC20(WSTETH).approve(MINTER, 0);
-        }
-        // Approve the amount
-        IERC20(WSTETH).approve(MINTER, wstEthAmount);
-        
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        uint256 peggedBalanceBefore = IERC20(peggedToken).balanceOf(receiver);
+        IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
         peggedOut = IMinter(MINTER).mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
         
-        // Verify tokens were actually transferred to Minter
-        uint256 wstEthBalanceAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthBalanceDiff = wstEthBalanceBefore - wstEthBalanceAfter;
-        
-        // Verify the exact amount was transferred
-        if (wstEthBalanceDiff != wstEthAmount) {
-            revert("Minter mint did not transfer correct amount");
+        // Validate that tokens were actually minted
+        if (IERC20(peggedToken).balanceOf(receiver) - peggedBalanceBefore != peggedOut || peggedOut == 0) {
+            revert MintFailed();
         }
 
         emit ETHZappedToPegged(msg.sender, MINTER, receiver, ethAmount, wstEthAmount, peggedOut);
 
         // Reset allowances after interactions
         IERC20(STETH).forceApprove(WSTETH, 0);
-        IERC20(WSTETH).approve(MINTER, 0);
+        IERC20(WSTETH).forceApprove(MINTER, 0);
     }
 
     /// @notice Zap ETH into leveraged tokens in one transaction
     /// @dev Flow: ETH → stETH → wstETH → Minter mint leveraged
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
-    /// @param minWstEthOut Minimum amount of wstETH to receive (slippage protection)
     /// @return leveragedOut Amount of leveraged tokens minted
     function zapEthToLeveraged(
         address receiver,
-        uint256 minLeveragedOut,
-        uint256 minWstEthOut
+        uint256 minLeveragedOut
     ) external payable nonReentrant returns (uint256 leveragedOut) {
         if (msg.value == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
 
         uint256 ethAmount = msg.value;
 
-        // 1. ETH → stETH via Lido (never trust return value)
-        uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
-        ISTETHV2(STETH).submit{value: ethAmount}(referral);
-        uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
-        if (stEthReceived == 0) revert NoStETHReceived();
+        // 1. ETH → stETH via Lido
+        uint256 stEthReceived = ISTETHV2(STETH).submit{value: ethAmount}(referral);
 
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthReceived);
-        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
         uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthReceived);
-        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthReceived = wstEthAfter - wstEthBefore;
-        
-        // Verify we received wstETH
-        if (wstEthReceived == 0) revert NoStETHReceived();
-        if (wstEthReceived != wstEthAmount) {
-            // Use actual balance if different
-            wstEthAmount = wstEthReceived;
-        }
-        
-        // Slippage protection for wstETH wrapping
-        if (wstEthAmount < minWstEthOut) revert SlippageTooHigh();
 
         // 3. wstETH → Minter mint leveraged
-        // Verify contract has sufficient balance before minting
-        uint256 wstEthBalanceBefore = IERC20(WSTETH).balanceOf(address(this));
-        if (wstEthBalanceBefore < wstEthAmount) revert NoStETHReceived();
-        
-        // Reset approval first if needed
-        uint256 currentAllowance = IERC20(WSTETH).allowance(address(this), MINTER);
-        if (currentAllowance > 0) {
-            IERC20(WSTETH).approve(MINTER, 0);
-        }
-        // Approve the amount
-        IERC20(WSTETH).approve(MINTER, wstEthAmount);
-        
+        address leveragedToken = IMinter(MINTER).LEVERAGED_TOKEN();
+        uint256 leveragedBalanceBefore = IERC20(leveragedToken).balanceOf(receiver);
+        IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
         leveragedOut = IMinter(MINTER).mintLeveragedToken(wstEthAmount, receiver, minLeveragedOut);
         
-        // Verify tokens were actually transferred to Minter
-        uint256 wstEthBalanceAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthBalanceDiff = wstEthBalanceBefore - wstEthBalanceAfter;
-        
-        // Verify the exact amount was transferred
-        if (wstEthBalanceDiff != wstEthAmount) {
-            revert("Minter mint did not transfer correct amount");
+        // Validate that tokens were actually minted
+        if (IERC20(leveragedToken).balanceOf(receiver) - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
+            revert MintFailed();
         }
 
         emit ETHZappedToLeveraged(msg.sender, MINTER, receiver, ethAmount, wstEthAmount, leveragedOut);
 
         // Reset allowances after interactions
         IERC20(STETH).forceApprove(WSTETH, 0);
-        IERC20(WSTETH).approve(MINTER, 0);
+        IERC20(WSTETH).forceApprove(MINTER, 0);
     }
 
     /// @notice Zap stETH into pegged tokens in one transaction
@@ -324,13 +251,11 @@ contract MinterETHZapV2 is ReentrancyGuard {
     /// @param stEthAmount Amount of stETH to zap
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
-    /// @param minWstEthOut Minimum amount of wstETH to receive (slippage protection)
     /// @return peggedOut Amount of pegged tokens minted
     function zapStEthToPegged(
         uint256 stEthAmount,
         address receiver,
-        uint256 minPeggedOut,
-        uint256 minWstEthOut
+        uint256 minPeggedOut
     ) external nonReentrant returns (uint256 peggedOut) {
         if (stEthAmount == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
@@ -340,50 +265,24 @@ contract MinterETHZapV2 is ReentrancyGuard {
 
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthAmount);
-        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
         uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthAmount);
-        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthReceived = wstEthAfter - wstEthBefore;
-        
-        // Verify we received wstETH
-        if (wstEthReceived == 0) revert NoStETHReceived();
-        if (wstEthReceived != wstEthAmount) {
-            // Use actual balance if different
-            wstEthAmount = wstEthReceived;
-        }
-        
-        // Slippage protection for wstETH wrapping
-        if (wstEthAmount < minWstEthOut) revert SlippageTooHigh();
 
         // 3. wstETH → Minter mint pegged
-        // Verify contract has sufficient balance before minting
-        uint256 wstEthBalanceBefore = IERC20(WSTETH).balanceOf(address(this));
-        if (wstEthBalanceBefore < wstEthAmount) revert NoStETHReceived();
-        
-        // Reset approval first if needed
-        uint256 currentAllowance = IERC20(WSTETH).allowance(address(this), MINTER);
-        if (currentAllowance > 0) {
-            IERC20(WSTETH).approve(MINTER, 0);
-        }
-        // Approve the amount
-        IERC20(WSTETH).approve(MINTER, wstEthAmount);
-        
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        uint256 peggedBalanceBefore = IERC20(peggedToken).balanceOf(receiver);
+        IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
         peggedOut = IMinter(MINTER).mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
         
-        // Verify tokens were actually transferred to Minter
-        uint256 wstEthBalanceAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthBalanceDiff = wstEthBalanceBefore - wstEthBalanceAfter;
-        
-        // Verify the exact amount was transferred
-        if (wstEthBalanceDiff != wstEthAmount) {
-            revert("Minter mint did not transfer correct amount");
+        // Validate that tokens were actually minted
+        if (IERC20(peggedToken).balanceOf(receiver) - peggedBalanceBefore != peggedOut || peggedOut == 0) {
+            revert MintFailed();
         }
 
         emit STETHZappedToPegged(msg.sender, MINTER, receiver, stEthAmount, wstEthAmount, peggedOut);
 
         // Reset allowances after interactions
         IERC20(STETH).forceApprove(WSTETH, 0);
-        IERC20(WSTETH).approve(MINTER, 0);
+        IERC20(WSTETH).forceApprove(MINTER, 0);
     }
 
     /// @notice Zap stETH into leveraged tokens in one transaction
@@ -391,13 +290,11 @@ contract MinterETHZapV2 is ReentrancyGuard {
     /// @param stEthAmount Amount of stETH to zap
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
-    /// @param minWstEthOut Minimum amount of wstETH to receive (slippage protection)
     /// @return leveragedOut Amount of leveraged tokens minted
     function zapStEthToLeveraged(
         uint256 stEthAmount,
         address receiver,
-        uint256 minLeveragedOut,
-        uint256 minWstEthOut
+        uint256 minLeveragedOut
     ) external nonReentrant returns (uint256 leveragedOut) {
         if (stEthAmount == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
@@ -407,90 +304,24 @@ contract MinterETHZapV2 is ReentrancyGuard {
 
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthAmount);
-        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
         uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthAmount);
-        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthReceived = wstEthAfter - wstEthBefore;
-        
-        // Verify we received wstETH
-        if (wstEthReceived == 0) revert NoStETHReceived();
-        if (wstEthReceived != wstEthAmount) {
-            // Use actual balance if different
-            wstEthAmount = wstEthReceived;
-        }
-        
-        // Slippage protection for wstETH wrapping
-        if (wstEthAmount < minWstEthOut) revert SlippageTooHigh();
 
         // 3. wstETH → Minter mint leveraged
-        // Verify contract has sufficient balance before minting
-        uint256 wstEthBalanceBefore = IERC20(WSTETH).balanceOf(address(this));
-        if (wstEthBalanceBefore < wstEthAmount) revert NoStETHReceived();
-        
-        // Reset approval first if needed
-        uint256 currentAllowance = IERC20(WSTETH).allowance(address(this), MINTER);
-        if (currentAllowance > 0) {
-            IERC20(WSTETH).approve(MINTER, 0);
-        }
-        // Approve the amount
-        IERC20(WSTETH).approve(MINTER, wstEthAmount);
-        
+        address leveragedToken = IMinter(MINTER).LEVERAGED_TOKEN();
+        uint256 leveragedBalanceBefore = IERC20(leveragedToken).balanceOf(receiver);
+        IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
         leveragedOut = IMinter(MINTER).mintLeveragedToken(wstEthAmount, receiver, minLeveragedOut);
         
-        // Verify tokens were actually transferred to Minter
-        uint256 wstEthBalanceAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthBalanceDiff = wstEthBalanceBefore - wstEthBalanceAfter;
-        
-        // Verify the exact amount was transferred
-        if (wstEthBalanceDiff != wstEthAmount) {
-            revert("Minter mint did not transfer correct amount");
+        // Validate that tokens were actually minted
+        if (IERC20(leveragedToken).balanceOf(receiver) - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
+            revert MintFailed();
         }
 
         emit STETHZappedToLeveraged(msg.sender, MINTER, receiver, stEthAmount, wstEthAmount, leveragedOut);
 
         // Reset allowances after interactions
         IERC20(STETH).forceApprove(WSTETH, 0);
-        IERC20(WSTETH).approve(MINTER, 0);
-    }
-
-    // ============ View Functions (Preview) ============
-
-    /// @notice Preview expected wstETH output for a given ETH input
-    /// @dev Note: This is an approximation. Actual output may vary slightly due to stETH rebasing
-    /// @param ethIn Amount of ETH to zap
-    /// @return expectedWstEthOut Expected wstETH amount (for slippage calculation)
-    function previewZapEth(uint256 ethIn) external view returns (uint256 expectedWstEthOut) {
-        IStETH stETH = IStETH(STETH);
-        IWstETH wstETH = IWstETH(WSTETH);
-        
-        // 1. ETH → stETH: Convert ETH to stETH shares, then back to stETH tokens
-        uint256 stEthShares = stETH.getSharesByPooledEth(ethIn);
-        uint256 expectedStEth = stETH.getPooledEthByShares(stEthShares);
-        // 2. stETH → wstETH
-        expectedWstEthOut = wstETH.getWstETHByStETH(expectedStEth);
-    }
-
-    /// @notice Preview expected wstETH output for a given stETH input
-    /// @param stEthIn Amount of stETH to zap
-    /// @return expectedWstEthOut Expected wstETH amount (for slippage calculation)
-    function previewZapStEth(uint256 stEthIn) external view returns (uint256 expectedWstEthOut) {
-        IWstETH wstETH = IWstETH(WSTETH);
-        // stETH → wstETH
-        expectedWstEthOut = wstETH.getWstETHByStETH(stEthIn);
-    }
-
-    /// @notice Preview expected pegged tokens for a given wstETH input
-    /// @param wstEthAmount Amount of wstETH to mint with
-    /// @return expectedPeggedOut Expected pegged tokens (for slippage calculation)
-    function previewMintPegged(uint256 wstEthAmount) external view returns (uint256 expectedPeggedOut) {
-        (,,,expectedPeggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wstEthAmount);
-    }
-
-    /// @notice Preview expected leveraged tokens for a given wstETH input
-    /// @param wstEthAmount Amount of wstETH to mint with
-    /// @return expectedLeveragedOut Expected leveraged tokens (for slippage calculation)
-    function previewMintLeveraged(uint256 wstEthAmount) external view returns (uint256 expectedLeveragedOut) {
-        (,,,uint256 collateralUsed,expectedLeveragedOut,,) = IMinter(MINTER).mintLeveragedTokenDryRun(wstEthAmount);
+        IERC20(WSTETH).forceApprove(MINTER, 0);
     }
 
     // ============ Owner Functions ============

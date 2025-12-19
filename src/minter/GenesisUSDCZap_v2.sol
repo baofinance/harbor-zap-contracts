@@ -3,7 +3,6 @@ pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {ReentrancyGuard} from "src/util/ReentrancyGuard.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
 
@@ -99,6 +98,7 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
     error CollateralMismatch(address expected, address actual);
     error Unauthorized();
     error SlippageExceeded();
+    error DepositFailed();
     error FunctionNotFound();
 
     // ============ Constructor ============
@@ -116,8 +116,12 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
     }
 
     modifier onlyOwner() {
-        if (msg.sender != owner) revert Unauthorized();
+        _onlyOwner();
         _;
+    }
+
+    function _onlyOwner() internal view {
+        if (msg.sender != owner) revert Unauthorized();
     }
 
     // =============================================================
@@ -145,7 +149,16 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
         uint256 fxSaveReceived = _convertToFxSave(USDC, usdcAmount, minFxSaveOut);
 
         // 3. Deposit into Genesis
-        _depositToGenesis(fxSaveReceived, receiver);
+        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
+        IERC20(FXSAVE).forceApprove(GENESIS, fxSaveReceived);
+        IGenesis(GENESIS).deposit(fxSaveReceived, receiver);
+        
+        // Validate that shares were actually minted
+        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
+        uint256 sharesReceived = sharesAfter - sharesBefore;
+        if (sharesReceived != fxSaveReceived) {
+            revert DepositFailed();
+        }
 
         collateralAmount = fxSaveReceived;
 
@@ -177,7 +190,16 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
         uint256 fxSaveReceived = _convertToFxSave(FXUSD, fxUsdAmount, minFxSaveOut);
 
         // 3. Deposit into Genesis
-        _depositToGenesis(fxSaveReceived, receiver);
+        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
+        IERC20(FXSAVE).forceApprove(GENESIS, fxSaveReceived);
+        IGenesis(GENESIS).deposit(fxSaveReceived, receiver);
+        
+        // Validate that shares were actually minted
+        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
+        uint256 sharesReceived = sharesAfter - sharesBefore;
+        if (sharesReceived != fxSaveReceived) {
+            revert DepositFailed();
+        }
 
         collateralAmount = fxSaveReceived;
 
@@ -191,46 +213,6 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
     // =============================================================
     // INTERNAL HELPERS
     // =============================================================
-
-    function _depositToGenesis(uint256 amount, address receiver) internal {
-        // Verify contract has sufficient balance before deposit
-        uint256 balanceBefore = IERC20(FXSAVE).balanceOf(address(this));
-        if (balanceBefore < amount) revert InvalidAddress();
-        
-        // Double-check receiver is not zero (defensive)
-        if (receiver == address(0)) revert InvalidAddress();
-        
-        // Reset approval first if needed
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), GENESIS);
-        if (currentAllowance > 0) {
-            IERC20(FXSAVE).forceApprove(GENESIS, 0);
-        }
-        // Approve the amount
-        IERC20(FXSAVE).forceApprove(GENESIS, amount);
-        
-        // Genesis deposit function pulls tokens via safeTransferFrom
-        IGenesis(GENESIS).deposit(amount, receiver);
-        
-        // Verify tokens were actually transferred to Genesis
-        uint256 balanceAfter = IERC20(FXSAVE).balanceOf(address(this));
-        uint256 balanceDiff = balanceBefore - balanceAfter;
-        
-        // Verify the exact amount was transferred
-        if (balanceDiff != amount) {
-            revert("Genesis deposit did not transfer correct amount");
-        }
-        
-        // Verify receiver has shares in Genesis (allow for rounding/fees)
-        // Note: Balance diff check above is stricter; this is a secondary safety check
-        uint256 receiverShares = IGenesis(GENESIS).balanceOf(receiver);
-        // Allow small tolerance (1 wei) for rounding or fees in Genesis vault
-        if (receiverShares + 1 < amount) {
-            revert("Genesis deposit did not credit receiver shares");
-        }
-        
-        // Reset approval after successful deposit
-        IERC20(FXSAVE).forceApprove(GENESIS, 0);
-    }
 
     function _convertToFxSave(
         address tokenIn,
@@ -276,44 +258,6 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
     }
 
     // =============================================================
-    // VIEW FUNCTIONS (PREVIEW)
-    // =============================================================
-
-    /// @notice Preview expected fxSAVE output for a given USDC input
-    /// @dev Note: This is an approximation using ERC4626 previewDeposit
-    /// @dev Actual output may vary due to fxUSD Diamond conversion logic
-    /// @param usdcAmount Amount of USDC to zap
-    /// @return expectedFxSaveOut Expected fxSAVE amount (for slippage calculation)
-    function previewZapUsdc(uint256 usdcAmount) external view returns (uint256 expectedFxSaveOut) {
-        // Use ERC4626 previewDeposit if available (fxSAVE is ERC4626)
-        // Note: This assumes direct deposit, actual conversion via diamond may differ
-        try IERC4626(FXSAVE).previewDeposit(usdcAmount) returns (uint256 shares) {
-            expectedFxSaveOut = shares;
-        } catch {
-            // Fallback: assume 1:1 if previewDeposit not available
-            // Users should use on-chain simulation for accurate values
-            expectedFxSaveOut = usdcAmount;
-        }
-    }
-
-    /// @notice Preview expected fxSAVE output for a given fxUSD input
-    /// @dev Note: This is an approximation using ERC4626 previewDeposit
-    /// @dev Actual output may vary due to fxUSD Diamond conversion logic
-    /// @param fxUsdAmount Amount of fxUSD to zap
-    /// @return expectedFxSaveOut Expected fxSAVE amount (for slippage calculation)
-    function previewZapFxUsd(uint256 fxUsdAmount) external view returns (uint256 expectedFxSaveOut) {
-        // Use ERC4626 previewDeposit if available (fxSAVE is ERC4626)
-        // Note: This assumes direct deposit, actual conversion via diamond may differ
-        try IERC4626(FXSAVE).previewDeposit(fxUsdAmount) returns (uint256 shares) {
-            expectedFxSaveOut = shares;
-        } catch {
-            // Fallback: assume 1:1 if previewDeposit not available
-            // Users should use on-chain simulation for accurate values
-            expectedFxSaveOut = fxUsdAmount;
-        }
-    }
-
-    // =============================================================
     // OWNER FUNCTIONS
     // =============================================================
 
@@ -323,6 +267,7 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
         owner = newOwner;
     }
 
+    // forge-lint: disable-next-line(mixed-case-function)
     function rescueETH() external onlyOwner {
         payable(owner).transfer(address(this).balance);
     }
