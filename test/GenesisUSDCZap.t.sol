@@ -243,4 +243,20 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         assertEq(IGenesis(genesis).balanceOf(receiver), total, "Total shares wrong");
         assertEq(IERC20(FXSAVE).balanceOf(genesis), total, "Total fxSAVE wrong");
     }
+
+    // ============ Preview Function Tests ============
+
+    function test_PreviewGenesisFromFxSave() public {
+        uint256 fxSaveAmount = 1000 * 1e18;
+        uint256 previewShares = zap.previewGenesisFromFxSave(fxSaveAmount);
+        
+        // Genesis uses 1:1 mapping, so shares should equal fxSAVE amount
+        assertEq(previewShares, fxSaveAmount, "Preview should return 1:1 shares");
+        console.log("Preview Genesis shares from fxSAVE:", previewShares);
+    }
+
+    function test_PreviewGenesisFromFxSave_Zero() public {
+        uint256 previewShares = zap.previewGenesisFromFxSave(0);
+        assertEq(previewShares, 0, "Preview should return 0 for zero input");
+    }
 }

@@ -56,7 +56,7 @@ echo ""
 # Deploy GenesisETHZap_v3
 # Constructor: (address genesis_, address referral_)
 echo "Deploying GenesisETHZap_v3..."
-GENESIS_ETH_ZAP_OUT=$("$FORGE" create src/minter/GenesisETHZap_v3.sol:GenesisETHZapV3 \
+GENESIS_ETH_ZAP_OUT=$("$FORGE" create src/zap/GenesisETHZap_v3.sol:GenesisETHZapV3 \
   --rpc-url "$RPC_URL" \
   --private-key "$PRIVATE_KEY" \
   --broadcast \

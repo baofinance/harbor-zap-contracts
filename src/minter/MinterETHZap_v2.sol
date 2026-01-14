@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "src/util/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 
 /// @notice Interface for stETH submit function
@@ -15,6 +15,24 @@ interface ISTETHV2 {
 /// @notice Interface for wstETH wrap function (not included in IWstETH view-only interface)
 interface IWstETHWrapV2 {
     function wrap(uint256 stEthAmount) external returns (uint256);
+}
+
+/// @notice Interface for wstETH view functions
+interface IWstETHView {
+    function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
+    function getStETHByWstETH(uint256 wstEthAmount) external view returns (uint256);
+}
+
+/// @notice Interface for stETH view functions
+interface IStETHView {
+    function getSharesByPooledEth(uint256 _pooledEthAmount) external view returns (uint256);
+    function getPooledEthByShares(uint256 _sharesAmount) external view returns (uint256);
+}
+
+/// @notice Interface for StabilityPool deposit function
+interface IStabilityPool {
+    function deposit(uint256 assetAmount, address receiver, uint256 minAmount) external returns (uint256 assetsDeposited);
+    function ASSET_TOKEN() external view returns (address);
 }
 
 /// @title MinterETHZapV2
@@ -46,6 +64,9 @@ contract MinterETHZapV2 is ReentrancyGuard {
 
     address public owner;
     address public referral;
+
+    /// @notice Mapping of allowed stability pool addresses
+    mapping(address => bool) public allowedStabilityPools;
 
     // ============ Events ============
 
@@ -113,8 +134,49 @@ contract MinterETHZapV2 is ReentrancyGuard {
         uint256 leveragedOut
     );
 
+    /// @notice Emitted when ETH is zapped to StabilityPool
+    /// @param user Address that initiated the zap
+    /// @param minter Address of the Minter contract
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param ethAmount Amount of ETH deposited
+    /// @param wstEthAmount Amount of wstETH received
+    /// @param peggedOut Amount of pegged tokens minted
+    /// @param stabilityPool Address of the StabilityPool
+    /// @param deposited Amount deposited into StabilityPool
+    event ETHZappedToStabilityPool(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 ethAmount,
+        uint256 wstEthAmount,
+        uint256 peggedOut,
+        address stabilityPool,
+        uint256 deposited
+    );
+
+    /// @notice Emitted when stETH is zapped to StabilityPool
+    /// @param user Address that initiated the zap
+    /// @param minter Address of the Minter contract
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param stEthAmount Amount of stETH deposited
+    /// @param wstEthAmount Amount of wstETH received
+    /// @param peggedOut Amount of pegged tokens minted
+    /// @param stabilityPool Address of the StabilityPool
+    /// @param deposited Amount deposited into StabilityPool
+    event STETHZappedToStabilityPool(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 stEthAmount,
+        uint256 wstEthAmount,
+        uint256 peggedOut,
+        address stabilityPool,
+        uint256 deposited
+    );
+
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event ReferralUpdated(address indexed oldReferral, address indexed newReferral);
+    event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
 
     // ============ Errors ============
 
@@ -130,6 +192,7 @@ contract MinterETHZapV2 is ReentrancyGuard {
     error Unauthorized();
     error MintFailed();
     error FunctionNotFound();
+    error StabilityPoolNotAllowed();
 
     // ============ Constructor ============
 
@@ -170,6 +233,7 @@ contract MinterETHZapV2 is ReentrancyGuard {
 
     /// @notice Zap ETH into pegged tokens in one transaction
     /// @dev Flow: ETH → stETH → wstETH → Minter mint pegged
+    /// @dev Use previewPeggedFromEth() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @return peggedOut Amount of pegged tokens minted
@@ -181,34 +245,16 @@ contract MinterETHZapV2 is ReentrancyGuard {
         if (receiver == address(0)) revert InvalidAddress();
 
         uint256 ethAmount = msg.value;
-
-        // 1. ETH → stETH via Lido
-        uint256 stEthReceived = ISTETHV2(STETH).submit{value: ethAmount}(referral);
-
-        // 2. stETH → wstETH
-        IERC20(STETH).forceApprove(WSTETH, stEthReceived);
-        uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthReceived);
-
-        // 3. wstETH → Minter mint pegged
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        uint256 peggedBalanceBefore = IERC20(peggedToken).balanceOf(receiver);
-        IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
-        peggedOut = IMinter(MINTER).mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
-        
-        // Validate that tokens were actually minted
-        if (IERC20(peggedToken).balanceOf(receiver) - peggedBalanceBefore != peggedOut || peggedOut == 0) {
-            revert MintFailed();
-        }
+        uint256 wstEthAmount = _convertEthToWstEth(ethAmount);
+        peggedOut = _mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
 
         emit ETHZappedToPegged(msg.sender, MINTER, receiver, ethAmount, wstEthAmount, peggedOut);
-
-        // Reset allowances after interactions
-        IERC20(STETH).forceApprove(WSTETH, 0);
-        IERC20(WSTETH).forceApprove(MINTER, 0);
+        _resetAllowances();
     }
 
     /// @notice Zap ETH into leveraged tokens in one transaction
     /// @dev Flow: ETH → stETH → wstETH → Minter mint leveraged
+    /// @dev Use previewLeveragedFromEth() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @return leveragedOut Amount of leveraged tokens minted
@@ -220,34 +266,16 @@ contract MinterETHZapV2 is ReentrancyGuard {
         if (receiver == address(0)) revert InvalidAddress();
 
         uint256 ethAmount = msg.value;
-
-        // 1. ETH → stETH via Lido
-        uint256 stEthReceived = ISTETHV2(STETH).submit{value: ethAmount}(referral);
-
-        // 2. stETH → wstETH
-        IERC20(STETH).forceApprove(WSTETH, stEthReceived);
-        uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthReceived);
-
-        // 3. wstETH → Minter mint leveraged
-        address leveragedToken = IMinter(MINTER).LEVERAGED_TOKEN();
-        uint256 leveragedBalanceBefore = IERC20(leveragedToken).balanceOf(receiver);
-        IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
-        leveragedOut = IMinter(MINTER).mintLeveragedToken(wstEthAmount, receiver, minLeveragedOut);
-        
-        // Validate that tokens were actually minted
-        if (IERC20(leveragedToken).balanceOf(receiver) - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
-            revert MintFailed();
-        }
+        uint256 wstEthAmount = _convertEthToWstEth(ethAmount);
+        leveragedOut = _mintLeveragedToken(wstEthAmount, receiver, minLeveragedOut);
 
         emit ETHZappedToLeveraged(msg.sender, MINTER, receiver, ethAmount, wstEthAmount, leveragedOut);
-
-        // Reset allowances after interactions
-        IERC20(STETH).forceApprove(WSTETH, 0);
-        IERC20(WSTETH).forceApprove(MINTER, 0);
+        _resetAllowances();
     }
 
     /// @notice Zap stETH into pegged tokens in one transaction
     /// @dev Flow: stETH → wstETH → Minter mint pegged
+    /// @dev Use previewPeggedFromStEth() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param stEthAmount Amount of stETH to zap
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
@@ -260,33 +288,16 @@ contract MinterETHZapV2 is ReentrancyGuard {
         if (stEthAmount == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
 
-        // 1. Pull stETH from user
-        IERC20(STETH).safeTransferFrom(msg.sender, address(this), stEthAmount);
-
-        // 2. stETH → wstETH
-        IERC20(STETH).forceApprove(WSTETH, stEthAmount);
-        uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthAmount);
-
-        // 3. wstETH → Minter mint pegged
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        uint256 peggedBalanceBefore = IERC20(peggedToken).balanceOf(receiver);
-        IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
-        peggedOut = IMinter(MINTER).mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
-        
-        // Validate that tokens were actually minted
-        if (IERC20(peggedToken).balanceOf(receiver) - peggedBalanceBefore != peggedOut || peggedOut == 0) {
-            revert MintFailed();
-        }
+        uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
+        peggedOut = _mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
 
         emit STETHZappedToPegged(msg.sender, MINTER, receiver, stEthAmount, wstEthAmount, peggedOut);
-
-        // Reset allowances after interactions
-        IERC20(STETH).forceApprove(WSTETH, 0);
-        IERC20(WSTETH).forceApprove(MINTER, 0);
+        _resetAllowances();
     }
 
     /// @notice Zap stETH into leveraged tokens in one transaction
     /// @dev Flow: stETH → wstETH → Minter mint leveraged
+    /// @dev Use previewLeveragedFromStEth() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param stEthAmount Amount of stETH to zap
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
@@ -299,29 +310,276 @@ contract MinterETHZapV2 is ReentrancyGuard {
         if (stEthAmount == 0) revert ZeroAmount();
         if (receiver == address(0)) revert InvalidAddress();
 
+        uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
+        leveragedOut = _mintLeveragedToken(wstEthAmount, receiver, minLeveragedOut);
+
+        emit STETHZappedToLeveraged(msg.sender, MINTER, receiver, stEthAmount, wstEthAmount, leveragedOut);
+        _resetAllowances();
+    }
+
+    /// @notice Zap ETH into StabilityPool in one transaction
+    /// @dev Flow: ETH → stETH → wstETH → Minter mint pegged → StabilityPool deposit
+    /// @dev Use previewStabilityPoolFromEth() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromEth with slippage buffer)
+    /// @param stabilityPool StabilityPool address to deposit pegged tokens into
+    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (use previewStabilityPoolFromEth with slippage buffer)
+    /// @return peggedOut Amount of pegged tokens minted
+    /// @return deposited Amount deposited into StabilityPool
+    function zapEthToStabilityPool(
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut
+    ) external payable nonReentrant returns (uint256 peggedOut, uint256 deposited) {
+        if (msg.value == 0) revert ZeroAmount();
+        if (receiver == address(0)) revert InvalidAddress();
+        if (stabilityPool == address(0)) revert InvalidAddress();
+
+        uint256 ethAmount = msg.value;
+        uint256 wstEthAmount = _convertEthToWstEth(ethAmount);
+        
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(wstEthAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        
+        emit ETHZappedToStabilityPool(msg.sender, MINTER, receiver, ethAmount, wstEthAmount, peggedOut, stabilityPool, deposited);
+        _resetAllowances();
+    }
+
+    /// @notice Zap stETH into StabilityPool in one transaction
+    /// @dev Flow: stETH → wstETH → Minter mint pegged → StabilityPool deposit
+    /// @dev Use previewStabilityPoolFromStEth() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param stEthAmount Amount of stETH to zap
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromStEth with slippage buffer)
+    /// @param stabilityPool StabilityPool address to deposit pegged tokens into
+    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (use previewStabilityPoolFromStEth with slippage buffer)
+    /// @return peggedOut Amount of pegged tokens minted
+    /// @return deposited Amount deposited into StabilityPool
+    function zapStEthToStabilityPool(
+        uint256 stEthAmount,
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut
+    ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
+        if (stEthAmount == 0) revert ZeroAmount();
+        if (receiver == address(0)) revert InvalidAddress();
+        if (stabilityPool == address(0)) revert InvalidAddress();
+
+        uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
+        
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(wstEthAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        
+        emit STETHZappedToStabilityPool(msg.sender, MINTER, receiver, stEthAmount, wstEthAmount, peggedOut, stabilityPool, deposited);
+        _resetAllowances();
+    }
+
+    // ============ Internal Helper Functions ============
+
+    /// @notice Convert ETH to wstETH via stETH
+    /// @param ethAmount Amount of ETH to convert
+    /// @return wstEthAmount Amount of wstETH received
+    function _convertEthToWstEth(uint256 ethAmount) internal returns (uint256 wstEthAmount) {
+        // 1. ETH → stETH via Lido (never trust return value, use balance change)
+        uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
+        ISTETHV2(STETH).submit{value: ethAmount}(referral);
+        uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
+        if (stEthReceived == 0) revert ZeroAmount();
+
+        // 2. stETH → wstETH (use balance change to get actual amount)
+        wstEthAmount = _wrapStEthToWstEth(stEthReceived);
+    }
+
+    /// @notice Convert stETH to wstETH
+    /// @param stEthAmount Amount of stETH to convert
+    /// @return wstEthAmount Amount of wstETH received
+    function _convertStEthToWstEth(uint256 stEthAmount) internal returns (uint256 wstEthAmount) {
         // 1. Pull stETH from user
         IERC20(STETH).safeTransferFrom(msg.sender, address(this), stEthAmount);
 
         // 2. stETH → wstETH
-        IERC20(STETH).forceApprove(WSTETH, stEthAmount);
-        uint256 wstEthAmount = IWstETHWrapV2(WSTETH).wrap(stEthAmount);
+        wstEthAmount = _wrapStEthToWstEth(stEthAmount);
+    }
 
-        // 3. wstETH → Minter mint leveraged
+    /// @notice Wrap stETH to wstETH (assumes stETH is already in this contract)
+    /// @param stEthAmount Amount of stETH to wrap
+    /// @return wstEthAmount Amount of wstETH received
+    function _wrapStEthToWstEth(uint256 stEthAmount) internal returns (uint256 wstEthAmount) {
+        IERC20(STETH).forceApprove(WSTETH, stEthAmount);
+        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
+        IWstETHWrapV2(WSTETH).wrap(stEthAmount);
+        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
+        wstEthAmount = wstEthAfter - wstEthBefore;
+        if (wstEthAmount == 0) revert ZeroAmount();
+    }
+
+    /// @notice Mint pegged tokens and validate the result
+    /// @param wstEthAmount Amount of wstETH to use for minting
+    /// @param receiver Address that will receive the pegged tokens
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive
+    /// @return peggedOut Amount of pegged tokens minted
+    function _mintPeggedToken(uint256 wstEthAmount, address receiver, uint256 minPeggedOut) internal returns (uint256 peggedOut) {
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        uint256 peggedBalanceBefore = IERC20(peggedToken).balanceOf(receiver);
+        IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
+        peggedOut = IMinter(MINTER).mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
+        
+        // Validate that tokens were actually minted
+        uint256 peggedBalanceAfter = IERC20(peggedToken).balanceOf(receiver);
+        if (peggedBalanceAfter - peggedBalanceBefore != peggedOut || peggedOut == 0) {
+            revert MintFailed();
+        }
+    }
+
+    /// @notice Mint leveraged tokens and validate the result
+    /// @param wstEthAmount Amount of wstETH to use for minting
+    /// @param receiver Address that will receive the leveraged tokens
+    /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
+    /// @return leveragedOut Amount of leveraged tokens minted
+    function _mintLeveragedToken(uint256 wstEthAmount, address receiver, uint256 minLeveragedOut) internal returns (uint256 leveragedOut) {
         address leveragedToken = IMinter(MINTER).LEVERAGED_TOKEN();
         uint256 leveragedBalanceBefore = IERC20(leveragedToken).balanceOf(receiver);
         IERC20(WSTETH).forceApprove(MINTER, wstEthAmount);
         leveragedOut = IMinter(MINTER).mintLeveragedToken(wstEthAmount, receiver, minLeveragedOut);
         
         // Validate that tokens were actually minted
-        if (IERC20(leveragedToken).balanceOf(receiver) - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
+        uint256 leveragedBalanceAfter = IERC20(leveragedToken).balanceOf(receiver);
+        if (leveragedBalanceAfter - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
             revert MintFailed();
         }
+    }
 
-        emit STETHZappedToLeveraged(msg.sender, MINTER, receiver, stEthAmount, wstEthAmount, leveragedOut);
+    /// @notice Deposit pegged tokens into StabilityPool
+    /// @param peggedToken Address of the pegged token
+    /// @param stabilityPool Address of the StabilityPool
+    /// @param peggedAmount Amount of pegged tokens to deposit
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool
+    /// @return deposited Amount deposited into StabilityPool
+    function _depositToStabilityPool(
+        address peggedToken,
+        address stabilityPool,
+        uint256 peggedAmount,
+        address receiver,
+        uint256 minStabilityPoolOut
+    ) internal returns (uint256 deposited) {
+        // Verify stability pool is allowed
+        if (!allowedStabilityPools[stabilityPool]) {
+            revert StabilityPoolNotAllowed();
+        }
+        
+        // Verify StabilityPool accepts the correct pegged token
+        address poolAssetToken = IStabilityPool(stabilityPool).ASSET_TOKEN();
+        if (poolAssetToken != peggedToken) {
+            revert InvalidAddress(); // StabilityPool doesn't accept this pegged token
+        }
+        
+        // Approve and deposit into StabilityPool
+        IERC20(peggedToken).forceApprove(stabilityPool, peggedAmount);
+        deposited = IStabilityPool(stabilityPool).deposit(peggedAmount, receiver, minStabilityPoolOut);
+        
+        // Reset approval
+        IERC20(peggedToken).forceApprove(stabilityPool, 0);
+    }
 
-        // Reset allowances after interactions
+    /// @notice Reset token allowances to zero
+    function _resetAllowances() internal {
         IERC20(STETH).forceApprove(WSTETH, 0);
         IERC20(WSTETH).forceApprove(MINTER, 0);
+    }
+
+    // ============ View Functions (Preview) ============
+
+    /// @notice Internal helper to preview ETH → wstETH conversion
+    /// @param ethAmount Amount of ETH
+    /// @return wstEthAmount Expected wstETH amount
+    function _previewWstEthFromEth(uint256 ethAmount) internal view returns (uint256 wstEthAmount) {
+        // Calculate stETH shares that will be minted for this ETH amount
+        uint256 stEthShares = IStETHView(STETH).getSharesByPooledEth(ethAmount);
+        // Convert shares back to stETH token amount (accounts for rounding)
+        uint256 stEthAmount = IStETHView(STETH).getPooledEthByShares(stEthShares);
+        // Convert stETH to wstETH
+        wstEthAmount = IWstETHView(WSTETH).getWstETHByStETH(stEthAmount);
+    }
+
+    /// @notice Preview the expected wstETH output from an ETH amount
+    /// @param ethAmount Amount of ETH
+    /// @return wstEthAmount Expected wstETH amount
+    function previewWstEthFromEth(uint256 ethAmount) external view returns (uint256 wstEthAmount) {
+        wstEthAmount = _previewWstEthFromEth(ethAmount);
+    }
+
+    /// @notice Preview the expected wstETH output from a stETH amount
+    /// @param stEthAmount Amount of stETH
+    /// @return wstEthAmount Expected wstETH amount
+    function previewWstEthFromStEth(uint256 stEthAmount) external view returns (uint256 wstEthAmount) {
+        wstEthAmount = IWstETHView(WSTETH).getWstETHByStETH(stEthAmount);
+    }
+
+    /// @notice Preview the expected pegged token output from an ETH amount
+    /// @dev Uses Minter's dry run function to get accurate output accounting for fees/incentives
+    /// @param ethAmount Amount of ETH to zap
+    /// @return peggedOut Expected amount of pegged tokens that will be minted
+    /// @return wstEthAmount Expected wstETH amount
+    function previewPeggedFromEth(uint256 ethAmount) external view returns (uint256 peggedOut, uint256 wstEthAmount) {
+        wstEthAmount = _previewWstEthFromEth(ethAmount);
+        (, , , peggedOut, , ) = IMinter(MINTER).mintPeggedTokenDryRun(wstEthAmount);
+    }
+
+    /// @notice Preview the expected leveraged token output from an ETH amount
+    /// @dev Uses Minter's dry run function to get accurate output accounting for fees/incentives
+    /// @param ethAmount Amount of ETH to zap
+    /// @return leveragedOut Expected amount of leveraged tokens that will be minted
+    /// @return wstEthAmount Expected wstETH amount
+    function previewLeveragedFromEth(uint256 ethAmount) external view returns (uint256 leveragedOut, uint256 wstEthAmount) {
+        wstEthAmount = _previewWstEthFromEth(ethAmount);
+        (, , , , leveragedOut, , ) = IMinter(MINTER).mintLeveragedTokenDryRun(wstEthAmount);
+    }
+
+    /// @notice Preview the expected pegged token output from a stETH amount
+    /// @dev Uses Minter's dry run function to get accurate output accounting for fees/incentives
+    /// @param stEthAmount Amount of stETH to zap
+    /// @return peggedOut Expected amount of pegged tokens that will be minted
+    /// @return wstEthAmount Expected wstETH amount
+    function previewPeggedFromStEth(uint256 stEthAmount) external view returns (uint256 peggedOut, uint256 wstEthAmount) {
+        wstEthAmount = IWstETHView(WSTETH).getWstETHByStETH(stEthAmount);
+        (, , , peggedOut, , ) = IMinter(MINTER).mintPeggedTokenDryRun(wstEthAmount);
+    }
+
+    /// @notice Preview the expected leveraged token output from a stETH amount
+    /// @dev Uses Minter's dry run function to get accurate output accounting for fees/incentives
+    /// @param stEthAmount Amount of stETH to zap
+    /// @return leveragedOut Expected amount of leveraged tokens that will be minted
+    /// @return wstEthAmount Expected wstETH amount
+    function previewLeveragedFromStEth(uint256 stEthAmount) external view returns (uint256 leveragedOut, uint256 wstEthAmount) {
+        wstEthAmount = IWstETHView(WSTETH).getWstETHByStETH(stEthAmount);
+        (, , , , leveragedOut, , ) = IMinter(MINTER).mintLeveragedTokenDryRun(wstEthAmount);
+    }
+
+    /// @notice Preview the expected StabilityPool deposit from an ETH zap
+    /// @dev Returns the expected pegged tokens that will be minted and deposited into StabilityPool
+    /// @dev Use this to set minStabilityPoolOut with a slippage buffer (0.5-1%)
+    /// @param ethAmount Amount of ETH to zap
+    /// @return peggedOut Expected amount of pegged tokens that will be minted (and deposited)
+    /// @return wstEthAmount Expected wstETH amount
+    function previewStabilityPoolFromEth(uint256 ethAmount) external view returns (uint256 peggedOut, uint256 wstEthAmount) {
+        wstEthAmount = _previewWstEthFromEth(ethAmount);
+        (, , , peggedOut, , ) = IMinter(MINTER).mintPeggedTokenDryRun(wstEthAmount);
+    }
+
+    /// @notice Preview the expected StabilityPool deposit from a stETH zap
+    /// @dev Returns the expected pegged tokens that will be minted and deposited into StabilityPool
+    /// @dev Use this to set minStabilityPoolOut with a slippage buffer (0.5-1%)
+    /// @param stEthAmount Amount of stETH to zap
+    /// @return peggedOut Expected amount of pegged tokens that will be minted (and deposited)
+    /// @return wstEthAmount Expected wstETH amount
+    function previewStabilityPoolFromStEth(uint256 stEthAmount) external view returns (uint256 peggedOut, uint256 wstEthAmount) {
+        wstEthAmount = IWstETHView(WSTETH).getWstETHByStETH(stEthAmount);
+        (, , , peggedOut, , ) = IMinter(MINTER).mintPeggedTokenDryRun(wstEthAmount);
     }
 
     // ============ Owner Functions ============
@@ -329,6 +587,15 @@ contract MinterETHZapV2 is ReentrancyGuard {
     function setReferral(address newReferral) external onlyOwner {
         emit ReferralUpdated(referral, newReferral);
         referral = newReferral;
+    }
+
+    /// @notice Set the allowed status of a stability pool
+    /// @param stabilityPool Address of the stability pool
+    /// @param allowed Whether the stability pool is allowed
+    function setStabilityPoolAllowed(address stabilityPool, bool allowed) external onlyOwner {
+        if (stabilityPool == address(0)) revert InvalidAddress();
+        allowedStabilityPools[stabilityPool] = allowed;
+        emit StabilityPoolAllowlistUpdated(stabilityPool, allowed);
     }
 
     function transferOwnership(address newOwner) external onlyOwner {

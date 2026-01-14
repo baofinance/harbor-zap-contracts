@@ -10,6 +10,7 @@ import {IMinter} from "src/interfaces/IMinter.sol";
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "test/mock/MockERC20.sol";
+import {MockStabilityPool} from "test/mock/MockStabilityPool.sol";
 
 /// @notice Interface for stETH submit function
 interface ISTETHV2 {
@@ -408,6 +409,245 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         zap.zapStEthToLeveraged(stEthAmount, receiver, 0);
 
         vm.stopPrank();
+    }
+
+    // ============ Stability Pool Tests ============
+
+    function test_ZapEthToStabilityPool_Success() public {
+        uint256 ethAmount = 1 ether;
+        
+        // Deploy mock stability pool
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+        vm.label(address(stabilityPool), "StabilityPool");
+        
+        // Allow stability pool
+        vm.prank(zap.owner());
+        zap.setStabilityPoolAllowed(address(stabilityPool), true);
+
+        vm.startPrank(user1);
+
+        uint256 stabilityPoolBalBefore = stabilityPool.balanceOf(receiver);
+
+        // Get preview for minPeggedOut
+        (uint256 previewPegged, ) = zap.previewStabilityPoolFromEth(ethAmount);
+        uint256 minPeggedOut = previewPegged * 99 / 100; // 1% slippage
+        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100; // 1% slippage
+
+        (uint256 peggedOut, uint256 deposited) = zap.zapEthToStabilityPool{value: ethAmount}(
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
+        );
+
+        vm.stopPrank();
+
+        uint256 stabilityPoolBalAfter = stabilityPool.balanceOf(receiver);
+
+        console.log("=== ETH to StabilityPool Zap Success ===");
+        console.log("ETH Deposited:", ethAmount);
+        console.log("Pegged Tokens Minted:", peggedOut);
+        console.log("Deposited to StabilityPool:", deposited);
+        console.log("==========================");
+
+        assertGt(peggedOut, 0, "Should mint pegged tokens");
+        assertGt(deposited, 0, "Should deposit to stability pool");
+        assertEq(stabilityPoolBalAfter, stabilityPoolBalBefore + deposited, "Stability pool balance mismatch");
+        assertEq(user1.balance, 100 ether - ethAmount, "User ETH not deducted");
+    }
+
+    function test_ZapEthToStabilityPool_NotAllowed() public {
+        uint256 ethAmount = 1 ether;
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+
+        vm.startPrank(user1);
+
+        vm.expectRevert(MinterETHZapV2.StabilityPoolNotAllowed.selector);
+        zap.zapEthToStabilityPool{value: ethAmount}(receiver, 0, address(stabilityPool), 0);
+
+        vm.stopPrank();
+    }
+
+    function test_ZapStEthToStabilityPool_Success() public {
+        // Fund user with ETH first, then submit to get stETH
+        vm.deal(user1, 100 ether);
+
+        // Submit ETH to get stETH
+        vm.startPrank(user1);
+        ISTETHV2(STETH).submit{value: 100 ether}(address(0));
+        vm.stopPrank();
+
+        uint256 stEthBalanceBefore = IERC20(STETH).balanceOf(user1);
+        uint256 stEthAmount = stEthBalanceBefore / 10; // Use 10% of the stETH
+
+        // Deploy mock stability pool
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+        
+        // Allow stability pool
+        vm.prank(zap.owner());
+        zap.setStabilityPoolAllowed(address(stabilityPool), true);
+
+        vm.startPrank(user1);
+        IERC20(STETH).approve(address(zap), stEthAmount);
+
+        uint256 stabilityPoolBalBefore = stabilityPool.balanceOf(receiver);
+
+        // Get preview for minPeggedOut
+        (uint256 previewPegged, ) = zap.previewStabilityPoolFromStEth(stEthAmount);
+        uint256 minPeggedOut = previewPegged * 99 / 100; // 1% slippage
+        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100; // 1% slippage
+
+        (uint256 peggedOut, uint256 deposited) = zap.zapStEthToStabilityPool(
+            stEthAmount,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
+        );
+
+        vm.stopPrank();
+
+        uint256 stabilityPoolBalAfter = stabilityPool.balanceOf(receiver);
+
+        assertGt(peggedOut, 0, "Should mint pegged tokens");
+        assertGt(deposited, 0, "Should deposit to stability pool");
+        assertEq(stabilityPoolBalAfter, stabilityPoolBalBefore + deposited, "Stability pool balance mismatch");
+    }
+
+    // ============ Preview Function Tests ============
+
+    function test_PreviewWstEthFromEth() public {
+        uint256 ethAmount = 1 ether;
+        uint256 previewWstEth = zap.previewWstEthFromEth(ethAmount);
+        
+        assertGt(previewWstEth, 0, "Preview should return > 0");
+        assertLt(previewWstEth, ethAmount, "wstETH should be less than ETH due to conversion");
+        console.log("Preview wstETH from ETH:", previewWstEth);
+    }
+
+    function test_PreviewWstEthFromStEth() public {
+        vm.deal(user1, 100 ether);
+        vm.startPrank(user1);
+        ISTETHV2(STETH).submit{value: 100 ether}(address(0));
+        vm.stopPrank();
+
+        uint256 stEthAmount = 10 ether;
+        uint256 previewWstEth = zap.previewWstEthFromStEth(stEthAmount);
+        
+        assertGt(previewWstEth, 0, "Preview should return > 0");
+        console.log("Preview wstETH from stETH:", previewWstEth);
+    }
+
+    function test_PreviewPeggedFromEth() public {
+        uint256 ethAmount = 1 ether;
+        (uint256 previewPegged, uint256 previewWstEth) = zap.previewPeggedFromEth(ethAmount);
+        
+        assertGt(previewPegged, 0, "Preview should return > 0");
+        assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
+        console.log("Preview Pegged from ETH:", previewPegged);
+        console.log("Preview wstETH from ETH:", previewWstEth);
+    }
+
+    function test_PreviewLeveragedFromEth() public {
+        uint256 ethAmount = 1 ether;
+        (uint256 previewLeveraged, uint256 previewWstEth) = zap.previewLeveragedFromEth(ethAmount);
+        
+        assertGt(previewLeveraged, 0, "Preview should return > 0");
+        assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
+        console.log("Preview Leveraged from ETH:", previewLeveraged);
+        console.log("Preview wstETH from ETH:", previewWstEth);
+    }
+
+    function test_PreviewPeggedFromStEth() public {
+        vm.deal(user1, 100 ether);
+        vm.startPrank(user1);
+        ISTETHV2(STETH).submit{value: 100 ether}(address(0));
+        vm.stopPrank();
+
+        uint256 stEthAmount = 10 ether;
+        (uint256 previewPegged, uint256 previewWstEth) = zap.previewPeggedFromStEth(stEthAmount);
+        
+        assertGt(previewPegged, 0, "Preview should return > 0");
+        assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
+        console.log("Preview Pegged from stETH:", previewPegged);
+        console.log("Preview wstETH from stETH:", previewWstEth);
+    }
+
+    function test_PreviewLeveragedFromStEth() public {
+        vm.deal(user1, 100 ether);
+        vm.startPrank(user1);
+        ISTETHV2(STETH).submit{value: 100 ether}(address(0));
+        vm.stopPrank();
+
+        uint256 stEthAmount = 10 ether;
+        (uint256 previewLeveraged, uint256 previewWstEth) = zap.previewLeveragedFromStEth(stEthAmount);
+        
+        assertGt(previewLeveraged, 0, "Preview should return > 0");
+        assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
+        console.log("Preview Leveraged from stETH:", previewLeveraged);
+        console.log("Preview wstETH from stETH:", previewWstEth);
+    }
+
+    function test_PreviewStabilityPoolFromEth() public {
+        uint256 ethAmount = 1 ether;
+        (uint256 previewPegged, uint256 previewWstEth) = zap.previewStabilityPoolFromEth(ethAmount);
+        
+        assertGt(previewPegged, 0, "Preview should return > 0");
+        assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
+        // Should match previewPeggedFromEth since it's the same calculation
+        (uint256 peggedFromEth, ) = zap.previewPeggedFromEth(ethAmount);
+        assertEq(previewPegged, peggedFromEth, "Should match pegged preview");
+        console.log("Preview StabilityPool from ETH:", previewPegged);
+    }
+
+    function test_PreviewStabilityPoolFromStEth() public {
+        vm.deal(user1, 100 ether);
+        vm.startPrank(user1);
+        ISTETHV2(STETH).submit{value: 100 ether}(address(0));
+        vm.stopPrank();
+
+        uint256 stEthAmount = 10 ether;
+        (uint256 previewPegged, uint256 previewWstEth) = zap.previewStabilityPoolFromStEth(stEthAmount);
+        
+        assertGt(previewPegged, 0, "Preview should return > 0");
+        assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
+        // Should match previewPeggedFromStEth since it's the same calculation
+        (uint256 peggedFromStEth, ) = zap.previewPeggedFromStEth(stEthAmount);
+        assertEq(previewPegged, peggedFromStEth, "Should match pegged preview");
+        console.log("Preview StabilityPool from stETH:", previewPegged);
+    }
+
+    // ============ Owner Function Tests ============
+
+    function test_SetStabilityPoolAllowed() public {
+        address stabilityPool = makeAddr("stabilityPool");
+        
+        vm.prank(zap.owner());
+        zap.setStabilityPoolAllowed(stabilityPool, true);
+        
+        assertTrue(zap.allowedStabilityPools(stabilityPool), "Stability pool should be allowed");
+        
+        vm.prank(zap.owner());
+        zap.setStabilityPoolAllowed(stabilityPool, false);
+        
+        assertFalse(zap.allowedStabilityPools(stabilityPool), "Stability pool should not be allowed");
+    }
+
+    function test_SetStabilityPoolAllowed_OnlyOwner() public {
+        address stabilityPool = makeAddr("stabilityPool");
+        
+        vm.prank(user1);
+        vm.expectRevert();
+        zap.setStabilityPoolAllowed(stabilityPool, true);
+    }
+
+    function test_SetReferral() public {
+        address newReferral = makeAddr("newReferral");
+        
+        vm.prank(zap.owner());
+        zap.setReferral(newReferral);
+        
+        assertEq(zap.referral(), newReferral, "Referral should be updated");
     }
 }
 

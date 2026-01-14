@@ -10,6 +10,7 @@ import {IMinter} from "src/interfaces/IMinter.sol";
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "test/mock/MockERC20.sol";
+import {MockStabilityPool} from "test/mock/MockStabilityPool.sol";
 
 contract MinterUSDCZapForkTest is TestMinterSetUp {
     MinterUSDCZapV2 zap;
@@ -370,6 +371,158 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         zap.zapFxUsdToLeveraged(fxUsdAmount, receiver, 0);
 
         vm.stopPrank();
+    }
+
+    // ============ Stability Pool Tests ============
+
+    function test_ZapUsdcToStabilityPool_Success() public {
+        uint256 usdcAmount = 1000 * 1e6;
+        
+        // Deploy mock stability pool
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+        vm.label(address(stabilityPool), "StabilityPool");
+        
+        // Allow stability pool
+        vm.prank(zap.owner());
+        zap.setStabilityPoolAllowed(address(stabilityPool), true);
+
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+
+        uint256 peggedBalBefore = IERC20(peggedToken).balanceOf(address(zap));
+        uint256 stabilityPoolBalBefore = stabilityPool.balanceOf(receiver);
+
+        // Get preview for minPeggedOut
+        uint256 fxSaveAmount = 900 * 1e18; // Approximate, will be adjusted
+        uint256 previewPegged = zap.previewPeggedFromFxSave(fxSaveAmount);
+        uint256 minPeggedOut = previewPegged * 99 / 100; // 1% slippage
+        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100; // 1% slippage
+
+        (uint256 peggedOut, uint256 deposited) = zap.zapUsdcToStabilityPool(
+            usdcAmount,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
+        );
+
+        vm.stopPrank();
+
+        uint256 stabilityPoolBalAfter = stabilityPool.balanceOf(receiver);
+
+        console.log("=== USDC to StabilityPool Zap Success ===");
+        console.log("USDC Deposited:", usdcAmount);
+        console.log("Pegged Tokens Minted:", peggedOut);
+        console.log("Deposited to StabilityPool:", deposited);
+        console.log("==========================");
+
+        assertGt(peggedOut, 0, "Should mint pegged tokens");
+        assertGt(deposited, 0, "Should deposit to stability pool");
+        assertEq(stabilityPoolBalAfter, stabilityPoolBalBefore + deposited, "Stability pool balance mismatch");
+        assertEq(IERC20(USDC).balanceOf(user1), 10000 * 1e6 - usdcAmount, "USDC not deducted");
+    }
+
+    function test_ZapUsdcToStabilityPool_NotAllowed() public {
+        uint256 usdcAmount = 1000 * 1e6;
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+
+        vm.expectRevert(MinterUSDCZapV2.StabilityPoolNotAllowed.selector);
+        zap.zapUsdcToStabilityPool(usdcAmount, receiver, 0, address(stabilityPool), 0);
+
+        vm.stopPrank();
+    }
+
+    function test_ZapFxUsdToStabilityPool_Success() public {
+        deal(FXUSD, user1, 10000 * 1e18);
+        uint256 fxUsdAmount = 1000 * 1e18;
+        
+        // Deploy mock stability pool
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+        
+        // Allow stability pool
+        vm.prank(zap.owner());
+        zap.setStabilityPoolAllowed(address(stabilityPool), true);
+
+        vm.startPrank(user1);
+        IERC20(FXUSD).approve(address(zap), fxUsdAmount);
+
+        uint256 stabilityPoolBalBefore = stabilityPool.balanceOf(receiver);
+
+        // Get preview for minPeggedOut
+        uint256 fxSaveAmount = 900 * 1e18; // Approximate
+        uint256 previewPegged = zap.previewPeggedFromFxSave(fxSaveAmount);
+        uint256 minPeggedOut = previewPegged * 99 / 100; // 1% slippage
+        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100; // 1% slippage
+
+        (uint256 peggedOut, uint256 deposited) = zap.zapFxUsdToStabilityPool(
+            fxUsdAmount,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
+        );
+
+        vm.stopPrank();
+
+        uint256 stabilityPoolBalAfter = stabilityPool.balanceOf(receiver);
+
+        assertGt(peggedOut, 0, "Should mint pegged tokens");
+        assertGt(deposited, 0, "Should deposit to stability pool");
+        assertEq(stabilityPoolBalAfter, stabilityPoolBalBefore + deposited, "Stability pool balance mismatch");
+    }
+
+    // ============ Preview Function Tests ============
+
+    function test_PreviewPeggedFromFxSave() public {
+        uint256 fxSaveAmount = 1000 * 1e18;
+        uint256 previewPegged = zap.previewPeggedFromFxSave(fxSaveAmount);
+        
+        assertGt(previewPegged, 0, "Preview should return > 0");
+        console.log("Preview Pegged from fxSAVE:", previewPegged);
+    }
+
+    function test_PreviewLeveragedFromFxSave() public {
+        uint256 fxSaveAmount = 1000 * 1e18;
+        uint256 previewLeveraged = zap.previewLeveragedFromFxSave(fxSaveAmount);
+        
+        assertGt(previewLeveraged, 0, "Preview should return > 0");
+        console.log("Preview Leveraged from fxSAVE:", previewLeveraged);
+    }
+
+    function test_PreviewStabilityPoolFromFxSave() public {
+        uint256 fxSaveAmount = 1000 * 1e18;
+        uint256 previewPegged = zap.previewStabilityPoolFromFxSave(fxSaveAmount);
+        
+        assertGt(previewPegged, 0, "Preview should return > 0");
+        // Should match previewPeggedFromFxSave since it's the same calculation
+        assertEq(previewPegged, zap.previewPeggedFromFxSave(fxSaveAmount), "Should match pegged preview");
+    }
+
+    // ============ Owner Function Tests ============
+
+    function test_SetStabilityPoolAllowed() public {
+        address stabilityPool = makeAddr("stabilityPool");
+        
+        vm.prank(zap.owner());
+        zap.setStabilityPoolAllowed(stabilityPool, true);
+        
+        assertTrue(zap.allowedStabilityPools(stabilityPool), "Stability pool should be allowed");
+        
+        vm.prank(zap.owner());
+        zap.setStabilityPoolAllowed(stabilityPool, false);
+        
+        assertFalse(zap.allowedStabilityPools(stabilityPool), "Stability pool should not be allowed");
+    }
+
+    function test_SetStabilityPoolAllowed_OnlyOwner() public {
+        address stabilityPool = makeAddr("stabilityPool");
+        
+        vm.prank(user1);
+        vm.expectRevert();
+        zap.setStabilityPoolAllowed(stabilityPool, true);
     }
 }
 

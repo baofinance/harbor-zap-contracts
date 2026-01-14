@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {GenesisETHZapV3} from "src/minter/GenesisETHZap_v3.sol";
+import {GenesisETHZapV3} from "src/zap/GenesisETHZap_v3.sol";
 
 /// @notice Interface for stETH submit function
 interface ISTETHV2 {

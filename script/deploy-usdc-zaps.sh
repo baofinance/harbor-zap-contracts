@@ -69,7 +69,7 @@ echo ""
 # 1. Deploy GenesisUSDCZap_v2
 # Constructor: (address genesis_)
 echo "1. Deploying GenesisUSDCZap_v2..."
-GENESIS_USDC_ZAP_OUT=$("$FORGE" create src/minter/GenesisUSDCZap_v2.sol:GenesisUSDCZapV2 \
+GENESIS_USDC_ZAP_OUT=$("$FORGE" create src/zap/GenesisUSDCZap_v2.sol:GenesisUSDCZapV2 \
   --rpc-url "$RPC_URL" \
   --private-key "$PRIVATE_KEY" \
   --broadcast \
@@ -89,7 +89,7 @@ fi
 # 2. Deploy MinterUSDCZap_v2
 # Constructor: (address minter_)
 echo "2. Deploying MinterUSDCZap_v2..."
-MINTER_USDC_ZAP_OUT=$("$FORGE" create src/minter/MinterUSDCZap_v2.sol:MinterUSDCZapV2 \
+MINTER_USDC_ZAP_OUT=$("$FORGE" create src/zap/MinterUSDCZap_v2.sol:MinterUSDCZapV2 \
   --rpc-url "$RPC_URL" \
   --private-key "$PRIVATE_KEY" \
   --broadcast \

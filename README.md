@@ -13,13 +13,17 @@ This repository contains zap contracts that enable users to deposit collateral i
 
 ### ETH/wstETH Zap Contracts
 
-- `GenesisETHZap_v2`: Zap ETH or stETH into Genesis contracts
-- `MinterETHZap_v2`: Zap ETH or stETH to mint pegged or leveraged tokens
+- `GenesisETHZap_v3`: Zap ETH or stETH into Genesis contracts (non-upgradeable)
+- `GenesisETHZap_v4`: Zap ETH or stETH into Genesis contracts (upgradeable)
+- `MinterETHZap_v2`: Zap ETH or stETH to mint pegged or leveraged tokens (non-upgradeable)
+- `MinterETHZap_v3`: Zap ETH or stETH to mint pegged or leveraged tokens (upgradeable)
 
 ### USDC/fxSAVE Zap Contracts
 
-- `GenesisUSDCZap_v2`: Zap USDC or fxUSD into Genesis contracts
-- `MinterUSDCZap_v2`: Zap USDC or fxUSD to mint pegged or leveraged tokens
+- `GenesisUSDCZap_v2`: Zap USDC or fxUSD into Genesis contracts (non-upgradeable)
+- `GenesisUSDCZap_v4`: Zap USDC or fxUSD into Genesis contracts (upgradeable)
+- `MinterUSDCZap_v2`: Zap USDC or fxUSD to mint pegged or leveraged tokens (non-upgradeable)
+- `MinterUSDCZap_v3`: Zap USDC or fxUSD to mint pegged or leveraged tokens (upgradeable)
 
 ## Prerequisites
 
@@ -93,7 +97,7 @@ bash script/deploy-usdc-zaps.sh
 #### ETH/wstETH Deployment (`script/deploy-eth-zaps.sh`)
 
 Deploys:
-- `GenesisETHZap_v2`
+- `GenesisETHZap_v3`
 - `MinterETHZap_v2`
 
 **Default Configuration:**
@@ -150,9 +154,9 @@ bash script/deploy-usdc-zaps.sh
 
 You can also deploy contracts manually using `forge create`:
 
-**GenesisETHZap_v2:**
+**GenesisETHZap_v3:**
 ```bash
-forge create src/minter/GenesisETHZap_v2.sol:GenesisETHZapV2 \
+forge create src/zap/GenesisETHZap_v3.sol:GenesisETHZapV3 \
   --rpc-url $RPC_URL \
   --private-key $PRIVATE_KEY \
   --broadcast \
@@ -161,7 +165,7 @@ forge create src/minter/GenesisETHZap_v2.sol:GenesisETHZapV2 \
 
 **MinterETHZap_v2:**
 ```bash
-forge create src/minter/MinterETHZap_v2.sol:MinterETHZapV2 \
+forge create src/zap/MinterETHZap_v2.sol:MinterETHZapV2 \
   --rpc-url $RPC_URL \
   --private-key $PRIVATE_KEY \
   --broadcast \
@@ -170,7 +174,7 @@ forge create src/minter/MinterETHZap_v2.sol:MinterETHZapV2 \
 
 **GenesisUSDCZap_v2:**
 ```bash
-forge create src/minter/GenesisUSDCZap_v2.sol:GenesisUSDCZapV2 \
+forge create src/zap/GenesisUSDCZap_v2.sol:GenesisUSDCZapV2 \
   --rpc-url $RPC_URL \
   --private-key $PRIVATE_KEY \
   --broadcast \
@@ -179,7 +183,7 @@ forge create src/minter/GenesisUSDCZap_v2.sol:GenesisUSDCZapV2 \
 
 **MinterUSDCZap_v2:**
 ```bash
-forge create src/minter/MinterUSDCZap_v2.sol:MinterUSDCZapV2 \
+forge create src/zap/MinterUSDCZap_v2.sol:MinterUSDCZapV2 \
   --rpc-url $RPC_URL \
   --private-key $PRIVATE_KEY \
   --broadcast \
@@ -233,12 +237,16 @@ cast send <ZAP_ADDRESS> "setReferral(address)" <NEW_REFERRAL> \
 ### Mainnet (when deployed)
 
 ETH/wstETH Zaps:
-- GenesisETHZap_v2: TBD
+- GenesisETHZap_v3: TBD
+- GenesisETHZap_v4: TBD (upgradeable)
 - MinterETHZap_v2: TBD
+- MinterETHZap_v3: TBD (upgradeable)
 
 USDC/fxSAVE Zaps:
 - GenesisUSDCZap_v2: TBD
+- GenesisUSDCZap_v4: TBD (upgradeable)
 - MinterUSDCZap_v2: TBD
+- MinterUSDCZap_v3: TBD (upgradeable)
 
 ## Security Considerations
 

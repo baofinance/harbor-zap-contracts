@@ -3,8 +3,7 @@
 set -euo pipefail
 
 # Harbor ETH/wstETH Zap Contracts Deployment Script
-# Deploys GenesisETHZap (v2 or v3) and MinterETHZap_v2
-# Set VERSION=v3 to deploy V3, otherwise defaults to V2
+# Deploys GenesisETHZap_v3 and MinterETHZap_v2
 
 # Load environment variables from .env.local if it exists
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,67 +66,19 @@ fi
 # Lido referral address (optional, can be set in .env.local)
 REFERRAL_ETH=${REFERRAL_ETH:-0x0000000000000000000000000000000000000000}
 
-# Version selection (v2 or v3, defaults to v2)
-VERSION=${VERSION:-v2}
-
 echo "=== Deploying ETH/wstETH Zap Contracts ==="
-echo "Version: $VERSION"
 echo ""
 
-# Helper function to deploy zap contract
-deploy_zap() {
-  local contract_name=$1
-  local contract_path=$2
-  local constructor_args=$3
-  
-  echo "Deploying $contract_name..."
-  
-  DEPLOY_OUT=$("$FORGE" create "$contract_path" \
-    --rpc-url "$RPC_URL" \
-    --private-key "$PRIVATE_KEY" \
-    --constructor-args $constructor_args 2>&1)
-  
-  if [[ $? -ne 0 ]] || ! echo "$DEPLOY_OUT" | grep -q "Contract:"; then
-    echo "ERROR: $contract_name deployment failed!" >&2
-    echo "Error output:" >&2
-    echo "$DEPLOY_OUT" | grep -E "(Error|error|revert|Revert)" | head -5 >&2
-    return 1
-  fi
-  
-  # Extract deployed address from transaction output
-  # The address is computed from the deployer address and nonce
-  DEPLOYER=$("$CAST" wallet address --private-key "$PRIVATE_KEY" 2>/dev/null || echo "")
-  if [[ -n "$DEPLOYER" ]]; then
-    NONCE=$("$CAST" nonce "$DEPLOYER" --rpc-url "$RPC_URL" 2>/dev/null || echo "0")
-    # Compute CREATE address: keccak256(rlp([sender, nonce]))
-    # For simplicity, we'll get it from the transaction receipt if available
-    echo "$DEPLOY_OUT" | grep -oE "0x[a-fA-F0-9]{40}" | head -1 || echo "Address computed from deployer + nonce"
-  else
-    echo "Deployment prepared (dry run)"
-  fi
-}
-
-# 1. Deploy GenesisETHZap (v2 or v3)
+# 1. Deploy GenesisETHZap_v3
 # Constructor: (address genesis_, address referral_)
-if [[ "$VERSION" == "v3" ]]; then
-  echo "1. Deploying GenesisETHZap_v3..."
-  GENESIS_ETH_ZAP_OUT=$("$FORGE" create src/minter/GenesisETHZap_v3.sol:GenesisETHZapV3 \
-    --rpc-url "$RPC_URL" \
-    --private-key "$PRIVATE_KEY" \
-    --broadcast \
-    --constructor-args "$GENESIS_ETH" "$REFERRAL_ETH" 2>&1)
-  
-  CONTRACT_NAME="GenesisETHZap_v3"
-else
-  echo "1. Deploying GenesisETHZap_v2..."
-  GENESIS_ETH_ZAP_OUT=$("$FORGE" create src/minter/GenesisETHZap_v2.sol:GenesisETHZapV2 \
-    --rpc-url "$RPC_URL" \
-    --private-key "$PRIVATE_KEY" \
-    --broadcast \
-    --constructor-args "$GENESIS_ETH" "$REFERRAL_ETH" 2>&1)
-  
-  CONTRACT_NAME="GenesisETHZap_v2"
-fi
+echo "1. Deploying GenesisETHZap_v3..."
+GENESIS_ETH_ZAP_OUT=$("$FORGE" create src/zap/GenesisETHZap_v3.sol:GenesisETHZapV3 \
+  --rpc-url "$RPC_URL" \
+  --private-key "$PRIVATE_KEY" \
+  --broadcast \
+  --constructor-args "$GENESIS_ETH" "$REFERRAL_ETH" 2>&1)
+
+CONTRACT_NAME="GenesisETHZap_v3"
 
 if echo "$GENESIS_ETH_ZAP_OUT" | grep -q "Deployed to:"; then
   GENESIS_ETH_ZAP_ADDR=$(echo "$GENESIS_ETH_ZAP_OUT" | grep -oE "Deployed to: 0x[a-fA-F0-9]{40}" | awk '{print $3}')
@@ -143,7 +94,7 @@ fi
 # 2. Deploy MinterETHZap_v2
 # Constructor: (address minter_, address referral_)
 echo "2. Deploying MinterETHZap_v2..."
-MINTER_ETH_ZAP_OUT=$("$FORGE" create src/minter/MinterETHZap_v2.sol:MinterETHZapV2 \
+MINTER_ETH_ZAP_OUT=$("$FORGE" create src/zap/MinterETHZap_v2.sol:MinterETHZapV2 \
   --rpc-url "$RPC_URL" \
   --private-key "$PRIVATE_KEY" \
   --broadcast \
@@ -210,21 +161,13 @@ if [[ -n "${GENESIS_ETH_ZAP_ADDR:-}" ]] && [[ -n "${MINTER_ETH_ZAP_ADDR:-}" ]]; 
     echo "  ✗ Referral: $REFERRAL_CHECK (expected: $REFERRAL_ETH)"
   fi
   
-  # V3 specific view function checks
-  if [[ "$VERSION" == "v3" ]]; then
-    echo ""
-    echo "  V3 View Functions:"
-    TOTAL_VALUE=$("$CAST" call "$GENESIS_ETH_ZAP_ADDR" "totalValueETH()(uint256)" --rpc-url "$RPC_URL" 2>/dev/null || echo "ERROR")
-    if [[ "$TOTAL_VALUE" != "ERROR" ]]; then
-      echo "  ✓ totalValueETH(): $TOTAL_VALUE"
-    else
-      echo "  ✗ totalValueETH(): Failed to read"
-    fi
-    echo ""
-    echo "  Note: V3 functions require minWstEthOut parameter for slippage protection:"
-    echo "    - zapEth(receiver, minWstEthOut)"
-    echo "    - zapStEth(stEthAmount, receiver, minWstEthOut)"
-    echo "    Use previewDepositETH() or previewDepositStETH() to get expected output"
+  echo ""
+  echo "  V3 View Functions:"
+  TOTAL_VALUE=$("$CAST" call "$GENESIS_ETH_ZAP_ADDR" "totalValueETH()(uint256)" --rpc-url "$RPC_URL" 2>/dev/null || echo "ERROR")
+  if [[ "$TOTAL_VALUE" != "ERROR" ]]; then
+    echo "  ✓ totalValueETH(): $TOTAL_VALUE"
+  else
+    echo "  ✗ totalValueETH(): Failed to read"
   fi
   
   echo ""
