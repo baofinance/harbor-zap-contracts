@@ -304,3 +304,4 @@ contract GenesisUSDCZap_v4 is
     receive() external payable {}
     fallback() external payable { revert FunctionNotFound(); }
 }
+

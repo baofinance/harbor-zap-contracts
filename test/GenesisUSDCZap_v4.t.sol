@@ -184,3 +184,4 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
         assertEq(IERC20(USDC).balanceOf(zapOwner), ownerBalanceBefore + 1000 * 1e6, "Token should be rescued");
     }
 }
+

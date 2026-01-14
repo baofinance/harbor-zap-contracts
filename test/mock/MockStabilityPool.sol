@@ -26,3 +26,4 @@ contract MockStabilityPool {
         return deposits[user];
     }
 }
+

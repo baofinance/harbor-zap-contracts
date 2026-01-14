@@ -4,7 +4,7 @@ pragma solidity >=0.8.28 <0.9.0;
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {MinterETHZapV2} from "src/minter/MinterETHZap_v2.sol";
+import {MinterETHZapV2} from "src/zap/MinterETHZap_v2.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";

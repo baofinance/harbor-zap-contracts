@@ -5,7 +5,7 @@ import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {MinterUSDCZap_v3} from "src/minter/MinterUSDCZap_v3.sol";
+import {MinterUSDCZap_v3} from "src/zap/MinterUSDCZap_v3.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
@@ -357,3 +357,4 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         assertEq(IERC20(USDC).balanceOf(zapOwner), ownerBalanceBefore + 1000 * 1e6, "Token should be rescued");
     }
 }
+
