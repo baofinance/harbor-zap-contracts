@@ -15,15 +15,15 @@ This repository contains zap contracts that enable users to deposit collateral i
 
 - `GenesisETHZap_v3`: Zap ETH or stETH into Genesis contracts (non-upgradeable)
 - `GenesisETHZap_v4`: Zap ETH or stETH into Genesis contracts (upgradeable)
-- `MinterETHZap_v2`: Zap ETH or stETH to mint pegged or leveraged tokens (non-upgradeable)
-- `MinterETHZap_v3`: Zap ETH or stETH to mint pegged or leveraged tokens (upgradeable)
+- `MinterETHZap_v2`: Zap ETH or stETH to mint pegged or leveraged tokens, or deposit into Stability Pools (non-upgradeable)
+- `MinterETHZap_v3`: Zap ETH or stETH to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
 
 ### USDC/fxSAVE Zap Contracts
 
 - `GenesisUSDCZap_v2`: Zap USDC or fxUSD into Genesis contracts (non-upgradeable)
 - `GenesisUSDCZap_v4`: Zap USDC or fxUSD into Genesis contracts (upgradeable)
-- `MinterUSDCZap_v2`: Zap USDC or fxUSD to mint pegged or leveraged tokens (non-upgradeable)
-- `MinterUSDCZap_v3`: Zap USDC or fxUSD to mint pegged or leveraged tokens (upgradeable)
+- `MinterUSDCZap_v2`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (non-upgradeable)
+- `MinterUSDCZap_v3`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
 
 ## Prerequisites
 
@@ -219,8 +219,15 @@ cast send <ZAP_ADDRESS> "transferOwnership(address)" <NEW_OWNER> \
 
 2. **Verify Contracts** (optional): Verify contracts on Etherscan:
 ```bash
+# For non-upgradeable contracts (in src/zap/)
 forge verify-contract <CONTRACT_ADDRESS> \
-  src/minter/<ContractName>.sol:<ContractName> \
+  src/zap/<ContractName>.sol:<ContractName> \
+  --etherscan-api-key $ETHERSCAN_API_KEY \
+  --chain-id 1
+
+# For upgradeable contracts (in src/zap/upgradeable/)
+forge verify-contract <CONTRACT_ADDRESS> \
+  src/zap/upgradeable/<ContractName>.sol:<ContractName> \
   --etherscan-api-key $ETHERSCAN_API_KEY \
   --chain-id 1
 ```
@@ -263,7 +270,9 @@ USDC/fxSAVE Zaps:
 harbor-zap-contracts/
 ├── src/
 │   ├── interfaces/      # Interface definitions
-│   ├── minter/          # Zap contract implementations
+│   ├── minter/          # Core contracts (Genesis_v1, Minter_v1, ReservePool_v1)
+│   ├── zap/             # Zap contract implementations (non-upgradeable)
+│   │   └── upgradeable/ # Upgradeable zap contracts (UUPS proxy)
 │   └── util/            # Utility contracts (ReentrancyGuard, etc.)
 ├── test/                # Test files
 ├── script/              # Deployment scripts
