@@ -10,31 +10,9 @@ import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Cont
 import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
-
-/// @notice Interface for the diamond contract's depositToFxSave function
-interface IFxUSDDiamondV2 {
-    struct ConvertInParams {
-        address tokenIn;
-        uint256 amount;
-        address target;
-        bytes data;
-        uint256 minOut;
-        bytes signature;
-    }
-
-    function depositToFxSave(
-        ConvertInParams memory params,
-        address tokenOut,
-        uint256 minShares,
-        address receiver
-    ) external payable;
-}
-
-/// @notice Interface for StabilityPool deposit function
-interface IStabilityPool {
-    function deposit(uint256 assetAmount, address receiver, uint256 minAmount) external returns (uint256 assetsDeposited);
-    function ASSET_TOKEN() external view returns (address);
-}
+import {IFxUSDDiamondV2} from "src/interfaces/IFxUSD.sol";
+import {IStabilityPool} from "src/interfaces/IStabilityPool.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
 /// @title MinterUSDCZapV3
 /// @notice One-click zapper for minting pegged or leveraged tokens with USDC or fxUSD via fxSAVE
@@ -188,21 +166,6 @@ contract MinterUSDCZap_v3 is
     );
 
     event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
-
-    // ============ Errors ============
-
-    /// @notice Thrown when zero amount is provided
-    error ZeroAmount();
-
-    /// @notice Thrown when contract addresses are invalid
-    error InvalidAddress();
-
-    /// @notice Thrown when fxSAVE address doesn't match Minter wrapped collateral token
-    error CollateralMismatch(address expected, address provided);
-
-    error MintFailed();
-    error FunctionNotFound();
-    error StabilityPoolNotAllowed();
 
     // ============ Constructor ============
 

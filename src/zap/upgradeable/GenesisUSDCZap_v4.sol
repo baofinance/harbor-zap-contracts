@@ -9,24 +9,8 @@ import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Cont
 import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
-
-/// @notice Interface for the diamond contract's depositToFxSave function
-interface IFxUSDDiamondV2 {
-    struct ConvertInParams {
-        address tokenIn;
-        uint256 amount;
-        address target;
-        bytes data;
-        uint256 minOut;
-        bytes signature;
-    }
-    function depositToFxSave(
-        ConvertInParams memory params,
-        address tokenOut,
-        uint256 minShares,
-        address receiver
-    ) external payable;
-}
+import {IFxUSDDiamondV2} from "src/interfaces/IFxUSD.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
 /// @title GenesisUSDCZapV4 - Production Ready
 /// @notice One-click zapper for depositing USDC or fxUSD into Genesis contracts via fxSAVE
@@ -97,17 +81,6 @@ contract GenesisUSDCZap_v4 is
         uint256 fxSaveAmount,
         uint256 collateralAmount
     );
-
-    // ============ Errors ============
-    /// @notice Thrown when zero amount is provided
-    error ZeroAmount();
-    /// @notice Thrown when contract addresses are invalid
-    error InvalidAddress();
-    /// @notice Thrown when fxSAVE address doesn't match Genesis collateral token
-    error CollateralMismatch(address expected, address actual);
-    error SlippageExceeded();
-    error DepositFailed();
-    error FunctionNotFound();
 
     // ============ Constructor ============
     /// @notice Constructor sets the Genesis address

@@ -10,34 +10,10 @@ import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Cont
 import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
-
-/// @notice Interface for stETH submit function
-interface ISTETHV2 {
-    function submit(address referral) external payable returns (uint256);
-}
-
-/// @notice Interface for wstETH wrap function (not included in IWstETH view-only interface)
-interface IWstETHWrapV2 {
-    function wrap(uint256 stEthAmount) external returns (uint256);
-}
-
-/// @notice Interface for wstETH view functions
-interface IWstETHView {
-    function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
-    function getStETHByWstETH(uint256 wstEthAmount) external view returns (uint256);
-}
-
-/// @notice Interface for stETH view functions
-interface IStETHView {
-    function getSharesByPooledEth(uint256 _pooledEthAmount) external view returns (uint256);
-    function getPooledEthByShares(uint256 _sharesAmount) external view returns (uint256);
-}
-
-/// @notice Interface for StabilityPool deposit function
-interface IStabilityPool {
-    function deposit(uint256 assetAmount, address receiver, uint256 minAmount) external returns (uint256 assetsDeposited);
-    function ASSET_TOKEN() external view returns (address);
-}
+import {ISTETHV2, IStETHView} from "src/interfaces/IStETH.sol";
+import {IWstETHWrapV2, IWstETHView} from "src/interfaces/IWstETH.sol";
+import {IStabilityPool} from "src/interfaces/IStabilityPool.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
 /// @title MinterETHZapV3
 /// @notice One-click zapper for minting pegged or leveraged tokens with ETH or stETH via wstETH
@@ -189,21 +165,6 @@ contract MinterETHZap_v3 is
 
     event ReferralUpdated(address indexed oldReferral, address indexed newReferral);
     event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
-
-    // ============ Errors ============
-
-    /// @notice Thrown when zero amount is provided
-    error ZeroAmount();
-
-    /// @notice Thrown when contract addresses are invalid
-    error InvalidAddress();
-
-    /// @notice Thrown when wstETH address doesn't match Minter wrapped collateral token
-    error WstETHMismatch(address expected, address provided);
-
-    error MintFailed();
-    error FunctionNotFound();
-    error StabilityPoolNotAllowed();
 
     // ============ Constructor ============
 

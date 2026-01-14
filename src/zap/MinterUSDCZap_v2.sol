@@ -6,31 +6,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
-
-/// @notice Interface for the diamond contract's depositToFxSave function
-interface IFxUSDDiamondV2 {
-    struct ConvertInParams {
-        address tokenIn;
-        uint256 amount;
-        address target;
-        bytes data;
-        uint256 minOut;
-        bytes signature;
-    }
-
-    function depositToFxSave(
-        ConvertInParams memory params,
-        address tokenOut,
-        uint256 minShares,
-        address receiver
-    ) external payable;
-}
-
-/// @notice Interface for StabilityPool deposit function
-interface IStabilityPool {
-    function deposit(uint256 assetAmount, address receiver, uint256 minAmount) external returns (uint256 assetsDeposited);
-    function ASSET_TOKEN() external view returns (address);
-}
+import {IFxUSDDiamondV2} from "src/interfaces/IFxUSD.sol";
+import {IStabilityPool} from "src/interfaces/IStabilityPool.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
 /// @title MinterUSDCZapV2
 /// @notice One-click zapper for minting pegged or leveraged tokens with USDC or fxUSD via fxSAVE
@@ -177,22 +155,6 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
-
-    // ============ Errors ============
-
-    /// @notice Thrown when zero amount is provided
-    error ZeroAmount();
-
-    /// @notice Thrown when contract addresses are invalid
-    error InvalidAddress();
-
-    /// @notice Thrown when fxSAVE address doesn't match Minter wrapped collateral token
-    error CollateralMismatch(address expected, address provided);
-
-    error Unauthorized();
-    error MintFailed();
-    error FunctionNotFound();
-    error StabilityPoolNotAllowed();
 
     // ============ Constructor ============
 

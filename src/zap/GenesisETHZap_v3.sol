@@ -6,31 +6,9 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
-
-// ========== Interfaces ==========
-/// @notice Interface for stETH submit function
-interface ISTETHV2 {
-    function submit(address referral) external payable returns (uint256);
-}
-
-interface IStETH is IERC20 {
-    function getPooledEthByShares(uint256 _sharesAmount) external view returns (uint256);
-    function getSharesByPooledEth(uint256 _ethAmount) external view returns (uint256);
-}
-
-/// @notice Interface for wstETH wrap function
-interface IWstETHWrapV2 {
-    function wrap(uint256 stEthAmount) external returns (uint256);
-}
-
-interface IWstETH is IERC20 {
-    // forge-lint: disable-next-line(mixed-case-function)
-    function getStETHByWstETH(uint256 wstEthAmount) external view returns (uint256);
-    // forge-lint: disable-next-line(mixed-case-function)
-    function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
-    // forge-lint: disable-next-line(mixed-case-function)
-    function stETH() external view returns (address);
-}
+import {ISTETHV2, IStETH} from "src/interfaces/IStETH.sol";
+import {IWstETHWrapV2, IWstETH} from "src/interfaces/IWstETH.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
 /// @title GenesisETHZap V3
 /// @notice One-click zapper: ETH or stETH → wstETH → Genesis vault
@@ -77,14 +55,6 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     );
 
     event ReferralUpdated(address indexed oldReferral, address indexed newReferral);
-
-    // ========== Errors ==========
-    error ZeroAmount();
-    error ZeroAddress();
-    error NoStETHReceived();
-    error SlippageTooHigh();
-    error InvalidGenesisCollateral();
-    error DepositFailed();
 
     // ========== Constructor ==========
     /// @notice Deploy zapper locked to a specific Genesis vault
