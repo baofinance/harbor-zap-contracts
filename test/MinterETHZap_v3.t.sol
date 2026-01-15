@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {MinterETHZap_v3} from "src/zap/upgradeable/MinterETHZap_v3.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
@@ -63,8 +64,12 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
             zapImpl,
             abi.encodeCall(MinterETHZap_v3.initialize, (zapOwner, address(0)))
         );
-        zap = MinterETHZap_v3(zapProxy);
+        zap = MinterETHZap_v3(payable(zapProxy));
         vm.label(address(zap), "MinterETHZapV3");
+
+        // Complete ownership transfer from deployer to zapOwner
+        // During proxy initialization, msg.sender (deployer) becomes owner, and zapOwner is set as pending owner
+        zap.transferOwnership(zapOwner);
 
         user1 = makeAddr("user1");
         receiver = makeAddr("receiver");
@@ -103,7 +108,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
     function test_ZapEthToPegged_ZeroAmount() public {
         vm.startPrank(user1);
 
-        vm.expectRevert(MinterETHZap_v3.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapEthToPegged{value: 0}(receiver, 0);
 
         vm.stopPrank();
@@ -114,7 +119,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
 
-        vm.expectRevert(MinterETHZap_v3.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapEthToPegged{value: ethAmount}(address(0), 0);
 
         vm.stopPrank();
@@ -240,7 +245,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
 
-        vm.expectRevert(MinterETHZap_v3.StabilityPoolNotAllowed.selector);
+        vm.expectRevert(IZapErrors.StabilityPoolNotAllowed.selector);
         zap.zapEthToStabilityPool{value: ethAmount}(receiver, 0, address(stabilityPool), 0);
 
         vm.stopPrank();
@@ -449,13 +454,25 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
     }
 
     function test_RescueToken() public {
-        deal(STETH, address(zap), 1 ether);
+        // Use real stETH minting instead of deal() since stETH has complex proxy storage
+        vm.deal(address(this), 1 ether);
+        ISTETHV2(STETH).submit{value: 1 ether}(address(0));
+        uint256 stEthBalance = IERC20(STETH).balanceOf(address(this));
+        // forgefmt: disable-next-item
+        require(IERC20(STETH).transfer(address(zap), stEthBalance), "Transfer failed");
         
         uint256 ownerBalanceBefore = IERC20(STETH).balanceOf(zapOwner);
+        uint256 zapBalanceBefore = IERC20(STETH).balanceOf(address(zap));
+        
         vm.prank(zapOwner);
         zap.rescueToken(STETH);
         
-        assertEq(IERC20(STETH).balanceOf(zapOwner), ownerBalanceBefore + 1 ether, "Token should be rescued");
+        uint256 ownerBalanceAfter = IERC20(STETH).balanceOf(zapOwner);
+        uint256 zapBalanceAfter = IERC20(STETH).balanceOf(address(zap));
+        
+        // Verify all tokens were rescued (accounting for potential rounding/dust)
+        assertLe(zapBalanceAfter, 10, "Zap should have minimal stETH left (allowing for dust)");
+        assertGe(ownerBalanceAfter, ownerBalanceBefore + zapBalanceBefore - 10, "Token should be rescued (within rounding tolerance)");
     }
 }
 

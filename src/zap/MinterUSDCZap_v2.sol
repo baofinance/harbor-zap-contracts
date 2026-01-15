@@ -161,12 +161,12 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
     /// @notice Constructor sets the Minter address
     /// @param minter_ Address of the Minter contract (must accept fxSAVE as wrapped collateral)
     constructor(address minter_) {
-        if (minter_ == address(0)) revert InvalidAddress();
+        if (minter_ == address(0)) revert IZapErrors.InvalidAddress();
 
         // Verify that fxSAVE matches the Minter wrapped collateral token
         address expectedCollateral = IMinter(minter_).WRAPPED_COLLATERAL_TOKEN();
         if (FXSAVE != expectedCollateral) {
-            revert CollateralMismatch(expectedCollateral, FXSAVE);
+            revert IZapErrors.CollateralMismatch(expectedCollateral, FXSAVE);
         }
 
         MINTER = minter_;
@@ -183,7 +183,7 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
     }
 
     function _checkOwner() internal view {
-        if (msg.sender != owner) revert Unauthorized();
+        if (msg.sender != owner) revert IZapErrors.Unauthorized();
     }
 
     // ============ External Functions ============
@@ -200,8 +200,8 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         address receiver,
         uint256 minPeggedOut
     ) external nonReentrant returns (uint256 peggedOut) {
-        if (usdcAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 fxSaveAmount = _convertUsdcToFxSave(usdcAmount);
         peggedOut = _mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
@@ -222,8 +222,8 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         address receiver,
         uint256 minLeveragedOut
     ) external nonReentrant returns (uint256 leveragedOut) {
-        if (usdcAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 fxSaveAmount = _convertUsdcToFxSave(usdcAmount);
         leveragedOut = _mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
@@ -244,8 +244,8 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         address receiver,
         uint256 minPeggedOut
     ) external nonReentrant returns (uint256 peggedOut) {
-        if (fxUsdAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 fxSaveAmount = _convertFxUsdToFxSave(fxUsdAmount);
         peggedOut = _mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
@@ -266,8 +266,8 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         address receiver,
         uint256 minLeveragedOut
     ) external nonReentrant returns (uint256 leveragedOut) {
-        if (fxUsdAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 fxSaveAmount = _convertFxUsdToFxSave(fxUsdAmount);
         leveragedOut = _mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
@@ -292,9 +292,9 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (usdcAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
-        if (stabilityPool == address(0)) revert InvalidAddress();
+        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 fxSaveAmount = _convertUsdcToFxSave(usdcAmount);
         
@@ -322,9 +322,9 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (fxUsdAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
-        if (stabilityPool == address(0)) revert InvalidAddress();
+        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 fxSaveAmount = _convertFxUsdToFxSave(fxUsdAmount);
         
@@ -367,7 +367,7 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, USDC, 0, address(this));
         uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
         fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
-        if (fxSaveAmount == 0) revert ZeroAmount();
+        if (fxSaveAmount == 0) revert IZapErrors.ZeroAmount();
     }
 
     /// @notice Convert fxUSD to fxSAVE via diamond contract
@@ -399,7 +399,7 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, FXUSD, 0, address(this));
         uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
         fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
-        if (fxSaveAmount == 0) revert ZeroAmount();
+        if (fxSaveAmount == 0) revert IZapErrors.ZeroAmount();
     }
 
     /// @notice Mint pegged tokens and validate the result
@@ -416,7 +416,7 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         // Validate that tokens were actually minted
         uint256 peggedBalanceAfter = IERC20(peggedToken).balanceOf(receiver);
         if (peggedBalanceAfter - peggedBalanceBefore != peggedOut || peggedOut == 0) {
-            revert MintFailed();
+            revert IZapErrors.MintFailed();
         }
     }
 
@@ -434,7 +434,7 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
         // Validate that tokens were actually minted
         uint256 leveragedBalanceAfter = IERC20(leveragedToken).balanceOf(receiver);
         if (leveragedBalanceAfter - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
-            revert MintFailed();
+            revert IZapErrors.MintFailed();
         }
     }
 
@@ -454,13 +454,13 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
     ) internal returns (uint256 deposited) {
         // Verify stability pool is allowed
         if (!allowedStabilityPools[stabilityPool]) {
-            revert StabilityPoolNotAllowed();
+            revert IZapErrors.StabilityPoolNotAllowed();
         }
         
         // Verify StabilityPool accepts the correct pegged token
         address poolAssetToken = IStabilityPool(stabilityPool).ASSET_TOKEN();
         if (poolAssetToken != peggedToken) {
-            revert InvalidAddress(); // StabilityPool doesn't accept this pegged token
+            revert IZapErrors.InvalidAddress(); // StabilityPool doesn't accept this pegged token
         }
         
         // Approve and deposit into StabilityPool
@@ -507,7 +507,7 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
     // ============ Owner Functions ============
 
     function transferOwnership(address newOwner) external onlyOwner {
-        if (newOwner == address(0)) revert InvalidAddress();
+        if (newOwner == address(0)) revert IZapErrors.InvalidAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
     }
@@ -516,7 +516,7 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
     /// @param stabilityPool Address of the stability pool
     /// @param allowed Whether the stability pool is allowed
     function setStabilityPoolAllowed(address stabilityPool, bool allowed) external onlyOwner {
-        if (stabilityPool == address(0)) revert InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
         allowedStabilityPools[stabilityPool] = allowed;
         emit StabilityPoolAllowlistUpdated(stabilityPool, allowed);
     }
@@ -536,7 +536,7 @@ contract MinterUSDCZapV2 is ReentrancyGuard {
     }
 
     fallback() external payable {
-        revert FunctionNotFound();
+        revert IZapErrors.FunctionNotFound();
     }
 }
 

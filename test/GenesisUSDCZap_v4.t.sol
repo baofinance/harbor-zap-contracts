@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {GenesisUSDCZap_v4} from "src/zap/upgradeable/GenesisUSDCZap_v4.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {Genesis_v1} from "src/minter/Genesis_v1.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
 
@@ -63,8 +64,11 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
             zapImpl,
             abi.encodeCall(GenesisUSDCZap_v4.initialize, (zapOwner))
         );
-        zap = GenesisUSDCZap_v4(zapProxy);
+        zap = GenesisUSDCZap_v4(payable(zapProxy));
         vm.label(address(zap), "GenesisUSDCZapV4");
+
+        // Complete ownership transfer from deployer to zapOwner
+        zap.transferOwnership(zapOwner);
 
         user1 = makeAddr("user1");
         receiver = makeAddr("receiver");

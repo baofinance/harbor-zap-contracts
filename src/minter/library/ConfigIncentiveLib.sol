@@ -116,6 +116,7 @@ library ConfigIncentiveLib {
     function _incentiveRatioToStoragePrecision(int256 ratio) internal pure returns (int256 result) {
         int256 factor = int256(10 ** (18 - INCENTIVE_RATIO_DECIMALS));
         // slither-disable-next-line divide-before-multiply
+        /// forge-lint: disable-next-line(divide-before-multiply)
         result = ((ratio / factor) * factor);
     }
 
@@ -124,6 +125,7 @@ library ConfigIncentiveLib {
     function _collateralRatioToStoragePrecision(uint256 ratio) internal pure returns (uint256 result) {
         uint256 factor = 10 ** (18 - COLLATERAL_RATIO_DECIMALS);
         // slither-disable-next-line divide-before-multiply
+        /// forge-lint: disable-next-line(divide-before-multiply)
         result = ((ratio / factor) * factor);
     }
 }

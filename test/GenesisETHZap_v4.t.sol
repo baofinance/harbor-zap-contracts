@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {GenesisETHZap_v4} from "src/zap/upgradeable/GenesisETHZap_v4.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {Genesis_v1} from "src/minter/Genesis_v1.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
 
@@ -74,8 +75,11 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
             zapImpl,
             abi.encodeCall(GenesisETHZap_v4.initialize, (zapOwner, address(0)))
         );
-        zap = GenesisETHZap_v4(zapProxy);
+        zap = GenesisETHZap_v4(payable(zapProxy));
         vm.label(address(zap), "GenesisETHZapV4");
+
+        // Complete ownership transfer from deployer to zapOwner
+        zap.transferOwnership(zapOwner);
 
         user1 = makeAddr("user1");
         receiver = makeAddr("receiver");
@@ -127,8 +131,14 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
     }
 
     function test_ZapStEth_Success() public {
-        uint256 stEthAmount = 1 ether;
-        deal(STETH, user1, stEthAmount);
+        // Use real stETH minting instead of deal() since stETH has complex proxy storage
+        vm.deal(user1, 100 ether);
+        vm.startPrank(user1);
+        ISTETHV2(STETH).submit{value: 100 ether}(address(0));
+        vm.stopPrank();
+
+        uint256 stEthAmount = IERC20(STETH).balanceOf(user1);
+        require(stEthAmount >= 1 ether, "Not enough stETH");
 
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), stEthAmount);
@@ -164,7 +174,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
     function test_PreviewGenesisFromEth() public {
         uint256 ethAmount = 1 ether;
-        uint256 previewShares = zap.previewGenesisFromEth(ethAmount);
+        (uint256 previewShares, uint256 wstEthAmount) = zap.previewGenesisFromEth(ethAmount);
         
         assertGt(previewShares, 0, "Preview should return > 0");
         // Should match previewWstEthFromEth since Genesis uses 1:1 mapping
@@ -173,7 +183,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
     function test_PreviewGenesisFromStEth() public {
         uint256 stEthAmount = 1 ether;
-        uint256 previewShares = zap.previewGenesisFromStEth(stEthAmount);
+        (uint256 previewShares, uint256 wstEthAmount) = zap.previewGenesisFromStEth(stEthAmount);
         
         assertGt(previewShares, 0, "Preview should return > 0");
         // Should match previewWstEthFromStEth since Genesis uses 1:1 mapping
@@ -277,13 +287,25 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
     }
 
     function test_RescueToken() public {
-        deal(STETH, address(zap), 1 ether);
+        // Use real stETH minting instead of deal() since stETH has complex proxy storage
+        vm.deal(address(this), 1 ether);
+        ISTETHV2(STETH).submit{value: 1 ether}(address(0));
+        uint256 stEthBalance = IERC20(STETH).balanceOf(address(this));
+        // forgefmt: disable-next-item
+        require(IERC20(STETH).transfer(address(zap), stEthBalance), "Transfer failed");
         
         uint256 ownerBalanceBefore = IERC20(STETH).balanceOf(zapOwner);
+        uint256 zapBalanceBefore = IERC20(STETH).balanceOf(address(zap));
+        
         vm.prank(zapOwner);
         zap.rescueToken(STETH);
         
-        assertEq(IERC20(STETH).balanceOf(zapOwner), ownerBalanceBefore + 1 ether, "Token should be rescued");
+        uint256 ownerBalanceAfter = IERC20(STETH).balanceOf(zapOwner);
+        uint256 zapBalanceAfter = IERC20(STETH).balanceOf(address(zap));
+        
+        // Verify all tokens were rescued (accounting for potential rounding/dust)
+        assertLe(zapBalanceAfter, 10, "Zap should have minimal stETH left (allowing for dust)");
+        assertGe(ownerBalanceAfter, ownerBalanceBefore + zapBalanceBefore - 10, "Token should be rescued (within rounding tolerance)");
     }
 }
 

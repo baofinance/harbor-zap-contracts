@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {GenesisETHZapV3} from "src/zap/GenesisETHZap_v3.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {Genesis_v1} from "src/minter/Genesis_v1.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
 
@@ -124,7 +125,7 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
     function test_ZapEth_ZeroAmount() public {
         vm.startPrank(user1);
 
-        vm.expectRevert(GenesisETHZapV3.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapEth{value: 0}(receiver, 0);
 
         vm.stopPrank();
@@ -135,7 +136,7 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
 
-        vm.expectRevert(GenesisETHZapV3.ZeroAddress.selector);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
         zap.zapEth{value: ethAmount}(address(0), 0);
 
         vm.stopPrank();
@@ -239,7 +240,7 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(GenesisETHZapV3.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapStEth(0, receiver, 0);
 
         vm.stopPrank();
@@ -256,7 +257,7 @@ contract GenesisETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), stEthAmount);
 
-        vm.expectRevert(GenesisETHZapV3.ZeroAddress.selector);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
         zap.zapStEth(stEthAmount, address(0), 0);
 
         vm.stopPrank();

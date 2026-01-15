@@ -9,7 +9,7 @@ optimizer = true
 
 optimizer_runs = 700 # 500 builds & tests but 200 deploys
 
-# via_ir = true   # makes the compiler run 7-10 times slower, is good at reducing code size or lower gas usage
+via_ir = true   # Required for permit functions to avoid stack too deep errors
 # deny = "warnings" # enable to stop compilations if there are warnings
 # Note: Library dependencies (lib/) may have warnings, but our source code (src/) has none.
 # Warnings are currently disabled to allow compilation with library warnings.

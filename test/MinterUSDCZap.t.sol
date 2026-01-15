@@ -5,6 +5,7 @@ import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {MinterUSDCZapV2} from "src/zap/MinterUSDCZap_v2.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
@@ -101,7 +102,7 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(MinterUSDCZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapUsdcToPegged(0, receiver, 0);
 
         vm.stopPrank();
@@ -113,7 +114,7 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
 
-        vm.expectRevert(MinterUSDCZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapUsdcToPegged(usdcAmount, address(0), 0);
 
         vm.stopPrank();
@@ -177,7 +178,7 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(MinterUSDCZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapUsdcToLeveraged(0, receiver, 0);
 
         vm.stopPrank();
@@ -189,7 +190,7 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
 
-        vm.expectRevert(MinterUSDCZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapUsdcToLeveraged(usdcAmount, address(0), 0);
 
         vm.stopPrank();
@@ -257,7 +258,7 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(FXUSD).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(MinterUSDCZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapFxUsdToPegged(0, receiver, 0);
 
         vm.stopPrank();
@@ -270,7 +271,7 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
-        vm.expectRevert(MinterUSDCZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapFxUsdToPegged(fxUsdAmount, address(0), 0);
 
         vm.stopPrank();
@@ -339,7 +340,7 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(FXUSD).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(MinterUSDCZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapFxUsdToLeveraged(0, receiver, 0);
 
         vm.stopPrank();
@@ -352,7 +353,7 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
-        vm.expectRevert(MinterUSDCZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapFxUsdToLeveraged(fxUsdAmount, address(0), 0);
 
         vm.stopPrank();
@@ -429,7 +430,7 @@ contract MinterUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
 
-        vm.expectRevert(MinterUSDCZapV2.StabilityPoolNotAllowed.selector);
+        vm.expectRevert(IZapErrors.StabilityPoolNotAllowed.selector);
         zap.zapUsdcToStabilityPool(usdcAmount, receiver, 0, address(stabilityPool), 0);
 
         vm.stopPrank();

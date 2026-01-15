@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {GenesisUSDCZapV2} from "src/zap/GenesisUSDCZap_v2.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {Genesis_v1} from "src/minter/Genesis_v1.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
 
@@ -99,7 +100,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(GenesisUSDCZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapUsdcToGenesis(0, 0, receiver);
 
         vm.stopPrank();
@@ -111,7 +112,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
 
-        vm.expectRevert(GenesisUSDCZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapUsdcToGenesis(usdcAmount, 0, address(0));
 
         vm.stopPrank();
@@ -192,7 +193,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(FXUSD).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(GenesisUSDCZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapFxUsdToGenesis(0, 0, receiver);
 
         vm.stopPrank();
@@ -205,7 +206,7 @@ contract GenesisUSDCZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
-        vm.expectRevert(GenesisUSDCZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapFxUsdToGenesis(fxUsdAmount, 0, address(0));
 
         vm.stopPrank();

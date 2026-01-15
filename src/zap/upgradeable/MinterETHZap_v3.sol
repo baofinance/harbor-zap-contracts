@@ -3,6 +3,7 @@
 pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -173,12 +174,12 @@ contract MinterETHZap_v3 is
     constructor(address minter_, address referral_) {
         _disableInitializers();
 
-        if (minter_ == address(0)) revert InvalidAddress();
+        if (minter_ == address(0)) revert IZapErrors.InvalidAddress();
 
         // Verify that wstETH matches the Minter wrapped collateral token
         address expectedCollateral = IMinter(minter_).WRAPPED_COLLATERAL_TOKEN();
         if (WSTETH != expectedCollateral) {
-            revert WstETHMismatch(expectedCollateral, WSTETH);
+            revert IZapErrors.WstETHMismatch(expectedCollateral, WSTETH);
         }
 
         MINTER = minter_;
@@ -223,8 +224,8 @@ contract MinterETHZap_v3 is
         address receiver,
         uint256 minPeggedOut
     ) external payable nonReentrant returns (uint256 peggedOut) {
-        if (msg.value == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (msg.value == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 ethAmount = msg.value;
         uint256 wstEthAmount = _convertEthToWstEth(ethAmount);
@@ -244,8 +245,8 @@ contract MinterETHZap_v3 is
         address receiver,
         uint256 minLeveragedOut
     ) external payable nonReentrant returns (uint256 leveragedOut) {
-        if (msg.value == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (msg.value == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 ethAmount = msg.value;
         uint256 wstEthAmount = _convertEthToWstEth(ethAmount);
@@ -267,8 +268,8 @@ contract MinterETHZap_v3 is
         address receiver,
         uint256 minPeggedOut
     ) external nonReentrant returns (uint256 peggedOut) {
-        if (stEthAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
         peggedOut = _mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
@@ -289,8 +290,8 @@ contract MinterETHZap_v3 is
         address receiver,
         uint256 minLeveragedOut
     ) external nonReentrant returns (uint256 leveragedOut) {
-        if (stEthAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
         leveragedOut = _mintLeveragedToken(wstEthAmount, receiver, minLeveragedOut);
@@ -314,9 +315,9 @@ contract MinterETHZap_v3 is
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external payable nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (msg.value == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
-        if (stabilityPool == address(0)) revert InvalidAddress();
+        if (msg.value == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 ethAmount = msg.value;
         uint256 wstEthAmount = _convertEthToWstEth(ethAmount);
@@ -346,9 +347,9 @@ contract MinterETHZap_v3 is
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (stEthAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
-        if (stabilityPool == address(0)) revert InvalidAddress();
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
         
@@ -360,7 +361,118 @@ contract MinterETHZap_v3 is
         _resetAllowances();
     }
 
+    // ============ Permit-Based Functions ============
+
+    /// @notice Zap stETH into pegged tokens using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit stETH → stETH → wstETH → Minter mint pegged
+    /// @param stEthAmount Amount of stETH to zap
+    /// @param receiver Address that will receive the pegged tokens
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive
+    /// @param deadline Permit signature deadline
+    /// @param v Permit signature v component
+    /// @param r Permit signature r component
+    /// @param s Permit signature s component
+    /// @return peggedOut Amount of pegged tokens minted
+    function zapStEthToPeggedWithPermit(
+        uint256 stEthAmount,
+        address receiver,
+        uint256 minPeggedOut,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant returns (uint256 peggedOut) {
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+
+        _permitStEth(stEthAmount, deadline, v, r, s);
+        uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
+        peggedOut = _mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
+
+        emit STETHZappedToPegged(_msgSender(), MINTER, receiver, stEthAmount, wstEthAmount, peggedOut);
+        _resetAllowances();
+    }
+
+    /// @notice Zap stETH into leveraged tokens using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit stETH → stETH → wstETH → Minter mint leveraged
+    /// @param stEthAmount Amount of stETH to zap
+    /// @param receiver Address that will receive the leveraged tokens
+    /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
+    /// @param deadline Permit signature deadline
+    /// @param v Permit signature v component
+    /// @param r Permit signature r component
+    /// @param s Permit signature s component
+    /// @return leveragedOut Amount of leveraged tokens minted
+    function zapStEthToLeveragedWithPermit(
+        uint256 stEthAmount,
+        address receiver,
+        uint256 minLeveragedOut,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant returns (uint256 leveragedOut) {
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+
+        _permitStEth(stEthAmount, deadline, v, r, s);
+        uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
+        leveragedOut = _mintLeveragedToken(wstEthAmount, receiver, minLeveragedOut);
+
+        emit STETHZappedToLeveraged(_msgSender(), MINTER, receiver, stEthAmount, wstEthAmount, leveragedOut);
+        _resetAllowances();
+    }
+
+    /// @notice Zap stETH into StabilityPool using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit stETH → stETH → wstETH → Minter mint pegged → StabilityPool deposit
+    /// @param stEthAmount Amount of stETH to zap
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive
+    /// @param stabilityPool StabilityPool address to deposit pegged tokens into
+    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool
+    /// @param deadline Permit signature deadline
+    /// @param v Permit signature v component
+    /// @param r Permit signature r component
+    /// @param s Permit signature s component
+    /// @return peggedOut Amount of pegged tokens minted
+    /// @return deposited Amount deposited into StabilityPool
+    function zapStEthToStabilityPoolWithPermit(
+        uint256 stEthAmount,
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
+
+        _permitStEth(stEthAmount, deadline, v, r, s);
+        uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
+        
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(wstEthAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+
+        emit STETHZappedToStabilityPool(_msgSender(), MINTER, receiver, stEthAmount, wstEthAmount, peggedOut, stabilityPool, deposited);
+        _resetAllowances();
+    }
+
     // ============ Internal Helper Functions ============
+
+    /// @notice Helper to handle stETH permit
+    /// @param amount Amount to permit
+    /// @param deadline Permit deadline
+    /// @param v Permit signature v
+    /// @param r Permit signature r
+    /// @param s Permit signature s
+    function _permitStEth(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
+        IERC20Permit(STETH).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+    }
 
     /// @notice Convert ETH to wstETH via stETH
     /// @param ethAmount Amount of ETH to convert
@@ -370,7 +482,7 @@ contract MinterETHZap_v3 is
         uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
         ISTETHV2(STETH).submit{value: ethAmount}(referral);
         uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
-        if (stEthReceived == 0) revert ZeroAmount();
+        if (stEthReceived == 0) revert IZapErrors.ZeroAmount();
 
         // 2. stETH → wstETH (use balance change to get actual amount)
         wstEthAmount = _wrapStEthToWstEth(stEthReceived);
@@ -396,7 +508,7 @@ contract MinterETHZap_v3 is
         IWstETHWrapV2(WSTETH).wrap(stEthAmount);
         uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
         wstEthAmount = wstEthAfter - wstEthBefore;
-        if (wstEthAmount == 0) revert ZeroAmount();
+        if (wstEthAmount == 0) revert IZapErrors.ZeroAmount();
     }
 
     /// @notice Mint pegged tokens and validate the result
@@ -413,7 +525,7 @@ contract MinterETHZap_v3 is
         // Validate that tokens were actually minted
         uint256 peggedBalanceAfter = IERC20(peggedToken).balanceOf(receiver);
         if (peggedBalanceAfter - peggedBalanceBefore != peggedOut || peggedOut == 0) {
-            revert MintFailed();
+            revert IZapErrors.MintFailed();
         }
     }
 
@@ -431,7 +543,7 @@ contract MinterETHZap_v3 is
         // Validate that tokens were actually minted
         uint256 leveragedBalanceAfter = IERC20(leveragedToken).balanceOf(receiver);
         if (leveragedBalanceAfter - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
-            revert MintFailed();
+            revert IZapErrors.MintFailed();
         }
     }
 
@@ -451,13 +563,13 @@ contract MinterETHZap_v3 is
     ) internal returns (uint256 deposited) {
         // Verify stability pool is allowed
         if (!allowedStabilityPools[stabilityPool]) {
-            revert StabilityPoolNotAllowed();
+            revert IZapErrors.StabilityPoolNotAllowed();
         }
         
         // Verify StabilityPool accepts the correct pegged token
         address poolAssetToken = IStabilityPool(stabilityPool).ASSET_TOKEN();
         if (poolAssetToken != peggedToken) {
-            revert InvalidAddress(); // StabilityPool doesn't accept this pegged token
+            revert IZapErrors.InvalidAddress(); // StabilityPool doesn't accept this pegged token
         }
         
         // Approve and deposit into StabilityPool
@@ -575,7 +687,7 @@ contract MinterETHZap_v3 is
     /// @param stabilityPool Address of the stability pool
     /// @param allowed Whether the stability pool is allowed
     function setStabilityPoolAllowed(address stabilityPool, bool allowed) external onlyOwner {
-        if (stabilityPool == address(0)) revert InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
         allowedStabilityPools[stabilityPool] = allowed;
         emit StabilityPoolAllowlistUpdated(stabilityPool, allowed);
     }
@@ -595,7 +707,7 @@ contract MinterETHZap_v3 is
     }
 
     fallback() external payable {
-        revert FunctionNotFound();
+        revert IZapErrors.FunctionNotFound();
     }
 }
 

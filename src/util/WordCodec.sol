@@ -47,6 +47,7 @@ library WordCodec {
     /// Assumes `value` can be represented using `bitLength` bits.
     function encodeInt(bytes32 word, int256 value, uint256 offset, uint256 bitLength) internal pure returns (bytes32) {
         unchecked {
+            /// forge-lint: disable-next-line(incorrect-shift)
             uint256 mask = (1 << bitLength) - 1;
             bytes32 clearedWord = bytes32(uint256(word) & ~(mask << offset));
             // Integer values need masking to remove the upper bits of negative values.
@@ -57,7 +58,9 @@ library WordCodec {
     /// @dev Decodes and returns a signed integer with `bitLength` bits, shifted by an offset, from a 256 bit word.
     function decodeInt(bytes32 word, uint256 offset, uint256 bitLength) internal pure returns (int256 result) {
         unchecked {
+            /// forge-lint: disable-next-line(incorrect-shift)
             int256 maxInt = int256((1 << (bitLength - 1)) - 1);
+            /// forge-lint: disable-next-line(incorrect-shift)
             uint256 mask = (1 << bitLength) - 1;
 
             int256 value = int256(uint256(word >> offset) & mask);

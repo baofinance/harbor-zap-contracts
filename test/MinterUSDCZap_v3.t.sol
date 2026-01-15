@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {MinterUSDCZap_v3} from "src/zap/upgradeable/MinterUSDCZap_v3.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
@@ -59,8 +60,11 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
             zapImpl,
             abi.encodeCall(MinterUSDCZap_v3.initialize, (zapOwner))
         );
-        zap = MinterUSDCZap_v3(zapProxy);
+        zap = MinterUSDCZap_v3(payable(zapProxy));
         vm.label(address(zap), "MinterUSDCZapV3");
+
+        // Complete ownership transfer from deployer to zapOwner
+        zap.transferOwnership(zapOwner);
 
         user1 = makeAddr("user1");
         receiver = makeAddr("receiver");
@@ -105,7 +109,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(MinterUSDCZap_v3.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapUsdcToPegged(0, receiver, 0);
 
         vm.stopPrank();
@@ -117,7 +121,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
 
-        vm.expectRevert(MinterUSDCZap_v3.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapUsdcToPegged(usdcAmount, address(0), 0);
 
         vm.stopPrank();
@@ -223,7 +227,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
 
-        vm.expectRevert(MinterUSDCZap_v3.StabilityPoolNotAllowed.selector);
+        vm.expectRevert(IZapErrors.StabilityPoolNotAllowed.selector);
         zap.zapUsdcToStabilityPool(usdcAmount, receiver, 0, address(stabilityPool), 0);
 
         vm.stopPrank();

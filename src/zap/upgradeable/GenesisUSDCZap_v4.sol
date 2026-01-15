@@ -2,6 +2,7 @@
 pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -89,10 +90,10 @@ contract GenesisUSDCZap_v4 is
     constructor(address genesis_) {
         _disableInitializers();
 
-        if (genesis_ == address(0)) revert InvalidAddress();
+        if (genesis_ == address(0)) revert IZapErrors.InvalidAddress();
 
         address expected = IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN();
-        if (expected != FXSAVE) revert CollateralMismatch(expected, FXSAVE);
+        if (expected != FXSAVE) revert IZapErrors.CollateralMismatch(expected, FXSAVE);
 
         GENESIS = genesis_;
     }
@@ -127,8 +128,8 @@ contract GenesisUSDCZap_v4 is
         uint256 minFxSaveOut,
         address receiver
     ) external nonReentrant returns (uint256 collateralAmount) {
-        if (usdcAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         // 1. Pull USDC
         IERC20(USDC).safeTransferFrom(_msgSender(), address(this), usdcAmount);
@@ -145,7 +146,7 @@ contract GenesisUSDCZap_v4 is
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
         if (sharesReceived != fxSaveReceived) {
-            revert DepositFailed();
+            revert IZapErrors.DepositFailed();
         }
 
         collateralAmount = fxSaveReceived;
@@ -168,8 +169,8 @@ contract GenesisUSDCZap_v4 is
         uint256 minFxSaveOut,
         address receiver
     ) external nonReentrant returns (uint256 collateralAmount) {
-        if (fxUsdAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         // 1. Pull fxUSD
         IERC20(FXUSD).safeTransferFrom(_msgSender(), address(this), fxUsdAmount);
@@ -186,7 +187,115 @@ contract GenesisUSDCZap_v4 is
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
         if (sharesReceived != fxSaveReceived) {
-            revert DepositFailed();
+            revert IZapErrors.DepositFailed();
+        }
+
+        collateralAmount = fxSaveReceived;
+
+        emit FXUSDZappedToGenesis(_msgSender(), GENESIS, receiver, fxUsdAmount, fxSaveReceived, collateralAmount);
+
+        // Clean approvals
+        _safeApprove(IERC20(FXUSD), FXUSD_DIAMOND, 0);
+        _safeApprove(IERC20(FXSAVE), GENESIS, 0);
+    }
+
+    // =============================================================
+    // PERMIT-BASED ZAP FUNCTIONS
+    // =============================================================
+
+    /// @notice Zap USDC → fxSAVE → Genesis using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit USDC → USDC → fxSAVE → Genesis deposit
+    /// @param usdcAmount Amount of USDC to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @param receiver Who gets the Genesis shares
+    /// @param deadline Permit signature deadline
+    /// @param v Permit signature v component
+    /// @param r Permit signature r component
+    /// @param s Permit signature s component
+    /// @return collateralAmount Amount of collateral deposited to Genesis
+    function zapUsdcToGenesisWithPermit(
+        uint256 usdcAmount,
+        uint256 minFxSaveOut,
+        address receiver,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant returns (uint256 collateralAmount) {
+        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+
+        // Use permit to approve this contract
+        IERC20Permit(USDC).permit(_msgSender(), address(this), usdcAmount, deadline, v, r, s);
+
+        // 1. Pull USDC
+        IERC20(USDC).safeTransferFrom(_msgSender(), address(this), usdcAmount);
+
+        // 2. Convert USDC → fxSAVE via diamond
+        uint256 fxSaveReceived = _convertToFxSave(USDC, usdcAmount, minFxSaveOut);
+
+        // 3. Deposit into Genesis
+        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
+        IERC20(FXSAVE).forceApprove(GENESIS, fxSaveReceived);
+        IGenesis(GENESIS).deposit(fxSaveReceived, receiver);
+        
+        // Validate that shares were actually minted
+        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
+        uint256 sharesReceived = sharesAfter - sharesBefore;
+        if (sharesReceived != fxSaveReceived) {
+            revert IZapErrors.DepositFailed();
+        }
+
+        collateralAmount = fxSaveReceived;
+
+        emit USDCZappedToGenesis(_msgSender(), GENESIS, receiver, usdcAmount, fxSaveReceived, collateralAmount);
+
+        // Clean approvals
+        _safeApprove(IERC20(USDC), FXUSD_DIAMOND, 0);
+        _safeApprove(IERC20(FXSAVE), GENESIS, 0);
+    }
+
+    /// @notice Zap fxUSD → fxSAVE → Genesis using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit fxUSD → fxUSD → fxSAVE → Genesis deposit
+    /// @param fxUsdAmount Amount of fxUSD to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive
+    /// @param receiver Who gets the Genesis shares
+    /// @param deadline Permit signature deadline
+    /// @param v Permit signature v component
+    /// @param r Permit signature r component
+    /// @param s Permit signature s component
+    /// @return collateralAmount Amount of collateral deposited to Genesis
+    function zapFxUsdToGenesisWithPermit(
+        uint256 fxUsdAmount,
+        uint256 minFxSaveOut,
+        address receiver,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant returns (uint256 collateralAmount) {
+        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+
+        // Use permit to approve this contract
+        IERC20Permit(FXUSD).permit(_msgSender(), address(this), fxUsdAmount, deadline, v, r, s);
+
+        // 1. Pull fxUSD
+        IERC20(FXUSD).safeTransferFrom(_msgSender(), address(this), fxUsdAmount);
+
+        // 2. Convert fxUSD → fxSAVE
+        uint256 fxSaveReceived = _convertToFxSave(FXUSD, fxUsdAmount, minFxSaveOut);
+
+        // 3. Deposit into Genesis
+        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
+        IERC20(FXSAVE).forceApprove(GENESIS, fxSaveReceived);
+        IGenesis(GENESIS).deposit(fxSaveReceived, receiver);
+        
+        // Validate that shares were actually minted
+        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
+        uint256 sharesReceived = sharesAfter - sharesBefore;
+        if (sharesReceived != fxSaveReceived) {
+            revert IZapErrors.DepositFailed();
         }
 
         collateralAmount = fxSaveReceived;
@@ -234,7 +343,7 @@ contract GenesisUSDCZap_v4 is
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave(params, tokenIn, 0, address(this));
         fxSaveReceived = IERC20(FXSAVE).balanceOf(address(this)) - balanceBefore;
 
-        if (fxSaveReceived < minOut) revert SlippageExceeded();
+        if (fxSaveReceived < minOut) revert IZapErrors.SlippageExceeded();
     }
 
     function _safeApprove(IERC20 token, address spender, uint256 amount) internal {
@@ -275,6 +384,6 @@ contract GenesisUSDCZap_v4 is
     // =============================================================
 
     receive() external payable {}
-    fallback() external payable { revert FunctionNotFound(); }
+    fallback() external payable { revert IZapErrors.FunctionNotFound(); }
 }
 

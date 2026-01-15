@@ -61,7 +61,7 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     /// @param genesis_ Genesis vault address (must accept wstETH as collateral)
     /// @param referral_ Optional Lido referral (use address(0) for default)
     constructor(address genesis_, address referral_) Ownable(msg.sender) {
-        if (genesis_ == address(0)) revert ZeroAddress();
+        if (genesis_ == address(0)) revert IZapErrors.ZeroAddress();
         
         // Note: Removed WRAPPED_COLLATERAL_TOKEN check during construction
         // as proxy contracts may have issues with external calls during construction.
@@ -89,8 +89,8 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
         address receiver,
         uint256 minWstEthOut
     ) external payable nonReentrant returns (uint256 sharesOut) {
-        if (msg.value == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert ZeroAddress();
+        if (msg.value == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         uint256 ethIn = msg.value;
 
@@ -98,7 +98,7 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
         uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
         ISTETHV2(STETH).submit{value: ethIn}(referral);
         uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
-        if (stEthReceived == 0) revert NoStETHReceived();
+        if (stEthReceived == 0) revert IZapErrors.NoStETHReceived();
 
         // 2. stETH → wstETH
         IERC20(STETH).forceApprove(WSTETH, stEthReceived);
@@ -108,14 +108,14 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
         uint256 wstEthReceived = wstEthAfter - wstEthBefore;
         
         // Verify we received wstETH
-        if (wstEthReceived == 0) revert NoStETHReceived();
+        if (wstEthReceived == 0) revert IZapErrors.NoStETHReceived();
         if (wstEthReceived != sharesOut) {
             // Use actual balance if different (shouldn't happen, but be safe)
             sharesOut = wstEthReceived;
         }
 
         // 3. Slippage protection
-        if (sharesOut < minWstEthOut) revert SlippageTooHigh();
+        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHigh();
 
         // 4. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
@@ -138,8 +138,8 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
         address receiver,
         uint256 minWstEthOut
     ) external nonReentrant returns (uint256 sharesOut) {
-        if (stEthAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert ZeroAddress();
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         // 1. Transfer stETH from user
         IERC20(STETH).safeTransferFrom(msg.sender, address(this), stEthAmount);
@@ -152,14 +152,14 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
         uint256 wstEthReceived = wstEthAfter - wstEthBefore;
         
         // Verify we received wstETH
-        if (wstEthReceived == 0) revert NoStETHReceived();
+        if (wstEthReceived == 0) revert IZapErrors.NoStETHReceived();
         if (wstEthReceived != sharesOut) {
             // Use actual balance if different (shouldn't happen, but be safe)
             sharesOut = wstEthReceived;
         }
 
         // 3. Slippage protection
-        if (sharesOut < minWstEthOut) revert SlippageTooHigh();
+        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHigh();
 
         // 4. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
@@ -179,10 +179,10 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
     function _depositToGenesis(uint256 amount, address receiver) internal {
         // Verify contract has sufficient balance before deposit
         uint256 balanceBefore = IERC20(WSTETH).balanceOf(address(this));
-        if (balanceBefore < amount) revert NoStETHReceived();
+        if (balanceBefore < amount) revert IZapErrors.NoStETHReceived();
         
         // Double-check receiver is not zero (defensive)
-        if (receiver == address(0)) revert ZeroAddress();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
         
         // Check receiver's Genesis balance before deposit
         uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
@@ -205,7 +205,7 @@ contract GenesisETHZapV3 is ReentrancyGuard, Ownable {
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
         if (sharesReceived != amount) {
-            revert DepositFailed();
+            revert IZapErrors.DepositFailed();
         }
         
         // Reset approval after successful deposit

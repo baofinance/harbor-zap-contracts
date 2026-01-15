@@ -77,10 +77,10 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
     /// @notice Constructor sets the Genesis address
     /// @param genesis_ Address of the Genesis contract (must accept fxSAVE as collateral)
     constructor(address genesis_) {
-        if (genesis_ == address(0)) revert InvalidAddress();
+        if (genesis_ == address(0)) revert IZapErrors.InvalidAddress();
 
         address expected = IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN();
-        if (expected != FXSAVE) revert CollateralMismatch(expected, FXSAVE);
+        if (expected != FXSAVE) revert IZapErrors.CollateralMismatch(expected, FXSAVE);
 
         GENESIS = genesis_;
         owner = msg.sender;
@@ -93,7 +93,7 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
     }
 
     function _onlyOwner() internal view {
-        if (msg.sender != owner) revert Unauthorized();
+        if (msg.sender != owner) revert IZapErrors.Unauthorized();
     }
 
     // =============================================================
@@ -111,8 +111,8 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
         uint256 minFxSaveOut,
         address receiver
     ) external nonReentrant returns (uint256 collateralAmount) {
-        if (usdcAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         // 1. Pull USDC
         IERC20(USDC).safeTransferFrom(msg.sender, address(this), usdcAmount);
@@ -129,7 +129,7 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
         if (sharesReceived != fxSaveReceived) {
-            revert DepositFailed();
+            revert IZapErrors.DepositFailed();
         }
 
         collateralAmount = fxSaveReceived;
@@ -152,8 +152,8 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
         uint256 minFxSaveOut,
         address receiver
     ) external nonReentrant returns (uint256 collateralAmount) {
-        if (fxUsdAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         // 1. Pull fxUSD
         IERC20(FXUSD).safeTransferFrom(msg.sender, address(this), fxUsdAmount);
@@ -170,7 +170,7 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
         if (sharesReceived != fxSaveReceived) {
-            revert DepositFailed();
+            revert IZapErrors.DepositFailed();
         }
 
         collateralAmount = fxSaveReceived;
@@ -218,7 +218,7 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave(params, tokenIn, 0, address(this));
         fxSaveReceived = IERC20(FXSAVE).balanceOf(address(this)) - balanceBefore;
 
-        if (fxSaveReceived < minOut) revert SlippageExceeded();
+        if (fxSaveReceived < minOut) revert IZapErrors.SlippageExceeded();
     }
 
     function _safeApprove(IERC20 token, address spender, uint256 amount) internal {
@@ -230,11 +230,23 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
     }
 
     // =============================================================
+    // PREVIEW FUNCTIONS
+    // =============================================================
+
+    /// @notice Preview the expected Genesis shares from a fxSAVE amount
+    /// @dev Genesis uses 1:1 deposits, so fxSAVE amount equals shares
+    /// @param fxSaveAmount Amount of fxSAVE
+    /// @return sharesOut Expected Genesis shares that will be minted
+    function previewGenesisFromFxSave(uint256 fxSaveAmount) external pure returns (uint256 sharesOut) {
+        sharesOut = fxSaveAmount; // 1:1 mapping
+    }
+
+    // =============================================================
     // OWNER FUNCTIONS
     // =============================================================
 
     function transferOwnership(address newOwner) external onlyOwner {
-        if (newOwner == address(0)) revert InvalidAddress();
+        if (newOwner == address(0)) revert IZapErrors.InvalidAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
     }
@@ -253,5 +265,5 @@ contract GenesisUSDCZapV2 is ReentrancyGuard {
     // =============================================================
 
     receive() external payable {}
-    fallback() external payable { revert FunctionNotFound(); }
+    fallback() external payable { revert IZapErrors.FunctionNotFound(); }
 }

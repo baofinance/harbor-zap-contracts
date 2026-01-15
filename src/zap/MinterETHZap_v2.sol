@@ -160,12 +160,12 @@ contract MinterETHZapV2 is ReentrancyGuard {
     /// @param minter_ Address of the Minter contract (must accept wstETH as wrapped collateral)
     /// @param referral_ Lido referral address (or address(0))
     constructor(address minter_, address referral_) {
-        if (minter_ == address(0)) revert InvalidAddress();
+        if (minter_ == address(0)) revert IZapErrors.InvalidAddress();
 
         // Verify that wstETH matches the Minter wrapped collateral token
         address expectedCollateral = IMinter(minter_).WRAPPED_COLLATERAL_TOKEN();
         if (WSTETH != expectedCollateral) {
-            revert WstETHMismatch(expectedCollateral, WSTETH);
+            revert IZapErrors.WstETHMismatch(expectedCollateral, WSTETH);
         }
 
         MINTER = minter_;
@@ -186,7 +186,7 @@ contract MinterETHZapV2 is ReentrancyGuard {
     }
 
     function _checkOwner() internal view {
-        if (msg.sender != owner) revert Unauthorized();
+        if (msg.sender != owner) revert IZapErrors.Unauthorized();
     }
 
     // ============ External Functions ============
@@ -201,8 +201,8 @@ contract MinterETHZapV2 is ReentrancyGuard {
         address receiver,
         uint256 minPeggedOut
     ) external payable nonReentrant returns (uint256 peggedOut) {
-        if (msg.value == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (msg.value == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 ethAmount = msg.value;
         uint256 wstEthAmount = _convertEthToWstEth(ethAmount);
@@ -222,8 +222,8 @@ contract MinterETHZapV2 is ReentrancyGuard {
         address receiver,
         uint256 minLeveragedOut
     ) external payable nonReentrant returns (uint256 leveragedOut) {
-        if (msg.value == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (msg.value == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 ethAmount = msg.value;
         uint256 wstEthAmount = _convertEthToWstEth(ethAmount);
@@ -245,8 +245,8 @@ contract MinterETHZapV2 is ReentrancyGuard {
         address receiver,
         uint256 minPeggedOut
     ) external nonReentrant returns (uint256 peggedOut) {
-        if (stEthAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
         peggedOut = _mintPeggedToken(wstEthAmount, receiver, minPeggedOut);
@@ -267,8 +267,8 @@ contract MinterETHZapV2 is ReentrancyGuard {
         address receiver,
         uint256 minLeveragedOut
     ) external nonReentrant returns (uint256 leveragedOut) {
-        if (stEthAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
         leveragedOut = _mintLeveragedToken(wstEthAmount, receiver, minLeveragedOut);
@@ -292,9 +292,9 @@ contract MinterETHZapV2 is ReentrancyGuard {
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external payable nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (msg.value == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
-        if (stabilityPool == address(0)) revert InvalidAddress();
+        if (msg.value == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 ethAmount = msg.value;
         uint256 wstEthAmount = _convertEthToWstEth(ethAmount);
@@ -324,9 +324,9 @@ contract MinterETHZapV2 is ReentrancyGuard {
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (stEthAmount == 0) revert ZeroAmount();
-        if (receiver == address(0)) revert InvalidAddress();
-        if (stabilityPool == address(0)) revert InvalidAddress();
+        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
 
         uint256 wstEthAmount = _convertStEthToWstEth(stEthAmount);
         
@@ -348,7 +348,7 @@ contract MinterETHZapV2 is ReentrancyGuard {
         uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
         ISTETHV2(STETH).submit{value: ethAmount}(referral);
         uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
-        if (stEthReceived == 0) revert ZeroAmount();
+        if (stEthReceived == 0) revert IZapErrors.ZeroAmount();
 
         // 2. stETH → wstETH (use balance change to get actual amount)
         wstEthAmount = _wrapStEthToWstEth(stEthReceived);
@@ -374,7 +374,7 @@ contract MinterETHZapV2 is ReentrancyGuard {
         IWstETHWrapV2(WSTETH).wrap(stEthAmount);
         uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
         wstEthAmount = wstEthAfter - wstEthBefore;
-        if (wstEthAmount == 0) revert ZeroAmount();
+        if (wstEthAmount == 0) revert IZapErrors.ZeroAmount();
     }
 
     /// @notice Mint pegged tokens and validate the result
@@ -391,7 +391,7 @@ contract MinterETHZapV2 is ReentrancyGuard {
         // Validate that tokens were actually minted
         uint256 peggedBalanceAfter = IERC20(peggedToken).balanceOf(receiver);
         if (peggedBalanceAfter - peggedBalanceBefore != peggedOut || peggedOut == 0) {
-            revert MintFailed();
+            revert IZapErrors.MintFailed();
         }
     }
 
@@ -409,7 +409,7 @@ contract MinterETHZapV2 is ReentrancyGuard {
         // Validate that tokens were actually minted
         uint256 leveragedBalanceAfter = IERC20(leveragedToken).balanceOf(receiver);
         if (leveragedBalanceAfter - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
-            revert MintFailed();
+            revert IZapErrors.MintFailed();
         }
     }
 
@@ -429,13 +429,13 @@ contract MinterETHZapV2 is ReentrancyGuard {
     ) internal returns (uint256 deposited) {
         // Verify stability pool is allowed
         if (!allowedStabilityPools[stabilityPool]) {
-            revert StabilityPoolNotAllowed();
+            revert IZapErrors.StabilityPoolNotAllowed();
         }
         
         // Verify StabilityPool accepts the correct pegged token
         address poolAssetToken = IStabilityPool(stabilityPool).ASSET_TOKEN();
         if (poolAssetToken != peggedToken) {
-            revert InvalidAddress(); // StabilityPool doesn't accept this pegged token
+            revert IZapErrors.InvalidAddress(); // StabilityPool doesn't accept this pegged token
         }
         
         // Approve and deposit into StabilityPool
@@ -553,13 +553,13 @@ contract MinterETHZapV2 is ReentrancyGuard {
     /// @param stabilityPool Address of the stability pool
     /// @param allowed Whether the stability pool is allowed
     function setStabilityPoolAllowed(address stabilityPool, bool allowed) external onlyOwner {
-        if (stabilityPool == address(0)) revert InvalidAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.InvalidAddress();
         allowedStabilityPools[stabilityPool] = allowed;
         emit StabilityPoolAllowlistUpdated(stabilityPool, allowed);
     }
 
     function transferOwnership(address newOwner) external onlyOwner {
-        if (newOwner == address(0)) revert InvalidAddress();
+        if (newOwner == address(0)) revert IZapErrors.InvalidAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
     }
@@ -579,7 +579,7 @@ contract MinterETHZapV2 is ReentrancyGuard {
     }
 
     fallback() external payable {
-        revert FunctionNotFound();
+        revert IZapErrors.FunctionNotFound();
     }
 }
 

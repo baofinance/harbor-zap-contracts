@@ -5,6 +5,7 @@ import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {MinterETHZapV2} from "src/zap/MinterETHZap_v2.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
@@ -103,7 +104,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
     function test_ZapEthToPegged_ZeroAmount() public {
         vm.startPrank(user1);
 
-        vm.expectRevert(MinterETHZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapEthToPegged{value: 0}(receiver, 0);
 
         vm.stopPrank();
@@ -114,7 +115,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
 
-        vm.expectRevert(MinterETHZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapEthToPegged{value: ethAmount}(address(0), 0);
 
         vm.stopPrank();
@@ -175,7 +176,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
     function test_ZapEthToLeveraged_ZeroAmount() public {
         vm.startPrank(user1);
 
-        vm.expectRevert(MinterETHZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapEthToLeveraged{value: 0}(receiver, 0);
 
         vm.stopPrank();
@@ -186,7 +187,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
 
-        vm.expectRevert(MinterETHZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapEthToLeveraged{value: ethAmount}(address(0), 0);
 
         vm.stopPrank();
@@ -266,7 +267,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(MinterETHZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapStEthToPegged(0, receiver, 0);
 
         vm.stopPrank();
@@ -283,7 +284,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), stEthAmount);
 
-        vm.expectRevert(MinterETHZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapStEthToPegged(stEthAmount, address(0), 0);
 
         vm.stopPrank();
@@ -369,7 +370,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), type(uint256).max);
 
-        vm.expectRevert(MinterETHZapV2.ZeroAmount.selector);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
         zap.zapStEthToLeveraged(0, receiver, 0);
 
         vm.stopPrank();
@@ -386,7 +387,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), stEthAmount);
 
-        vm.expectRevert(MinterETHZapV2.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.InvalidAddress.selector);
         zap.zapStEthToLeveraged(stEthAmount, address(0), 0);
 
         vm.stopPrank();
@@ -462,7 +463,7 @@ contract MinterETHZapForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
 
-        vm.expectRevert(MinterETHZapV2.StabilityPoolNotAllowed.selector);
+        vm.expectRevert(IZapErrors.StabilityPoolNotAllowed.selector);
         zap.zapEthToStabilityPool{value: ethAmount}(receiver, 0, address(stabilityPool), 0);
 
         vm.stopPrank();
