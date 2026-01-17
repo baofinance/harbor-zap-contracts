@@ -7,7 +7,6 @@ import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.
 
 import {MinterETHZap_v3} from "src/zap/upgradeable/MinterETHZap_v3.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
-import {IMinter} from "src/interfaces/IMinter.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
@@ -60,10 +59,8 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
         zapImpl = address(new MinterETHZap_v3(minter, address(0)));
-        zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl,
-            abi.encodeCall(MinterETHZap_v3.initialize, (zapOwner, address(0)))
-        );
+        zapProxy =
+            UnsafeUpgrades.deployUUPSProxy(zapImpl, abi.encodeCall(MinterETHZap_v3.initialize, (zapOwner, address(0))));
         zap = MinterETHZap_v3(payable(zapProxy));
         vm.label(address(zap), "MinterETHZapV3");
 
@@ -119,7 +116,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
 
-        vm.expectRevert(IZapErrors.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
         zap.zapEthToPegged{value: ethAmount}(address(0), 0);
 
         vm.stopPrank();
@@ -199,11 +196,11 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
     function test_ZapEthToStabilityPool_Success() public {
         uint256 ethAmount = 1 ether;
-        
+
         // Deploy mock stability pool
         MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
         vm.label(address(stabilityPool), "StabilityPool");
-        
+
         // Allow stability pool
         vm.prank(zapOwner);
         zap.setStabilityPoolAllowed(address(stabilityPool), true);
@@ -213,15 +210,12 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         uint256 stabilityPoolBalBefore = stabilityPool.balanceOf(receiver);
 
         // Get preview for minPeggedOut
-        (uint256 previewPegged, ) = zap.previewStabilityPoolFromEth(ethAmount);
+        (uint256 previewPegged,) = zap.previewStabilityPoolFromEth(ethAmount);
         uint256 minPeggedOut = previewPegged * 99 / 100; // 1% slippage
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100; // 1% slippage
 
         (uint256 peggedOut, uint256 deposited) = zap.zapEthToStabilityPool{value: ethAmount}(
-            receiver,
-            minPeggedOut,
-            address(stabilityPool),
-            minStabilityPoolOut
+            receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -266,16 +260,12 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), stEthAmount);
 
-        (uint256 previewPegged, ) = zap.previewStabilityPoolFromStEth(stEthAmount);
+        (uint256 previewPegged,) = zap.previewStabilityPoolFromStEth(stEthAmount);
         uint256 minPeggedOut = previewPegged * 99 / 100;
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
         (uint256 peggedOut, uint256 deposited) = zap.zapStEthToStabilityPool(
-            stEthAmount,
-            receiver,
-            minPeggedOut,
-            address(stabilityPool),
-            minStabilityPoolOut
+            stEthAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -286,10 +276,10 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
     // ============ Preview Function Tests ============
 
-    function test_PreviewWstEthFromEth() public {
+    function test_PreviewWstEthFromEth() public view {
         uint256 ethAmount = 1 ether;
         uint256 previewWstEth = zap.previewWstEthFromEth(ethAmount);
-        
+
         assertGt(previewWstEth, 0, "Preview should return > 0");
         assertLt(previewWstEth, ethAmount, "wstETH should be less than ETH due to conversion");
         console.log("Preview wstETH from ETH:", previewWstEth);
@@ -303,25 +293,25 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
         uint256 stEthAmount = 10 ether;
         uint256 previewWstEth = zap.previewWstEthFromStEth(stEthAmount);
-        
+
         assertGt(previewWstEth, 0, "Preview should return > 0");
         console.log("Preview wstETH from stETH:", previewWstEth);
     }
 
-    function test_PreviewPeggedFromEth() public {
+    function test_PreviewPeggedFromEth() public view {
         uint256 ethAmount = 1 ether;
         (uint256 previewPegged, uint256 previewWstEth) = zap.previewPeggedFromEth(ethAmount);
-        
+
         assertGt(previewPegged, 0, "Preview should return > 0");
         assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
         console.log("Preview Pegged from ETH:", previewPegged);
         console.log("Preview wstETH from ETH:", previewWstEth);
     }
 
-    function test_PreviewLeveragedFromEth() public {
+    function test_PreviewLeveragedFromEth() public view {
         uint256 ethAmount = 1 ether;
         (uint256 previewLeveraged, uint256 previewWstEth) = zap.previewLeveragedFromEth(ethAmount);
-        
+
         assertGt(previewLeveraged, 0, "Preview should return > 0");
         assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
         console.log("Preview Leveraged from ETH:", previewLeveraged);
@@ -335,7 +325,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
         uint256 stEthAmount = 10 ether;
         (uint256 previewPegged, uint256 previewWstEth) = zap.previewPeggedFromStEth(stEthAmount);
-        
+
         assertGt(previewPegged, 0, "Preview should return > 0");
         assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
     }
@@ -348,19 +338,19 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
         uint256 stEthAmount = 10 ether;
         (uint256 previewLeveraged, uint256 previewWstEth) = zap.previewLeveragedFromStEth(stEthAmount);
-        
+
         assertGt(previewLeveraged, 0, "Preview should return > 0");
         assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
     }
 
-    function test_PreviewStabilityPoolFromEth() public {
+    function test_PreviewStabilityPoolFromEth() public view {
         uint256 ethAmount = 1 ether;
         (uint256 previewPegged, uint256 previewWstEth) = zap.previewStabilityPoolFromEth(ethAmount);
-        
+
         assertGt(previewPegged, 0, "Preview should return > 0");
         assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
         // Should match previewPeggedFromEth since it's the same calculation
-        (uint256 peggedFromEth, ) = zap.previewPeggedFromEth(ethAmount);
+        (uint256 peggedFromEth,) = zap.previewPeggedFromEth(ethAmount);
         assertEq(previewPegged, peggedFromEth, "Should match pegged preview");
     }
 
@@ -372,11 +362,11 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
         uint256 stEthAmount = 10 ether;
         (uint256 previewPegged, uint256 previewWstEth) = zap.previewStabilityPoolFromStEth(stEthAmount);
-        
+
         assertGt(previewPegged, 0, "Preview should return > 0");
         assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
         // Should match previewPeggedFromStEth since it's the same calculation
-        (uint256 peggedFromStEth, ) = zap.previewPeggedFromStEth(stEthAmount);
+        (uint256 peggedFromStEth,) = zap.previewPeggedFromStEth(stEthAmount);
         assertEq(previewPegged, peggedFromStEth, "Should match pegged preview");
     }
 
@@ -385,26 +375,26 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
     function test_Upgrade() public {
         // Deploy new implementation
         address newImpl = address(new MinterETHZap_v3(minter, address(0)));
-        
+
         // Upgrade proxy
         vm.prank(zapOwner);
         zap.upgradeToAndCall(newImpl, "");
-        
+
         // Verify upgrade worked
         assertEq(UnsafeUpgrades.getImplementationAddress(address(zap)), newImpl, "Implementation should be upgraded");
-        
+
         // Verify functionality still works
         uint256 ethAmount = 1 ether;
         vm.startPrank(user1);
         uint256 peggedOut = zap.zapEthToPegged{value: ethAmount}(receiver, 0);
         vm.stopPrank();
-        
+
         assertGt(peggedOut, 0, "Should still work after upgrade");
     }
 
     function test_Upgrade_OnlyOwner() public {
         address newImpl = address(new MinterETHZap_v3(minter, address(0)));
-        
+
         vm.prank(user1);
         vm.expectRevert();
         zap.upgradeToAndCall(newImpl, "");
@@ -414,21 +404,21 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
     function test_SetStabilityPoolAllowed() public {
         address stabilityPool = makeAddr("stabilityPool");
-        
+
         vm.prank(zapOwner);
         zap.setStabilityPoolAllowed(stabilityPool, true);
-        
+
         assertTrue(zap.allowedStabilityPools(stabilityPool), "Stability pool should be allowed");
-        
+
         vm.prank(zapOwner);
         zap.setStabilityPoolAllowed(stabilityPool, false);
-        
+
         assertFalse(zap.allowedStabilityPools(stabilityPool), "Stability pool should not be allowed");
     }
 
     function test_SetStabilityPoolAllowed_OnlyOwner() public {
         address stabilityPool = makeAddr("stabilityPool");
-        
+
         vm.prank(user1);
         vm.expectRevert();
         zap.setStabilityPoolAllowed(stabilityPool, true);
@@ -436,43 +426,45 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
     function test_SetReferral() public {
         address newReferral = makeAddr("newReferral");
-        
+
         vm.prank(zapOwner);
         zap.setReferral(newReferral);
-        
+
         assertEq(zap.referral(), newReferral, "Referral should be updated");
     }
 
     function test_RescueEth() public {
         vm.deal(address(zap), 1 ether);
-        
+
         uint256 ownerBalanceBefore = zapOwner.balance;
         vm.prank(zapOwner);
         zap.rescueEth();
-        
+
         assertEq(zapOwner.balance, ownerBalanceBefore + 1 ether, "ETH should be rescued");
     }
 
-    function test_RescueToken() public {
+    function test_RescueToken_ProtectedToken() public {
         // Use real stETH minting instead of deal() since stETH has complex proxy storage
         vm.deal(address(this), 1 ether);
         ISTETHV2(STETH).submit{value: 1 ether}(address(0));
         uint256 stEthBalance = IERC20(STETH).balanceOf(address(this));
         // forgefmt: disable-next-item
         require(IERC20(STETH).transfer(address(zap), stEthBalance), "Transfer failed");
-        
-        uint256 ownerBalanceBefore = IERC20(STETH).balanceOf(zapOwner);
-        uint256 zapBalanceBefore = IERC20(STETH).balanceOf(address(zap));
-        
+
         vm.prank(zapOwner);
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.CannotRescueProtectedToken.selector, STETH));
         zap.rescueToken(STETH);
-        
-        uint256 ownerBalanceAfter = IERC20(STETH).balanceOf(zapOwner);
-        uint256 zapBalanceAfter = IERC20(STETH).balanceOf(address(zap));
-        
-        // Verify all tokens were rescued (accounting for potential rounding/dust)
-        assertLe(zapBalanceAfter, 10, "Zap should have minimal stETH left (allowing for dust)");
-        assertGe(ownerBalanceAfter, ownerBalanceBefore + zapBalanceBefore - 10, "Token should be rescued (within rounding tolerance)");
+    }
+
+    function test_RescueToken_UnprotectedToken() public {
+        MockERC20 token = new MockERC20("Mock", "MOCK", 18);
+        deal(address(token), address(zap), 1000 ether);
+
+        uint256 ownerBalanceBefore = token.balanceOf(zapOwner);
+        vm.prank(zapOwner);
+        zap.rescueToken(address(token));
+
+        assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
     }
 }
 

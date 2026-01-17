@@ -37,9 +37,7 @@ interface IReservePool {
     /// @param receiver The address recipient for the bonus token.
     /// @param amountRequested The original amount of token used.
     /// @param amountSent The amount of bonus token sent.
-    function requestBonus(
-        address token,
-        address receiver,
-        uint256 amountRequested
-    ) external returns (uint256 amountSent);
+    function requestBonus(address token, address receiver, uint256 amountRequested)
+        external
+        returns (uint256 amountSent);
 }

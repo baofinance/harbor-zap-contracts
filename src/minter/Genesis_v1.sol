@@ -4,7 +4,9 @@ pragma solidity 0.8.30;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
+import {
+    ReentrancyGuardTransientUpgradeable
+} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -149,10 +151,7 @@ contract Genesis_v1 is
             revert GenesisIsNotEnded();
         }
         (peggedAmount, leveragedAmount) = _mintable(
-            $.shares[depositor],
-            $.totalSharesAtGenesisEnd,
-            $.totalPeggedAtGenesisEnd,
-            $.totalLeveragedAtGenesisEnd
+            $.shares[depositor], $.totalSharesAtGenesisEnd, $.totalPeggedAtGenesisEnd, $.totalLeveragedAtGenesisEnd
         );
     }
 
@@ -225,12 +224,8 @@ contract Genesis_v1 is
         if (share_ == 0) {
             revert Token.ZeroInputBalance(WRAPPED_COLLATERAL_TOKEN);
         }
-        (uint256 peggedAmount, uint256 leveragedAmount) = _mintable(
-            share_,
-            $.totalSharesAtGenesisEnd,
-            $.totalPeggedAtGenesisEnd,
-            $.totalLeveragedAtGenesisEnd
-        );
+        (uint256 peggedAmount, uint256 leveragedAmount) =
+            _mintable(share_, $.totalSharesAtGenesisEnd, $.totalPeggedAtGenesisEnd, $.totalLeveragedAtGenesisEnd);
 
         // give the caller their share of the created tokens
         IERC20(PEGGED_TOKEN).safeTransfer(receiver, peggedAmount);
@@ -245,12 +240,11 @@ contract Genesis_v1 is
                           PRIVATE FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function _mintable(
-        uint256 share,
-        uint256 totalShares,
-        uint256 totalPeggedAmount,
-        uint256 totalLeveragedAmount
-    ) private pure returns (uint256 peggedAmount, uint256 leveragedAmount) {
+    function _mintable(uint256 share, uint256 totalShares, uint256 totalPeggedAmount, uint256 totalLeveragedAmount)
+        private
+        pure
+        returns (uint256 peggedAmount, uint256 leveragedAmount)
+    {
         if (totalShares > 0) {
             // count out the caller's share
             peggedAmount = Math.mulDiv(share, totalPeggedAmount, totalShares);

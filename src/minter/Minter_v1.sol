@@ -8,7 +8,9 @@ import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Cont
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
+import {
+    ReentrancyGuardTransientUpgradeable
+} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {Token} from "@bao/Token.sol";
@@ -251,10 +253,8 @@ contract Minter_v1 is
     /// @notice Returns true if a given interface is supported.
     /// @dev See {IERC165-supportsInterface}.
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-        return
-            interfaceId == type(IMinter).interfaceId ||
-            interfaceId == type(ITokenHolder).interfaceId ||
-            super.supportsInterface(interfaceId);
+        return interfaceId == type(IMinter).interfaceId || interfaceId == type(ITokenHolder).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     ///////////////////////////
@@ -305,11 +305,8 @@ contract Minter_v1 is
     /// @inheritdoc IMinter
     function collateralRatio() external view override returns (uint256 collateralRatio_) {
         MinterStorage storage $ = _getMinterStorage();
-        collateralRatio_ = _collateralRatio(
-            $.underlyingCollateral,
-            _fetchMid($.priceOracle).price,
-            $.peggedTokenBalance
-        );
+        collateralRatio_ =
+            _collateralRatio($.underlyingCollateral, _fetchMid($.priceOracle).price, $.peggedTokenBalance);
     }
 
     /// @inheritdoc IMinter
@@ -325,11 +322,8 @@ contract Minter_v1 is
     function leveragedTokenPrice() external view override returns (uint256 nav) {
         MinterStorage storage $ = _getMinterStorage();
         OracleData memory oracle = _fetchMid($.priceOracle);
-        (uint256 collateralValueE36, uint256 peggedValueE36) = _tokenValuesE36(
-            $.peggedTokenBalance,
-            $.underlyingCollateral,
-            oracle.price
-        );
+        (uint256 collateralValueE36, uint256 peggedValueE36) =
+            _tokenValuesE36($.peggedTokenBalance, $.underlyingCollateral, oracle.price);
         nav = _leveragedTokenPriceE36(collateralValueE36, peggedValueE36, _leveragedTokenBalance()) / 1 ether;
     }
 
@@ -360,9 +354,11 @@ contract Minter_v1 is
     }
 
     /// @inheritdoc IMinter
-    function redeemPeggedForCollateralRatio(
-        uint256 targetCollateralRatio
-    ) external view returns (uint256 peggedForCollateral, uint256 peggedForLeveraged) {
+    function redeemPeggedForCollateralRatio(uint256 targetCollateralRatio)
+        external
+        view
+        returns (uint256 peggedForCollateral, uint256 peggedForLeveraged)
+    {
         // TODO: add a check for no pegged tokens
         MinterStorage storage $ = _getMinterStorage();
         OracleData memory oracle = _fetchMax($.priceOracle);
@@ -375,8 +371,8 @@ contract Minter_v1 is
                 peggedForCollateral = peggedTokenBalance_;
             } else {
                 peggedForCollateral =
-                    (targetCollateralRatio * peggedTokenBalance_ - collateralTokenBalance_ * oracle.price) /
-                    (targetCollateralRatio - 1 ether);
+                    (targetCollateralRatio * peggedTokenBalance_ - collateralTokenBalance_ * oracle.price)
+                        / (targetCollateralRatio - 1 ether);
             }
             peggedForLeveraged =
                 peggedTokenBalance_ - Math.mulDiv(collateralTokenBalance_, oracle.price, targetCollateralRatio);
@@ -390,7 +386,7 @@ contract Minter_v1 is
     // ----------------
 
     // solhint-disable-next-line explicit-types
-    function _lookupIncentiveRatio(uint action) internal view returns (int256 incentiveRatio) {
+    function _lookupIncentiveRatio(uint256 action) internal view returns (int256 incentiveRatio) {
         MinterStorage storage $ = _getMinterStorage();
         OracleData memory oracle = _fetchMid($.priceOracle);
         uint256 collateralTokenBalance_ = $.underlyingCollateral;
@@ -398,7 +394,7 @@ contract Minter_v1 is
 
         ConfigIncentiveLib.ActionIncentive memory config_ = $.incentiveConfig[action];
         // solhint-disable-next-line explicit-types
-        uint band = _findBand(config_, collateralTokenBalance_, oracle.price, peggedTokenBalance_, false);
+        uint256 band = _findBand(config_, collateralTokenBalance_, oracle.price, peggedTokenBalance_, false);
         incentiveRatio = ConfigIncentiveLib._incentiveRatio(config_, band);
     }
 
@@ -431,9 +427,7 @@ contract Minter_v1 is
     // require gas to be spent on a transaction.
 
     /// @inheritdoc IMinter
-    function mintPeggedTokenDryRun(
-        uint256 wrappedCollateralIn
-    )
+    function mintPeggedTokenDryRun(uint256 wrappedCollateralIn)
         external
         view
         returns (
@@ -463,9 +457,7 @@ contract Minter_v1 is
     }
 
     /// @inheritdoc IMinter
-    function redeemPeggedTokenDryRun(
-        uint256 peggedIn
-    )
+    function redeemPeggedTokenDryRun(uint256 peggedIn)
         external
         view
         returns (
@@ -487,7 +479,7 @@ contract Minter_v1 is
         rate = oracle.rate;
         peggedRedeemed = peggedIn;
         uint256 peggedPriceE36;
-        (wrappedFee, wrappedDiscount, wrappedCollateralReturned, , peggedPriceE36) = _redeemPeggedAdjustments(
+        (wrappedFee, wrappedDiscount, wrappedCollateralReturned,, peggedPriceE36) = _redeemPeggedAdjustments(
             $.incentiveConfig[Config_v1.REDEEM_PEGGED],
             peggedIn,
             CollateralRatioData($.underlyingCollateral, price, rate, peggedTokenBalance_),
@@ -506,15 +498,12 @@ contract Minter_v1 is
                 incentive = wrappedDiscount - wrappedFee;
                 sign = -1;
             }
-            incentiveRatio =
-                sign * int256(Math.mulDiv(incentive * 1e18, price * rate, peggedRedeemed * peggedPriceE36));
+            incentiveRatio = sign * int256(Math.mulDiv(incentive * 1e18, price * rate, peggedRedeemed * peggedPriceE36));
         }
     }
 
     /// @inheritdoc IMinter
-    function mintLeveragedTokenDryRun(
-        uint256 wrappedCollateralIn
-    )
+    function mintLeveragedTokenDryRun(uint256 wrappedCollateralIn)
         external
         view
         returns (
@@ -532,7 +521,7 @@ contract Minter_v1 is
         OracleData memory oracle = _fetchMid($.priceOracle);
         price = oracle.price;
         rate = oracle.rate;
-        (wrappedFee, wrappedDiscount, leveragedMinted, wrappedCollateralUsed, ) = _mintLeveragedAdjustments(
+        (wrappedFee, wrappedDiscount, leveragedMinted, wrappedCollateralUsed,) = _mintLeveragedAdjustments(
             $.incentiveConfig[Config_v1.MINT_LEVERAGED],
             wrappedCollateralIn,
             CollateralRatioData($.underlyingCollateral, oracle.price, oracle.rate, $.peggedTokenBalance),
@@ -556,9 +545,7 @@ contract Minter_v1 is
     }
 
     /// @inheritdoc IMinter
-    function redeemLeveragedTokenDryRun(
-        uint256 leveragedIn
-    )
+    function redeemLeveragedTokenDryRun(uint256 leveragedIn)
         external
         view
         returns (
@@ -577,7 +564,7 @@ contract Minter_v1 is
         OracleData memory oracle = _fetchMid($.priceOracle);
         price = oracle.price;
         rate = oracle.rate;
-        (wrappedFee, leveragedRedeemed, wrappedCollateralReturned, ) = _redeemLeveragedAdjustments(
+        (wrappedFee, leveragedRedeemed, wrappedCollateralReturned,) = _redeemLeveragedAdjustments(
             $.incentiveConfig[Config_v1.REDEEM_LEVERAGED],
             leveragedIn,
             CollateralRatioData($.underlyingCollateral, price, rate, $.peggedTokenBalance),
@@ -647,11 +634,12 @@ contract Minter_v1 is
     // -----------------------------------------
 
     /// @inheritdoc IMinter
-    function mintPeggedToken(
-        uint256 wrappedCollateralIn,
-        address receiver,
-        uint256 minPeggedOut
-    ) external override nonReentrant returns (uint256 peggedOut) {
+    function mintPeggedToken(uint256 wrappedCollateralIn, address receiver, uint256 minPeggedOut)
+        external
+        override
+        nonReentrant
+        returns (uint256 peggedOut)
+    {
         MinterStorage storage $ = _getMinterStorage();
         // work out how much collateral to use
         OracleData memory oracle = _fetchMid($.priceOracle);
@@ -695,11 +683,7 @@ contract Minter_v1 is
 
     /// @inheritdoc IMinter
 
-    function redeemPeggedToken(
-        uint256 peggedIn,
-        address receiver,
-        uint256 minWrappedCollateralOut
-    )
+    function redeemPeggedToken(uint256 peggedIn, address receiver, uint256 minWrappedCollateralOut)
         external
         override
         nonReentrant
@@ -719,7 +703,7 @@ contract Minter_v1 is
         uint256 wrappedFee;
         uint256 wrappedDiscount;
         uint256 underlyingCollateralRemoved;
-        (wrappedFee, wrappedDiscount, wrappedCollateralOut, underlyingCollateralRemoved, ) = _redeemPeggedAdjustments(
+        (wrappedFee, wrappedDiscount, wrappedCollateralOut, underlyingCollateralRemoved,) = _redeemPeggedAdjustments(
             $.incentiveConfig[Config_v1.REDEEM_PEGGED],
             peggedIn,
             CollateralRatioData(underlyingCollateral_, oracle.price, oracle.rate, peggedTokenBalance_),
@@ -742,11 +726,8 @@ contract Minter_v1 is
         if (wrappedDiscount > 0) {
             // it's a discount, so collect the extra collateral, if available
             // wake-disable-next-line reentrancy // reservePool is trusted and reentrancy guard
-            uint256 actualBonus = IReservePool($.reservePool).requestBonus(
-                WRAPPED_COLLATERAL_TOKEN,
-                address(this),
-                wrappedDiscount
-            );
+            uint256 actualBonus =
+                IReservePool($.reservePool).requestBonus(WRAPPED_COLLATERAL_TOKEN, address(this), wrappedDiscount);
             if (actualBonus != wrappedDiscount) {
                 revert RequestedBonusNotGiven(wrappedDiscount, actualBonus);
             }
@@ -761,11 +742,12 @@ contract Minter_v1 is
     }
 
     /// @inheritdoc IMinter
-    function mintLeveragedToken(
-        uint256 wrappedCollateralIn,
-        address receiver,
-        uint256 minLeveragedOut
-    ) external override nonReentrant returns (uint256 leveragedOut) {
+    function mintLeveragedToken(uint256 wrappedCollateralIn, address receiver, uint256 minLeveragedOut)
+        external
+        override
+        nonReentrant
+        returns (uint256 leveragedOut)
+    {
         MinterStorage storage $ = _getMinterStorage();
         wrappedCollateralIn = Token.allOf(_msgSender(), WRAPPED_COLLATERAL_TOKEN, wrappedCollateralIn);
 
@@ -775,13 +757,8 @@ contract Minter_v1 is
         uint256 underlyingCollateral_ = $.underlyingCollateral;
         uint256 underlyingCollateralAdded;
         address reservePool_ = $.reservePool;
-        (
-            wrappedFee,
-            wrappedDiscount,
-            leveragedOut,
-            wrappedCollateralIn,
-            underlyingCollateralAdded
-        ) = _mintLeveragedAdjustments(
+        (wrappedFee, wrappedDiscount, leveragedOut, wrappedCollateralIn, underlyingCollateralAdded) =
+            _mintLeveragedAdjustments(
                 $.incentiveConfig[Config_v1.MINT_LEVERAGED],
                 wrappedCollateralIn,
                 CollateralRatioData(underlyingCollateral_, oracle.price, oracle.rate, $.peggedTokenBalance),
@@ -790,11 +767,8 @@ contract Minter_v1 is
         if (wrappedDiscount > 0) {
             // it's a discount, so collect the extra collateral, if available
             // wake-disable-next-line reentrancy // reservePool is trusted
-            uint256 actualBonus = IReservePool(reservePool_).requestBonus(
-                WRAPPED_COLLATERAL_TOKEN,
-                address(this),
-                wrappedDiscount
-            );
+            uint256 actualBonus =
+                IReservePool(reservePool_).requestBonus(WRAPPED_COLLATERAL_TOKEN, address(this), wrappedDiscount);
             if (actualBonus != wrappedDiscount) {
                 revert RequestedBonusNotGiven(wrappedDiscount, actualBonus);
             }
@@ -814,11 +788,11 @@ contract Minter_v1 is
     }
 
     /// @inheritdoc IMinter
-    function redeemLeveragedToken(
-        uint256 leveragedIn,
-        address receiver,
-        uint256 minWrappedCollateralOut
-    ) external override returns (uint256 wrappedCollateralOut) {
+    function redeemLeveragedToken(uint256 leveragedIn, address receiver, uint256 minWrappedCollateralOut)
+        external
+        override
+        returns (uint256 wrappedCollateralOut)
+    {
         MinterStorage storage $ = _getMinterStorage();
         leveragedIn = Token.allOf(_msgSender(), LEVERAGED_TOKEN, leveragedIn);
 
@@ -863,10 +837,13 @@ contract Minter_v1 is
     // --------------------------------------------------
 
     /// @inheritdoc IMinter
-    function freeMintPeggedToken(
-        uint256 wrappedCollateralIn,
-        address receiver
-    ) external override onlyRoles(ZERO_FEE_ROLE) nonReentrant returns (uint256 peggedOut) {
+    function freeMintPeggedToken(uint256 wrappedCollateralIn, address receiver)
+        external
+        override
+        onlyRoles(ZERO_FEE_ROLE)
+        nonReentrant
+        returns (uint256 peggedOut)
+    {
         MinterStorage storage $ = _getMinterStorage();
         OracleData memory oracle = _fetchMid($.priceOracle);
         uint256 underlyingCollateralInE36 = wrappedCollateralIn * oracle.rate;
@@ -889,20 +866,19 @@ contract Minter_v1 is
     }
 
     // @inheritdoc IMinter
-    function freeRedeemPeggedToken(
-        uint256 peggedForCollateral,
-        uint256 peggedForLeveraged,
-        address receiver
-    ) external nonReentrant onlyRoles(ZERO_FEE_ROLE) returns (uint256 wrappedCollateralOut, uint256 leveragedOut) {
+    function freeRedeemPeggedToken(uint256 peggedForCollateral, uint256 peggedForLeveraged, address receiver)
+        external
+        nonReentrant
+        onlyRoles(ZERO_FEE_ROLE)
+        returns (uint256 wrappedCollateralOut, uint256 leveragedOut)
+    {
         if (peggedForCollateral + peggedForLeveraged > 0) {
             MinterStorage storage $ = _getMinterStorage();
             uint256 peggedTokenBalance_ = $.peggedTokenBalance;
 
             if ((peggedForCollateral + peggedForLeveraged) > peggedTokenBalance_) {
                 revert InsufficientRedeemableTokens(
-                    PEGGED_TOKEN,
-                    peggedTokenBalance_,
-                    peggedForCollateral + peggedForLeveraged
+                    PEGGED_TOKEN, peggedTokenBalance_, peggedForCollateral + peggedForLeveraged
                 );
             }
 
@@ -934,11 +910,7 @@ contract Minter_v1 is
             }
 
             emit RedeemPeggedToken(
-                _msgSender(),
-                receiver,
-                peggedForLeveraged + peggedForCollateral,
-                wrappedCollateralOut,
-                leveragedOut
+                _msgSender(), receiver, peggedForLeveraged + peggedForCollateral, wrappedCollateralOut, leveragedOut
             );
 
             // burn the tokens from the sender - deal with the different burn signatures for ERC20 contracts
@@ -949,24 +921,23 @@ contract Minter_v1 is
     }
 
     // @inheritdoc IMinter
-    function freeMintLeveragedToken(
-        uint256 wrappedCollateralIn,
-        address receiver
-    ) external override onlyRoles(ZERO_FEE_ROLE) nonReentrant returns (uint256 leveragedOut) {
+    function freeMintLeveragedToken(uint256 wrappedCollateralIn, address receiver)
+        external
+        override
+        onlyRoles(ZERO_FEE_ROLE)
+        nonReentrant
+        returns (uint256 leveragedOut)
+    {
         MinterStorage storage $ = _getMinterStorage();
         // how much collateral to use
         OracleData memory oracle = _fetchMid($.priceOracle);
-        (uint256 collateralValueE36, uint256 peggedValueE36) = _tokenValuesE36(
-            $.peggedTokenBalance,
-            $.underlyingCollateral,
-            oracle.price
-        );
+        (uint256 collateralValueE36, uint256 peggedValueE36) =
+            _tokenValuesE36($.peggedTokenBalance, $.underlyingCollateral, oracle.price);
         uint256 underlyingCollateralInE36 = wrappedCollateralIn * oracle.rate;
         uint256 leveragedTokenBalance_ = _leveragedTokenBalance();
         if (leveragedTokenBalance_ > 0) {
-            leveragedOut =
-                (underlyingCollateralInE36 * oracle.price) /
-                _leveragedTokenPriceE36(collateralValueE36, peggedValueE36, leveragedTokenBalance_);
+            leveragedOut = (underlyingCollateralInE36 * oracle.price)
+                / _leveragedTokenPriceE36(collateralValueE36, peggedValueE36, leveragedTokenBalance_);
         } else {
             leveragedOut = collateralValueE36; // First term
             leveragedOut += Math.mulDiv(underlyingCollateralInE36, oracle.price, 1e18); // Second term
@@ -982,10 +953,12 @@ contract Minter_v1 is
     }
 
     // @inheritdoc IMinter
-    function freeRedeemLeveragedToken(
-        uint256 leveragedIn,
-        address receiver
-    ) external override onlyRoles(ZERO_FEE_ROLE) returns (uint256 collateralOut) {
+    function freeRedeemLeveragedToken(uint256 leveragedIn, address receiver)
+        external
+        override
+        onlyRoles(ZERO_FEE_ROLE)
+        returns (uint256 collateralOut)
+    {
         MinterStorage storage $ = _getMinterStorage();
 
         uint256 leveragedTokenBalance_ = _leveragedTokenBalance();
@@ -993,11 +966,8 @@ contract Minter_v1 is
 
         OracleData memory oracle = _fetchMin($.priceOracle);
 
-        (uint256 collateralValueE36, uint256 peggedValueE36) = _tokenValuesE36(
-            $.peggedTokenBalance,
-            $.underlyingCollateral,
-            oracle.price
-        );
+        (uint256 collateralValueE36, uint256 peggedValueE36) =
+            _tokenValuesE36($.peggedTokenBalance, $.underlyingCollateral, oracle.price);
         if (collateralValueE36 <= peggedValueE36) {
             collateralOut = 0;
         } else {
@@ -1006,9 +976,7 @@ contract Minter_v1 is
                 underlyingCollateralOutE36 = leveragedIn * oracle.price;
             } else {
                 underlyingCollateralOutE36 = Math.mulDiv(
-                    leveragedIn * 1 ether,
-                    collateralValueE36 - peggedValueE36,
-                    oracle.price * leveragedTokenBalance_
+                    leveragedIn * 1 ether, collateralValueE36 - peggedValueE36, oracle.price * leveragedTokenBalance_
                 );
             }
             collateralOut = underlyingCollateralOutE36 / oracle.rate;
@@ -1156,7 +1124,9 @@ contract Minter_v1 is
         // wake-disable-next-line reentrancy // leveragedToken is trusted
         IBurnableFrom(LEVERAGED_TOKEN).burnFrom(_msgSender(), leveragedIn);
         // return the collateral
-        IERC20(WRAPPED_COLLATERAL_TOKEN /*  */).safeTransfer(receiver, collateralOut);
+        IERC20(
+                WRAPPED_COLLATERAL_TOKEN /*  */
+            ).safeTransfer(receiver, collateralOut);
     }
 
     /// @notice Checks and returns whether a token can be redeemed.
@@ -1166,11 +1136,11 @@ contract Minter_v1 is
     /// @return amountOut the amountIn or tokenBalance whatever is the smaller
     /// @dev never returns a non-positive amountOut. reverts instead
 
-    function _redeemable(
-        address token_,
-        uint256 amountIn,
-        uint256 tokenBalance_
-    ) private pure returns (uint256 amountOut) {
+    function _redeemable(address token_, uint256 amountIn, uint256 tokenBalance_)
+        private
+        pure
+        returns (uint256 amountOut)
+    {
         amountOut = _redeemableQuiet(amountIn, tokenBalance_);
         // slither-disable-next-line incorrect-equality
         if (amountOut == 0) {
@@ -1203,7 +1173,7 @@ contract Minter_v1 is
     }
 
     struct MintPeggedWorkspace {
-        uint band; // solhint-disable-line explicit-types
+        uint256 band; // solhint-disable-line explicit-types
         uint256 underlyingCollateralInLeftE36;
         uint256 underlyingCollateralHeldE36;
         uint256 underlyingCollateralAddedE36;
@@ -1300,11 +1270,8 @@ contract Minter_v1 is
 
             w.underlyingCollateralInLeftE36 -= collateralInBandE36;
 
-            uint256 peggedMintedInBandE36 = Math.mulDiv(
-                collateralAddedInBandE36,
-                cr.price * 1 ether,
-                peggedTokenPriceE36
-            );
+            uint256 peggedMintedInBandE36 =
+                Math.mulDiv(collateralAddedInBandE36, cr.price * 1 ether, peggedTokenPriceE36);
 
             w.mintedE36 += peggedMintedInBandE36;
 
@@ -1375,7 +1342,7 @@ contract Minter_v1 is
     {
         RedeemPeggedWorkspace memory w;
         // solhint-disable-next-line explicit-types
-        uint band = _findBand(config_, cr.underlyingCollateral, cr.price, cr.peggedTokenBalance, true);
+        uint256 band = _findBand(config_, cr.underlyingCollateral, cr.price, cr.peggedTokenBalance, true);
         // simulate redeeming until we run out of pegged tokens, adding the fee & bonus as we go
         // We do this band at a time, pro-rating the resulting fee according to how much collateral was needed in
         // each band entered. We use collateral to pro-rate, rather than collateral ratio which would be simpler, because
@@ -1406,8 +1373,8 @@ contract Minter_v1 is
                     } else {
                         // note the bandUpperBound cannot be == 1 ether so this is safe below
                         peggedInBandE36 =
-                            (bandUpperBound * w.peggedTokenHeldE36 - w.underlyingCollateralHeldE36 * cr.price) /
-                            (bandUpperBound - 1 ether);
+                            (bandUpperBound * w.peggedTokenHeldE36 - w.underlyingCollateralHeldE36 * cr.price)
+                                / (bandUpperBound - 1 ether);
                         peggedInBandE36 = Math.min(w.peggedInLeftE36, peggedInBandE36);
                     }
                 }
@@ -1420,8 +1387,7 @@ contract Minter_v1 is
             {
                 uint256 collateralInBandE36;
                 (collateralInBandE36, w.collateralHeldErrorE54) = _divAccumulateError(
-                    Math.mulDiv(peggedInBandE36, peggedPriceE36, cr.price),
-                    w.collateralHeldErrorE54
+                    Math.mulDiv(peggedInBandE36, peggedPriceE36, cr.price), w.collateralHeldErrorE54
                 );
 
                 // tally the fee or discount - these values have no effect at the moment:
@@ -1429,17 +1395,13 @@ contract Minter_v1 is
                 int256 bandIncentiveRatio = ConfigIncentiveLib._incentiveRatio(config_, band);
                 if (bandIncentiveRatio < 0) {
                     uint256 bandDiscountE36;
-                    (bandDiscountE36, w.discountErrorE54) = _divAccumulateError(
-                        collateralInBandE36 * uint256(-bandIncentiveRatio),
-                        w.discountErrorE54
-                    );
+                    (bandDiscountE36, w.discountErrorE54) =
+                        _divAccumulateError(collateralInBandE36 * uint256(-bandIncentiveRatio), w.discountErrorE54);
                     w.underlyingDiscountE36 += bandDiscountE36;
                 } else {
                     uint256 bandFeeE36;
-                    (bandFeeE36, w.feeErrorE54) = _divAccumulateError(
-                        collateralInBandE36 * uint256(bandIncentiveRatio),
-                        w.feeErrorE54
-                    );
+                    (bandFeeE36, w.feeErrorE54) =
+                        _divAccumulateError(collateralInBandE36 * uint256(bandIncentiveRatio), w.feeErrorE54);
                     w.underlyingFeeE36 += bandFeeE36;
                 }
                 w.underlyingCollateralHeldE36 -= collateralInBandE36;
@@ -1455,7 +1417,7 @@ contract Minter_v1 is
     }
 
     struct MintLeveragedWorkspace {
-        uint band; // solhint-disable-line explicit-types
+        uint256 band; // solhint-disable-line explicit-types
         uint256 underlyingCollateralInLeftE36;
         uint256 underlyingReserveCapacityE36;
         uint256 underlyingCollateralHeldE36;
@@ -1507,11 +1469,8 @@ contract Minter_v1 is
         )
     {
         MintLeveragedWorkspace memory w;
-        (w.collateralValueE36, w.peggedValueE36) = _tokenValuesE36(
-            cr.peggedTokenBalance,
-            cr.underlyingCollateral,
-            cr.price
-        );
+        (w.collateralValueE36, w.peggedValueE36) =
+            _tokenValuesE36(cr.peggedTokenBalance, cr.underlyingCollateral, cr.price);
         // leveraged tokens have no value (we may not have quite depegged, though)
         if (w.collateralValueE36 <= w.peggedValueE36) {
             return (0, 0, 0, 0, 0);
@@ -1562,8 +1521,8 @@ contract Minter_v1 is
                 // discount
                 // we calculate the collateralInBand assuming there is no reserve pool capacity limit (for this band)
                 collateralInBandE36 = Math.mulDiv(
-                    ConfigIncentiveLib._collateralRatioUpperBounds(config_, w.band) * w.peggedTokenHeldE36 -
-                        w.underlyingCollateralHeldE36 * cr.price,
+                    ConfigIncentiveLib._collateralRatioUpperBounds(config_, w.band) * w.peggedTokenHeldE36
+                        - w.underlyingCollateralHeldE36 * cr.price,
                     1e18,
                     cr.price * (1e18 + w.bandDiscountRatio)
                 );
@@ -1582,8 +1541,8 @@ contract Minter_v1 is
             } else {
                 // no discount
                 collateralInBandE36 = Math.mulDiv(
-                    ConfigIncentiveLib._collateralRatioUpperBounds(config_, w.band) * w.peggedTokenHeldE36 -
-                        w.underlyingCollateralHeldE36 * cr.price,
+                    ConfigIncentiveLib._collateralRatioUpperBounds(config_, w.band) * w.peggedTokenHeldE36
+                        - w.underlyingCollateralHeldE36 * cr.price,
                     1e18,
                     cr.price * (1e18 - w.bandFeeRatio)
                 );
@@ -1672,26 +1631,20 @@ contract Minter_v1 is
         // we can't meaningfully do anything with leveraged tokens as their value is zero
         // and we an do this once, here, and not in the loop below, because redeeming leveraged tokens, will never cause a re-peg.
         {
-            (uint256 collateralValueE36, uint256 peggedValueE36) = _tokenValuesE36(
-                cr.peggedTokenBalance,
-                cr.underlyingCollateral,
-                cr.price
-            );
+            (uint256 collateralValueE36, uint256 peggedValueE36) =
+                _tokenValuesE36(cr.peggedTokenBalance, cr.underlyingCollateral, cr.price);
             if (collateralValueE36 <= peggedValueE36 || leveragedTokenBalance_ == 0 || leveragedIn == 0) {
                 // there is no value in the leveraged being offered
                 return (0, 0, 0, 0);
             }
 
             // we know leveraged token balance is > 0
-            w.underlyingCollateralInE36 = Math.mulDiv(
-                collateralValueE36 - peggedValueE36,
-                leveragedIn * 1e18,
-                cr.price * leveragedTokenBalance_
-            );
+            w.underlyingCollateralInE36 =
+                Math.mulDiv(collateralValueE36 - peggedValueE36, leveragedIn * 1e18, cr.price * leveragedTokenBalance_);
             w.underlyingCollateralInLeftE36 = w.underlyingCollateralInE36;
         }
         // solhint-disable-next-line explicit-types
-        uint band = _findBand(config_, cr.underlyingCollateral, cr.price, cr.peggedTokenBalance, false);
+        uint256 band = _findBand(config_, cr.underlyingCollateral, cr.price, cr.peggedTokenBalance, false);
         w.underlyingCollateralHeldE36 = cr.underlyingCollateral * 1e18;
 
         while (true) {
@@ -1756,7 +1709,7 @@ contract Minter_v1 is
         private
         pure
         returns (
-            uint band // solhint-disable-line explicit-types
+            uint256 band // solhint-disable-line explicit-types
         )
     {
         uint256 collateralRatio_ = _collateralRatio(collateralTokenBalance_, collateralPrice, peggedTokenBalance_);
@@ -1791,11 +1744,11 @@ contract Minter_v1 is
         }
     }
 
-    function _tokenValuesE36(
-        uint256 peggedTokenBalance_,
-        uint256 collateralTokenBalance_,
-        uint256 collateralPrice
-    ) private pure returns (uint256 collateralValueE36, uint256 peggedValueE36) {
+    function _tokenValuesE36(uint256 peggedTokenBalance_, uint256 collateralTokenBalance_, uint256 collateralPrice)
+        private
+        pure
+        returns (uint256 collateralValueE36, uint256 peggedValueE36)
+    {
         collateralValueE36 = collateralTokenBalance_ * collateralPrice;
         peggedValueE36 = peggedTokenBalance_ * 1 ether;
         // the value of the pegged cannot be greater than the value of the collateral
@@ -1804,16 +1757,13 @@ contract Minter_v1 is
         }
     }
 
-    function _leverageRatio(
-        uint256 peggedTokenBalance_,
-        uint256 underlyingCollateral_,
-        uint256 price
-    ) internal pure returns (uint256 ratio) {
-        (uint256 collateralValueE36, uint256 peggedValueE36) = _tokenValuesE36(
-            peggedTokenBalance_,
-            underlyingCollateral_,
-            price
-        );
+    function _leverageRatio(uint256 peggedTokenBalance_, uint256 underlyingCollateral_, uint256 price)
+        internal
+        pure
+        returns (uint256 ratio)
+    {
+        (uint256 collateralValueE36, uint256 peggedValueE36) =
+            _tokenValuesE36(peggedTokenBalance_, underlyingCollateral_, price);
         if (peggedValueE36 >= collateralValueE36) {
             // it divides by 0 or goes negative!
             ratio = _LEVERAGE_RATIO_CAP;
@@ -1838,10 +1788,11 @@ contract Minter_v1 is
     }
 
     /// @dev function to accumulate an error term from a divide by 1 ether
-    function _divAccumulateError(
-        uint256 preDivideE54,
-        int256 errorE54
-    ) private pure returns (uint256 postDivideE36, int256 newErrorE54) {
+    function _divAccumulateError(uint256 preDivideE54, int256 errorE54)
+        private
+        pure
+        returns (uint256 postDivideE36, int256 newErrorE54)
+    {
         unchecked {
             postDivideE36 = preDivideE54 / 1 ether; // scaled to 1e36
             newErrorE54 = errorE54 + (int256(preDivideE54) % 1 ether);
@@ -1870,9 +1821,7 @@ contract Minter_v1 is
             } else {
                 // Convert using leverage ratio approach as this is only called in a rebalance context
                 leveragedTokens = Math.mulDiv(
-                    peggedIn * leveragedTokenBalance_,
-                    leverageRatio_,
-                    collateralTokenBalance_ * collateralPrice
+                    peggedIn * leveragedTokenBalance_, leverageRatio_, collateralTokenBalance_ * collateralPrice
                 );
             }
         } else {
@@ -1892,11 +1841,11 @@ contract Minter_v1 is
     /// @param collateralPrice The price of collateral in terms of the pegged token
     /// @param peggedTokenBalance_ The amount of pegged tokens
     /// @return collateralRatio_ The raw collateral ratio with 18 decimals
-    function _collateralRatio(
-        uint256 collateralTokenBalance_,
-        uint256 collateralPrice,
-        uint256 peggedTokenBalance_
-    ) private pure returns (uint256 collateralRatio_) {
+    function _collateralRatio(uint256 collateralTokenBalance_, uint256 collateralPrice, uint256 peggedTokenBalance_)
+        private
+        pure
+        returns (uint256 collateralRatio_)
+    {
         // Hot path: pegged > 0 → just compute the ratio (covers collateral==0 or price==0 as 0).
         // slither-disable-next-line incorrect-equality
         if (peggedTokenBalance_ != 0) {
@@ -1931,8 +1880,8 @@ contract Minter_v1 is
     /// @notice Returns the safe price for the collateral token.
     /// @dev Checks safe price non-zero.
     function _fetchMid(address priceOracle_) private view returns (OracleData memory) {
-        (uint256 minPrice, uint256 maxPrice, uint256 minRate, uint256 maxRate) = IWrappedPriceOracle(priceOracle_)
-            .latestAnswer();
+        (uint256 minPrice, uint256 maxPrice, uint256 minRate, uint256 maxRate) =
+            IWrappedPriceOracle(priceOracle_).latestAnswer();
         return OracleData(_round(minPrice + maxPrice, 2), _round(minRate + maxRate, 2));
     }
 
@@ -1941,7 +1890,7 @@ contract Minter_v1 is
     /// @dev Checks the returned price is non-zero.
     function _fetchMin(address priceOracle_) private view returns (OracleData memory) {
         // slither-disable-next-line unused-return
-        (uint256 minPrice, , uint256 minRate, ) = IWrappedPriceOracle(priceOracle_).latestAnswer();
+        (uint256 minPrice,, uint256 minRate,) = IWrappedPriceOracle(priceOracle_).latestAnswer();
         return OracleData(minPrice, minRate);
     }
 
@@ -1950,7 +1899,7 @@ contract Minter_v1 is
     /// @dev Checks the returned price is non-zero.
     function _fetchMax(address priceOracle_) private view returns (OracleData memory) {
         // slither-disable-next-line unused-return
-        (, uint256 maxPrice, , uint256 maxRate) = IWrappedPriceOracle(priceOracle_).latestAnswer();
+        (, uint256 maxPrice,, uint256 maxRate) = IWrappedPriceOracle(priceOracle_).latestAnswer();
         return OracleData(maxPrice, maxRate);
     }
 

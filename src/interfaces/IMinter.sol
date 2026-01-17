@@ -37,6 +37,7 @@ interface IMinter {
         // no negative values are allowed in the highest band
         int256[] incentiveRatios;
     }
+
     struct Config {
         // bonus/fees
         IncentiveConfig mintPeggedIncentiveConfig;
@@ -64,10 +65,7 @@ interface IMinter {
     /// @param collateralIn The amount of collateral token deposited.
     /// @param leveragedOut The amount of leveragedToken minted.
     event MintLeveragedToken(
-        address indexed sender,
-        address indexed receiver,
-        uint256 collateralIn,
-        uint256 leveragedOut
+        address indexed sender, address indexed receiver, uint256 collateralIn, uint256 leveragedOut
     );
 
     /// @notice Emitted when someone redeems a peggedToken .
@@ -90,10 +88,7 @@ interface IMinter {
     /// @param leveragedTokenBurned The amount of leveragedToken burned.
     /// @param collateralOut The amount of collateral token redeemed.
     event RedeemLeveragedToken(
-        address indexed sender,
-        address indexed receiver,
-        uint256 leveragedTokenBurned,
-        uint256 collateralOut
+        address indexed sender, address indexed receiver, uint256 leveragedTokenBurned, uint256 collateralOut
     );
 
     /// @notice Emitted when there's been a slashing event and Zhenglong responds by calling reset.
@@ -144,17 +139,17 @@ interface IMinter {
 
     /// @dev thrown if a ratio doesn't make sense in some context
     error InvalidRatio();
-    error TooManyCollateralRatioBounds(string config, uint count, uint max); // solhint-disable-line explicit-types
-    error InvalidCollateralRatioBoundValue(string config, uint256 value, uint index, string reason); // solhint-disable-line explicit-types
+    error TooManyCollateralRatioBounds(string config, uint256 count, uint256 max); // solhint-disable-line explicit-types
+    error InvalidCollateralRatioBoundValue(string config, uint256 value, uint256 index, string reason); // solhint-disable-line explicit-types
     error CollateralRatioBoundValueNotIncreasing(
         string config,
         uint256 shouldBeLessOrEqual,
-        uint index, // solhint-disable-line explicit-types
+        uint256 index, // solhint-disable-line explicit-types
         uint256 shouldBeGreaterOrEqual
     );
-    error TooManyIncentiveRatios(string config, uint count, uint max); // solhint-disable-line explicit-types
-    error TooFewIncentiveRatios(string config, uint count, uint min); // solhint-disable-line explicit-types
-    error InvalidIncentiveRatioValue(string config, uint index, int256 shouldBeMinusOnetoOne, string reason); // solhint-disable-line explicit-types
+    error TooManyIncentiveRatios(string config, uint256 count, uint256 max); // solhint-disable-line explicit-types
+    error TooFewIncentiveRatios(string config, uint256 count, uint256 min); // solhint-disable-line explicit-types
+    error InvalidIncentiveRatioValue(string config, uint256 index, int256 shouldBeMinusOnetoOne, string reason); // solhint-disable-line explicit-types
     error IncentiveRatioTooPrecise(string config, int256 value);
     error CollateralRatioBoundsIncentivesLengthsMismatch(string config, uint256 oneLess, uint256 oneMore);
     error CollateralRatioBoundTooPrecise(string config, uint256 value);
@@ -225,9 +220,10 @@ interface IMinter {
     /// given the current collateral ratio and redeeming into collateral
     /// @return peggedForLeveraged The number of pegged tokens that need to be redeemed to achieve the `targetCollateralRatio`
     /// given the current collateral ratio and redeeming into leveaged tokens
-    function redeemPeggedForCollateralRatio(
-        uint256 targetCollateralRatio
-    ) external view returns (uint256 peggedForCollateral, uint256 peggedForLeveraged);
+    function redeemPeggedForCollateralRatio(uint256 targetCollateralRatio)
+        external
+        view
+        returns (uint256 peggedForCollateral, uint256 peggedForLeveraged);
 
     /// @notice Returns the address of the price oracle contract
     function priceOracle() external view returns (address);
@@ -286,9 +282,7 @@ interface IMinter {
     /// @return peggedMinted The amount of pegged tokens that would be minted, given the 'collateralTaken' value and 'fee'.
     /// @return price The price of collateral in terms of pegged tokens used in the calculations.
     /// @return rate The conversion rate from underlying collateral to wrapped collateral.
-    function mintPeggedTokenDryRun(
-        uint256 collateralIn
-    )
+    function mintPeggedTokenDryRun(uint256 collateralIn)
         external
         view
         returns (
@@ -319,9 +313,7 @@ interface IMinter {
     /// @return wrappedCollateralReturned The amount of collateral returned to the caller including from the reserve pool (if a discount has been configured)
     /// @return price is the price of collateral in terms of pegged tokens used in the calculations.
     /// @return rate The conversion rate from underlying collateral to wrapped collateral.
-    function redeemPeggedTokenDryRun(
-        uint256 peggedIn
-    )
+    function redeemPeggedTokenDryRun(uint256 peggedIn)
         external
         view
         returns (
@@ -344,9 +336,7 @@ interface IMinter {
     /// @return collateralUsed The amount of collateral used in the exchange.
     /// @return leveragedMinted The amount of leveraged tokens that would be minted. This takes into account the discount applied.
 
-    function mintLeveragedTokenDryRun(
-        uint256 collateralIn
-    )
+    function mintLeveragedTokenDryRun(uint256 collateralIn)
         external
         view
         returns (
@@ -369,9 +359,7 @@ interface IMinter {
     /// @return collateralReturned The amount of collateral returned from the reserve pool and passed to the caller.
     /// @return price is the price of collateral in terms of pegged tokens used in the calculations.
     /// @return rate The conversion rate from underlying collateral to wrapped collateral.
-    function redeemLeveragedTokenDryRun(
-        uint256 leveragedIn
-    )
+    function redeemLeveragedTokenDryRun(uint256 leveragedIn)
         external
         view
         returns (
@@ -397,11 +385,9 @@ interface IMinter {
     /// @param receiver The address of receiver for peggedToken.
     /// @param minPeggedOut The minimum amount of peggedToken should be received. 0 means no check is made.
     /// @return peggedOut The amount of peggedToken should be received.
-    function mintPeggedToken(
-        uint256 collateralIn,
-        address receiver,
-        uint256 minPeggedOut
-    ) external returns (uint256 peggedOut);
+    function mintPeggedToken(uint256 collateralIn, address receiver, uint256 minPeggedOut)
+        external
+        returns (uint256 peggedOut);
 
     /// @notice Redeem some pegged tokens for collateral tokens.
     /// @param peggedIn the amount of peggedToken to redeem, use `uint256(-1)` to redeem all peggedToken.
@@ -409,11 +395,9 @@ interface IMinter {
     /// @param minCollateralOut The minimum amount of wrapped value of collateral token should be received. 0 means no
     /// check is made.
     /// @return collateralOut The amount of wrapped value of collateral token should be received.
-    function redeemPeggedToken(
-        uint256 peggedIn,
-        address receiver,
-        uint256 minCollateralOut
-    ) external returns (uint256 collateralOut);
+    function redeemPeggedToken(uint256 peggedIn, address receiver, uint256 minCollateralOut)
+        external
+        returns (uint256 collateralOut);
 
     /// @notice Mint some leveraged tokens in exchange for collateral tokens.
     /// @param collateralIn The amount of wrapped value of collateral token supplied, use `uint256(-1)` to supply all
@@ -421,11 +405,9 @@ interface IMinter {
     /// @param receiver The address of receiver for leveragedToken.
     /// @param minLeveragedOut The minimum amount of leveragedToken should be received. 0 means no check is made.
     /// @return leveragedOut The amount of leveragedToken should be received.
-    function mintLeveragedToken(
-        uint256 collateralIn,
-        address receiver,
-        uint256 minLeveragedOut
-    ) external returns (uint256 leveragedOut);
+    function mintLeveragedToken(uint256 collateralIn, address receiver, uint256 minLeveragedOut)
+        external
+        returns (uint256 leveragedOut);
 
     /// @notice Redeem some leveraged tokens for collateral tokens.
     /// @param leveragedIn the amount of leveragedToken to redeem, use `uint256(-1)` to redeem all leveragedToken.
@@ -433,11 +415,9 @@ interface IMinter {
     /// @param minCollateralOut The minimum amount of wrapped value of collateral token should be received. 0 means no
     /// check is made.
     /// @return collateralOut The amount of wrapped value of collateral token should be received.
-    function redeemLeveragedToken(
-        uint256 leveragedIn,
-        address receiver,
-        uint256 minCollateralOut
-    ) external returns (uint256 collateralOut);
+    function redeemLeveragedToken(uint256 leveragedIn, address receiver, uint256 minCollateralOut)
+        external
+        returns (uint256 collateralOut);
 
     /*//////////////////////////////////////////////////////////////
                       PROTECTED UPDATE FUNCTIONS
@@ -477,11 +457,9 @@ interface IMinter {
     /// @param receiver The address of receiver for collateral token.
     /// @return wrappedCollateralOut The amount of collateral tokens received.
     /// @return leveragedOut The amount of leveraged tokens received.
-    function freeRedeemPeggedToken(
-        uint256 peggedForCollateral,
-        uint256 peggedForLeveraged,
-        address receiver
-    ) external returns (uint256 wrappedCollateralOut, uint256 leveragedOut);
+    function freeRedeemPeggedToken(uint256 peggedForCollateral, uint256 peggedForLeveraged, address receiver)
+        external
+        returns (uint256 wrappedCollateralOut, uint256 leveragedOut);
     /// @notice Mint some leveraged tokens in exchange for collateral tokens.
     /// @param collateralIn The amount of wrapped value of collateral token supplied, use `uint256(-1)` to supply all
     /// collateral token.

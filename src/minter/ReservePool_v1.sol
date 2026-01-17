@@ -63,11 +63,12 @@ contract ReservePool_v1 is
 
     /// @notice Transfers an `amountRequested` of a `token` to the `recipient`.
     /// If this contract does not have the `amountRequested` of the token, it transfers what it has.
-    function requestBonus(
-        address token,
-        address recipient,
-        uint256 amountRequested
-    ) public override onlyRoles(REQUESTER_ROLE) returns (uint256 amountSent) {
+    function requestBonus(address token, address recipient, uint256 amountRequested)
+        public
+        override
+        onlyRoles(REQUESTER_ROLE)
+        returns (uint256 amountSent)
+    {
         uint256 balance = IERC20(token).balanceOf(address(this));
         if (amountRequested > balance) {
             amountSent = balance;

@@ -3,6 +3,7 @@ pragma solidity >=0.8.28 <0.9.0;
 
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {GenesisUSDCZap_v4} from "src/zap/upgradeable/GenesisUSDCZap_v4.sol";
@@ -60,10 +61,7 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
         zapImpl = address(new GenesisUSDCZap_v4(genesis));
-        zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl,
-            abi.encodeCall(GenesisUSDCZap_v4.initialize, (zapOwner))
-        );
+        zapProxy = UnsafeUpgrades.deployUUPSProxy(zapImpl, abi.encodeCall(GenesisUSDCZap_v4.initialize, (zapOwner)));
         zap = GenesisUSDCZap_v4(payable(zapProxy));
         vm.label(address(zap), "GenesisUSDCZapV4");
 
@@ -122,17 +120,32 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
 
     // ============ Preview Function Tests ============
 
-    function test_PreviewGenesisFromFxSave() public {
+    function test_PreviewGenesisFromFxSave() public view {
         uint256 fxSaveAmount = 1000 * 1e18;
         uint256 previewShares = zap.previewGenesisFromFxSave(fxSaveAmount);
-        
+
         // Genesis uses 1:1 mapping
         assertEq(previewShares, fxSaveAmount, "Preview should return 1:1 shares");
     }
 
-    function test_PreviewGenesisFromFxSave_Zero() public {
+    function test_PreviewGenesisFromFxSave_Zero() public view {
         uint256 previewShares = zap.previewGenesisFromFxSave(0);
         assertEq(previewShares, 0, "Preview should return 0 for zero input");
+    }
+
+    function test_PreviewFxSaveFromUsdc() public view {
+        uint256 usdcAmount = 1000 * 1e6;
+        uint256 previewFxSave = zap.previewFxSaveFromUsdc(usdcAmount);
+
+        uint8 usdcDecimals = IERC20Metadata(USDC).decimals();
+        uint8 fxSaveDecimals = IERC20Metadata(FXSAVE).decimals();
+        uint256 expected = usdcDecimals == fxSaveDecimals
+            ? usdcAmount
+            : usdcDecimals > fxSaveDecimals
+                ? usdcAmount / (10 ** (usdcDecimals - fxSaveDecimals))
+                : usdcAmount * (10 ** (fxSaveDecimals - usdcDecimals));
+
+        assertEq(previewFxSave, expected, "Preview should match decimals-normalized amount");
     }
 
     // ============ Upgrade Tests ============
@@ -140,27 +153,27 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
     function test_Upgrade() public {
         // Deploy new implementation
         address newImpl = address(new GenesisUSDCZap_v4(genesis));
-        
+
         // Upgrade proxy
         vm.prank(zapOwner);
         zap.upgradeToAndCall(newImpl, "");
-        
+
         // Verify upgrade worked
         assertEq(UnsafeUpgrades.getImplementationAddress(address(zap)), newImpl, "Implementation should be upgraded");
-        
+
         // Verify functionality still works
         uint256 usdcAmount = 1000 * 1e6;
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
         uint256 collateralAmount = zap.zapUsdcToGenesis(usdcAmount, 0, receiver);
         vm.stopPrank();
-        
+
         assertGt(collateralAmount, 0, "Should still work after upgrade");
     }
 
     function test_Upgrade_OnlyOwner() public {
         address newImpl = address(new GenesisUSDCZap_v4(genesis));
-        
+
         vm.prank(user1);
         vm.expectRevert();
         zap.upgradeToAndCall(newImpl, "");
@@ -170,22 +183,31 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
 
     function test_RescueEth() public {
         vm.deal(address(zap), 1 ether);
-        
+
         uint256 ownerBalanceBefore = zapOwner.balance;
         vm.prank(zapOwner);
         zap.rescueETH();
-        
+
         assertEq(zapOwner.balance, ownerBalanceBefore + 1 ether, "ETH should be rescued");
     }
 
-    function test_RescueToken() public {
+    function test_RescueToken_ProtectedToken() public {
         deal(USDC, address(zap), 1000 * 1e6);
-        
-        uint256 ownerBalanceBefore = IERC20(USDC).balanceOf(zapOwner);
+
         vm.prank(zapOwner);
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.CannotRescueProtectedToken.selector, USDC));
         zap.rescueToken(USDC);
-        
-        assertEq(IERC20(USDC).balanceOf(zapOwner), ownerBalanceBefore + 1000 * 1e6, "Token should be rescued");
+    }
+
+    function test_RescueToken_UnprotectedToken() public {
+        MockERC20 token = new MockERC20("Mock", "MOCK", 18);
+        deal(address(token), address(zap), 1000 ether);
+
+        uint256 ownerBalanceBefore = token.balanceOf(zapOwner);
+        vm.prank(zapOwner);
+        zap.rescueToken(address(token));
+
+        assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
     }
 }
 

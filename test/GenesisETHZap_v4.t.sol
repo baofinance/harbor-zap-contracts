@@ -72,8 +72,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         zapOwner = makeAddr("zapOwner");
         zapImpl = address(new GenesisETHZap_v4(genesis));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl,
-            abi.encodeCall(GenesisETHZap_v4.initialize, (zapOwner, address(0)))
+            zapImpl, abi.encodeCall(GenesisETHZap_v4.initialize, (zapOwner, address(0)))
         );
         zap = GenesisETHZap_v4(payable(zapProxy));
         vm.label(address(zap), "GenesisETHZapV4");
@@ -110,8 +109,8 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
         // Calculate minWstEthOut with 1% slippage buffer
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
-        
-        uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut);
+
+        uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut, 0);
 
         vm.stopPrank();
 
@@ -145,7 +144,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
         uint256 genesisBalBefore = IGenesis(genesis).balanceOf(receiver);
         uint256 minWstEthOut = _calculateMinWstEthFromStEth(stEthAmount);
-        
+
         uint256 sharesOut = zap.zapStEth(stEthAmount, receiver, minWstEthOut);
         vm.stopPrank();
 
@@ -157,34 +156,34 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
     // ============ Preview Function Tests ============
 
-    function test_PreviewWstEthFromEth() public {
+    function test_PreviewWstEthFromEth() public view {
         uint256 ethAmount = 1 ether;
         uint256 previewWstEth = zap.previewWstEthFromEth(ethAmount);
-        
+
         assertGt(previewWstEth, 0, "Preview should return > 0");
         console.log("Preview wstETH from ETH:", previewWstEth);
     }
 
-    function test_PreviewWstEthFromStEth() public {
+    function test_PreviewWstEthFromStEth() public view {
         uint256 stEthAmount = 1 ether;
         uint256 previewWstEth = zap.previewWstEthFromStEth(stEthAmount);
-        
+
         assertGt(previewWstEth, 0, "Preview should return > 0");
     }
 
-    function test_PreviewGenesisFromEth() public {
+    function test_PreviewGenesisFromEth() public view {
         uint256 ethAmount = 1 ether;
-        (uint256 previewShares, uint256 wstEthAmount) = zap.previewGenesisFromEth(ethAmount);
-        
+        (uint256 previewShares,) = zap.previewGenesisFromEth(ethAmount);
+
         assertGt(previewShares, 0, "Preview should return > 0");
         // Should match previewWstEthFromEth since Genesis uses 1:1 mapping
         assertEq(previewShares, zap.previewWstEthFromEth(ethAmount), "Should match wstETH preview");
     }
 
-    function test_PreviewGenesisFromStEth() public {
+    function test_PreviewGenesisFromStEth() public view {
         uint256 stEthAmount = 1 ether;
-        (uint256 previewShares, uint256 wstEthAmount) = zap.previewGenesisFromStEth(stEthAmount);
-        
+        (uint256 previewShares,) = zap.previewGenesisFromStEth(stEthAmount);
+
         assertGt(previewShares, 0, "Preview should return > 0");
         // Should match previewWstEthFromStEth since Genesis uses 1:1 mapping
         assertEq(previewShares, zap.previewWstEthFromStEth(stEthAmount), "Should match wstETH preview");
@@ -195,25 +194,25 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
     function test_BalanceOfETH() public {
         uint256 ethAmount = 1 ether;
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
-        
+
         vm.startPrank(user1);
-        zap.zapEth{value: ethAmount}(receiver, minWstEthOut);
+        zap.zapEth{value: ethAmount}(receiver, minWstEthOut, 0);
         vm.stopPrank();
 
-        uint256 balanceETH = zap.balanceOfETH(receiver);
-        assertGt(balanceETH, 0, "Balance should be > 0");
+        uint256 balanceEth = zap.balanceOfETH(receiver);
+        assertGt(balanceEth, 0, "Balance should be > 0");
     }
 
     function test_BalanceOfStETH() public {
         uint256 ethAmount = 1 ether;
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
-        
+
         vm.startPrank(user1);
-        zap.zapEth{value: ethAmount}(receiver, minWstEthOut);
+        zap.zapEth{value: ethAmount}(receiver, minWstEthOut, 0);
         vm.stopPrank();
 
-        uint256 balanceStETH = zap.balanceOfStETH(receiver);
-        assertGt(balanceStETH, 0, "Balance should be > 0");
+        uint256 balanceStEth = zap.balanceOfStETH(receiver);
+        assertGt(balanceStEth, 0, "Balance should be > 0");
     }
 
     function test_TotalValueETH() public {
@@ -223,13 +222,13 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         uint256 minWstEthOut1 = _calculateMinWstEthFromEth(ethAmount1);
         uint256 minWstEthOut2 = _calculateMinWstEthFromEth(ethAmount2);
-        
-        zap.zapEth{value: ethAmount1}(receiver, minWstEthOut1);
-        zap.zapEth{value: ethAmount2}(receiver, minWstEthOut2);
+
+        zap.zapEth{value: ethAmount1}(receiver, minWstEthOut1, 0);
+        zap.zapEth{value: ethAmount2}(receiver, minWstEthOut2, 0);
         vm.stopPrank();
 
         uint256 totalValue = zap.totalValueETH();
-        
+
         assertGt(totalValue, 0, "Total value should be > 0");
         assertGe(totalValue, (ethAmount1 + ethAmount2) * 90 / 100, "Total value should be reasonable");
     }
@@ -239,27 +238,27 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
     function test_Upgrade() public {
         // Deploy new implementation
         address newImpl = address(new GenesisETHZap_v4(genesis));
-        
+
         // Upgrade proxy
         vm.prank(zapOwner);
         zap.upgradeToAndCall(newImpl, "");
-        
+
         // Verify upgrade worked
         assertEq(UnsafeUpgrades.getImplementationAddress(address(zap)), newImpl, "Implementation should be upgraded");
-        
+
         // Verify functionality still works
         uint256 ethAmount = 1 ether;
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
         vm.startPrank(user1);
-        uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut);
+        uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut, 0);
         vm.stopPrank();
-        
+
         assertGt(sharesOut, 0, "Should still work after upgrade");
     }
 
     function test_Upgrade_OnlyOwner() public {
         address newImpl = address(new GenesisETHZap_v4(genesis));
-        
+
         vm.prank(user1);
         vm.expectRevert();
         zap.upgradeToAndCall(newImpl, "");
@@ -269,43 +268,45 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
     function test_SetReferral() public {
         address newReferral = makeAddr("newReferral");
-        
+
         vm.prank(zapOwner);
         zap.setReferral(newReferral);
-        
+
         assertEq(zap.referral(), newReferral, "Referral should be updated");
     }
 
     function test_RescueEth() public {
         vm.deal(address(zap), 1 ether);
-        
+
         uint256 ownerBalanceBefore = zapOwner.balance;
         vm.prank(zapOwner);
         zap.rescueETH();
-        
+
         assertEq(zapOwner.balance, ownerBalanceBefore + 1 ether, "ETH should be rescued");
     }
 
-    function test_RescueToken() public {
+    function test_RescueToken_ProtectedToken() public {
         // Use real stETH minting instead of deal() since stETH has complex proxy storage
         vm.deal(address(this), 1 ether);
         ISTETHV2(STETH).submit{value: 1 ether}(address(0));
         uint256 stEthBalance = IERC20(STETH).balanceOf(address(this));
         // forgefmt: disable-next-item
         require(IERC20(STETH).transfer(address(zap), stEthBalance), "Transfer failed");
-        
-        uint256 ownerBalanceBefore = IERC20(STETH).balanceOf(zapOwner);
-        uint256 zapBalanceBefore = IERC20(STETH).balanceOf(address(zap));
-        
+
         vm.prank(zapOwner);
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.CannotRescueProtectedToken.selector, STETH));
         zap.rescueToken(STETH);
-        
-        uint256 ownerBalanceAfter = IERC20(STETH).balanceOf(zapOwner);
-        uint256 zapBalanceAfter = IERC20(STETH).balanceOf(address(zap));
-        
-        // Verify all tokens were rescued (accounting for potential rounding/dust)
-        assertLe(zapBalanceAfter, 10, "Zap should have minimal stETH left (allowing for dust)");
-        assertGe(ownerBalanceAfter, ownerBalanceBefore + zapBalanceBefore - 10, "Token should be rescued (within rounding tolerance)");
+    }
+
+    function test_RescueToken_UnprotectedToken() public {
+        MockERC20 token = new MockERC20("Mock", "MOCK", 18);
+        deal(address(token), address(zap), 1000 ether);
+
+        uint256 ownerBalanceBefore = token.balanceOf(zapOwner);
+        vm.prank(zapOwner);
+        zap.rescueToken(address(token));
+
+        assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
     }
 }
 

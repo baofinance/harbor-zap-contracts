@@ -11,12 +11,11 @@ pragma solidity ^0.8.0;
 library WordCodec {
     /// @dev Inserts an unsigned integer of bitLength, shifted by an offset, into a 256 bit word,
     /// replacing the old value. Returns the new word.
-    function encodeUint(
-        bytes32 word,
-        uint256 value,
-        uint256 offset,
-        uint256 bitLength
-    ) internal pure returns (bytes32 result) {
+    function encodeUint(bytes32 word, uint256 value, uint256 offset, uint256 bitLength)
+        internal
+        pure
+        returns (bytes32 result)
+    {
         // Equivalent to:
         // uint256 mask = (1 << bitLength) - 1;
         // bytes32 clearedWord = bytes32(uint256(word) & ~(mask << offset));

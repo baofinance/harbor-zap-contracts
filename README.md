@@ -9,20 +9,656 @@ This repository contains zap contracts that enable users to deposit collateral i
 - **ETH/wstETH Zaps**: Convert ETH or stETH to wstETH and deposit into Genesis/Minter contracts
 - **USDC/fxSAVE Zaps**: Convert USDC or fxUSD to fxSAVE and deposit into Genesis/Minter contracts
 
+## Use Cases
+
+### GenesisETHZap_v4: ETH and stETH Deposits
+
+#### Bob deposits 10 ETH using `zapEth`
+
+**Step 1: Preview the expected output**
+```solidity
+// First, use the preview function to calculate minWstEthOut
+// Apply a small slippage buffer (e.g., 0.5-1%) to protect against MEV/front-running
+uint256 ethAmount = 10 ether;
+uint256 expectedWstEth = GenesisETHZap_v4(genesisZapAddress).previewWstEthFromEth(ethAmount);
+uint256 minWstEthOut = (expectedWstEth * 99) / 100; // 1% slippage tolerance
+```
+
+**Step 2: Execute the zap**
+```solidity
+// The zap contract will:
+// 1. Convert 10 ETH into ~10 stETH via Lido
+// 2. Convert the ~10 stETH into ~8.1 wstETH (wstETH/stETH ratio < 1)
+// 3. Deposit the 8.1 wstETH into Genesis for Bob
+// Bob receives Genesis shares equal to the wstETH amount (1:1 ratio)
+
+GenesisETHZap_v4(genesisZapAddress).zapEth{value: 10 ether}(
+    bobAddress,      // Receiver address (Bob)
+    minWstEthOut     // Minimum wstETH expected (with slippage buffer)
+);
+```
+
+**Flow Summary:**
+- **Input**: 10 ETH
+- **Step 1**: 10 ETH → ~10 stETH (via Lido)
+- **Step 2**: ~10 stETH → ~8.1 wstETH (wstETH exchange rate)
+- **Step 3**: ~8.1 wstETH → 8.1 Genesis shares (1:1 deposit)
+- **Output**: Bob receives 8.1 Genesis shares
+
+#### Alice deposits 5 stETH using `zapStEth`
+
+**Step 1: Preview the expected output**
+```solidity
+uint256 stEthAmount = 5 ether;
+uint256 expectedWstEth = GenesisETHZap_v4(genesisZapAddress).previewWstEthFromStEth(stEthAmount);
+uint256 minWstEthOut = (expectedWstEth * 995) / 1000; // 0.5% slippage tolerance
+```
+
+**Step 2: Approve and execute the zap**
+```solidity
+// 1. Approve the zap contract to spend stETH
+IERC20(STETH).approve(genesisZapAddress, 5 ether);
+
+// 2. Execute the zap
+// The zap contract will:
+// - Transfer 5 stETH from Alice
+// - Convert 5 stETH into ~4.05 wstETH
+// - Deposit the wstETH into Genesis for Alice
+
+GenesisETHZap_v4(genesisZapAddress).zapStEth(
+    5 ether,         // Amount of stETH to zap
+    aliceAddress,    // Receiver address (Alice)
+    minWstEthOut     // Minimum wstETH expected
+);
+```
+
+**Flow Summary:**
+- **Input**: 5 stETH
+- **Step 1**: 5 stETH → ~4.05 wstETH (wstETH exchange rate)
+- **Step 2**: ~4.05 wstETH → 4.05 Genesis shares (1:1 deposit)
+- **Output**: Alice receives 4.05 Genesis shares
+
+#### Alice deposits 5 stETH using `zapStEthWithPermit` (ERC-2612)
+
+**Step 1: Preview the expected output**
+```solidity
+uint256 stEthAmount = 5 ether;
+uint256 expectedWstEth = GenesisETHZap_v4(genesisZapAddress).previewWstEthFromStEth(stEthAmount);
+uint256 minWstEthOut = (expectedWstEth * 995) / 1000; // 0.5% slippage tolerance
+```
+
+**Step 2: Sign permit message off-chain and execute in one transaction**
+```solidity
+// Off-chain: Alice signs a permit message (no on-chain transaction needed)
+// This is typically handled by wallets like MetaMask
+bytes32 permitHash = _buildPermitHash(
+    STETH,
+    aliceAddress,
+    genesisZapAddress,
+    5 ether,
+    deadline,
+    nonce
+);
+(uint8 v, bytes32 r, bytes32 s) = _signPermit(alicePrivateKey, permitHash);
+
+// On-chain: Single transaction combines permit approval + zap execution
+// No separate approve() transaction needed - saves gas!
+GenesisETHZap_v4(genesisZapAddress).zapStEthWithPermit(
+    5 ether,         // Amount of stETH to zap
+    aliceAddress,    // Receiver address (Alice)
+    minWstEthOut,    // Minimum wstETH expected
+    deadline,        // Permit signature deadline
+    v, r, s          // Permit signature components
+);
+```
+
+**Benefits of Permit:**
+- ✅ **Gas savings**: Eliminates the need for a separate `approve()` transaction
+- ✅ **Better UX**: Single transaction instead of two
+- ✅ **Security**: Permit has built-in expiration (`deadline`) and nonce management
+
+**Flow Summary:**
+- **Input**: 5 stETH (approved via permit in same transaction)
+- **Step 1**: 5 stETH → ~4.05 wstETH
+- **Step 2**: ~4.05 wstETH → 4.05 Genesis shares
+- **Output**: Alice receives 4.05 Genesis shares
+
+### GenesisUSDCZap_v4: USDC and fxUSD Deposits
+
+#### Bob deposits 10,000 USDC using `zapUsdcToGenesis`
+
+**Step 1: Calculate minimum fxSAVE output**
+```solidity
+// Note: The conversion rate from USDC to fxSAVE depends on the fxUSD Diamond contract
+// fxSAVE is worth approximately 1.07 USDC, so 10,000 USDC converts to ~9,345.79 fxSAVE
+// Apply a slippage buffer (0.5-1%) to protect against conversion rate changes
+
+uint256 usdcAmount = 10_000 * 1e6; // 10k USDC (6 decimals)
+// Calculate: 10,000 USDC / 1.07 = ~9,345.79 fxSAVE
+uint256 estimatedFxSaveOut = (10_000 * 1e18 * 100) / 107; // ~9,345.79 fxSAVE (18 decimals)
+uint256 minFxSaveOut = (estimatedFxSaveOut * 99) / 100; // 1% slippage tolerance
+```
+
+**Step 2: Approve and execute the zap**
+```solidity
+// 1. Approve the zap contract to spend USDC
+IERC20(USDC).approve(genesisZapAddress, 10_000 * 1e6);
+
+// 2. Execute the zap
+// The zap contract will:
+// - Transfer 10,000 USDC from Bob
+// - Convert 10,000 USDC → ~9,345.79 fxSAVE via fxUSD Diamond (fxSAVE ≈ 1.07 USDC)
+// - Deposit the fxSAVE into Genesis for Bob
+// Bob receives Genesis shares equal to the fxSAVE amount (1:1 ratio)
+
+GenesisUSDCZap_v4(genesisZapAddress).zapUsdcToGenesis(
+    10_000 * 1e6,    // Amount of USDC (6 decimals)
+    minFxSaveOut,    // Minimum fxSAVE expected (with slippage buffer)
+    bobAddress       // Receiver address (Bob)
+);
+```
+
+**Flow Summary:**
+- **Input**: 10,000 USDC
+- **Step 1**: 10,000 USDC → ~9,345.79 fxSAVE (via fxUSD Diamond conversion, fxSAVE ≈ 1.07 USDC)
+- **Step 2**: ~9,345.79 fxSAVE → 9,345.79 Genesis shares (1:1 deposit)
+- **Output**: Bob receives ~9,345.79 Genesis shares
+
+#### Bob deposits 10,000 USDC using `zapUsdcToGenesisWithPermit` (ERC-2612)
+
+**Step 1: Calculate minimum fxSAVE output**
+```solidity
+uint256 usdcAmount = 10_000 * 1e6;
+// Calculate: 10,000 USDC / 1.07 = ~9,345.79 fxSAVE
+uint256 estimatedFxSaveOut = (10_000 * 1e18 * 100) / 107; // ~9,345.79 fxSAVE
+uint256 minFxSaveOut = (estimatedFxSaveOut * 995) / 1000; // 0.5% slippage tolerance
+```
+
+**Step 2: Sign permit message off-chain and execute in one transaction**
+```solidity
+// Off-chain: Bob signs a permit message for USDC (no on-chain transaction needed)
+// This is typically handled by wallets like MetaMask
+bytes32 permitHash = _buildPermitHash(
+    USDC,
+    bobAddress,
+    genesisZapAddress,
+    10_000 * 1e6,
+    deadline,
+    nonce
+);
+(uint8 v, bytes32 r, bytes32 s) = _signPermit(bobPrivateKey, permitHash);
+
+// On-chain: Single transaction combines permit approval + zap execution
+// No separate approve() transaction needed - saves gas!
+GenesisUSDCZap_v4(genesisZapAddress).zapUsdcToGenesisWithPermit(
+    10_000 * 1e6,    // Amount of USDC
+    minFxSaveOut,    // Minimum fxSAVE expected
+    bobAddress,      // Receiver address (Bob)
+    deadline,        // Permit signature deadline
+    v, r, s          // Permit signature components
+);
+```
+
+**Benefits of Permit:**
+- ✅ **Gas savings**: Eliminates the need for a separate `approve()` transaction
+- ✅ **Better UX**: Single transaction instead of two
+- ✅ **Security**: Permit has built-in expiration (`deadline`) and nonce management
+
+**Flow Summary:**
+- **Input**: 10,000 USDC (approved via permit in same transaction)
+- **Step 1**: 10,000 USDC → ~9,345.79 fxSAVE (fxSAVE ≈ 1.07 USDC)
+- **Step 2**: ~9,345.79 fxSAVE → 9,345.79 Genesis shares
+- **Output**: Bob receives ~9,345.79 Genesis shares
+
+#### Alice deposits 10,000 fxUSD using `zapFxUsdToGenesis`
+
+**Step 1: Calculate minimum fxSAVE output**
+```solidity
+// Note: fxUSD to fxSAVE conversion rate depends on the fxUSD Diamond contract
+// Since fxSAVE is worth approximately 1.07 USDC and fxUSD ≈ 1 USDC,
+// 10,000 fxUSD converts to ~9,345.79 fxSAVE (10,000 / 1.07)
+
+uint256 fxUsdAmount = 10_000 * 1e18; // 10k fxUSD (18 decimals)
+// Calculate: 10,000 fxUSD / 1.07 = ~9,345.79 fxSAVE
+uint256 estimatedFxSaveOut = (10_000 * 1e18 * 100) / 107; // ~9,345.79 fxSAVE (18 decimals)
+uint256 minFxSaveOut = (estimatedFxSaveOut * 99) / 100; // 1% slippage tolerance
+```
+
+**Step 2: Approve and execute the zap**
+```solidity
+// 1. Approve the zap contract to spend fxUSD
+IERC20(FXUSD).approve(genesisZapAddress, 10_000 * 1e18);
+
+// 2. Execute the zap
+// The zap contract will:
+// - Transfer 10,000 fxUSD from Alice
+// - Convert 10,000 fxUSD → ~9,345.79 fxSAVE via fxUSD Diamond (fxSAVE ≈ 1.07 USDC)
+// - Deposit the fxSAVE into Genesis for Alice
+
+GenesisUSDCZap_v4(genesisZapAddress).zapFxUsdToGenesis(
+    10_000 * 1e18,   // Amount of fxUSD (18 decimals)
+    minFxSaveOut,    // Minimum fxSAVE expected
+    aliceAddress     // Receiver address (Alice)
+);
+```
+
+**Flow Summary:**
+- **Input**: 10,000 fxUSD
+- **Step 1**: 10,000 fxUSD → ~9,345.79 fxSAVE (via fxUSD Diamond conversion, fxSAVE ≈ 1.07 USDC)
+- **Step 2**: ~9,345.79 fxSAVE → 9,345.79 Genesis shares (1:1 deposit)
+- **Output**: Alice receives ~9,345.79 Genesis shares
+
+#### Alice deposits 10,000 fxUSD using `zapFxUsdToGenesisWithPermit` (ERC-2612)
+
+**Step 1: Calculate minimum fxSAVE output**
+```solidity
+uint256 fxUsdAmount = 10_000 * 1e18;
+// Calculate: 10,000 fxUSD / 1.07 = ~9,345.79 fxSAVE
+uint256 estimatedFxSaveOut = (10_000 * 1e18 * 100) / 107; // ~9,345.79 fxSAVE
+uint256 minFxSaveOut = (estimatedFxSaveOut * 995) / 1000; // 0.5% slippage tolerance
+```
+
+**Step 2: Sign permit message off-chain and execute in one transaction**
+```solidity
+// Off-chain: Alice signs a permit message for fxUSD (no on-chain transaction needed)
+bytes32 permitHash = _buildPermitHash(
+    FXUSD,
+    aliceAddress,
+    genesisZapAddress,
+    10_000 * 1e18,
+    deadline,
+    nonce
+);
+(uint8 v, bytes32 r, bytes32 s) = _signPermit(alicePrivateKey, permitHash);
+
+// On-chain: Single transaction combines permit approval + zap execution
+GenesisUSDCZap_v4(genesisZapAddress).zapFxUsdToGenesisWithPermit(
+    10_000 * 1e18,   // Amount of fxUSD
+    minFxSaveOut,    // Minimum fxSAVE expected
+    aliceAddress,    // Receiver address (Alice)
+    deadline,        // Permit signature deadline
+    v, r, s          // Permit signature components
+);
+```
+
+**Benefits of Permit:**
+- ✅ **Gas savings**: Eliminates the need for a separate `approve()` transaction
+- ✅ **Better UX**: Single transaction instead of two
+- ✅ **Security**: Permit has built-in expiration (`deadline`) and nonce management
+
+**Flow Summary:**
+- **Input**: 10,000 fxUSD (approved via permit in same transaction)
+- **Step 1**: 10,000 fxUSD → ~9,345.79 fxSAVE (fxSAVE ≈ 1.07 USDC)
+- **Step 2**: ~9,345.79 fxSAVE → 9,345.79 Genesis shares
+- **Output**: Alice receives ~9,345.79 Genesis shares
+
+### MinterETHZap_v3: Mint Pegged and Leveraged Tokens
+
+#### Bob deposits 10 ETH to mint pegged tokens using `zapEthToPegged`
+
+**Step 1: Execute the zap**
+```solidity
+// ETH doesn't require approval - just send value with the transaction
+// The zap contract will:
+// - Convert 10 ETH → ~10 stETH via Lido
+// - Convert ~10 stETH → ~8.1 wstETH (wstETH/stETH ratio < 1)
+// - Mint pegged tokens using the Minter contract
+// Apply a small slippage buffer (e.g., 0.5-1%) for minPeggedOut
+
+uint256 minPeggedOut = 8_000 * 1e18; // Minimum pegged tokens expected (adjust based on rates)
+MinterETHZap_v3(minterZapAddress).zapEthToPegged{value: 10 ether}(
+    bobAddress,      // Receiver address (Bob)
+    minPeggedOut     // Minimum pegged tokens expected
+);
+```
+
+**Flow Summary:**
+- **Input**: 10 ETH
+- **Step 1**: 10 ETH → ~10 stETH (via Lido)
+- **Step 2**: ~10 stETH → ~8.1 wstETH (wstETH exchange rate)
+- **Step 3**: ~8.1 wstETH → Pegged tokens (via Minter mint)
+- **Output**: Bob receives pegged tokens
+
+#### Bob deposits 10 ETH to mint leveraged tokens using `zapEthToLeveraged`
+
+**Step 1: Execute the zap**
+```solidity
+// Similar flow but minting leveraged tokens instead
+uint256 minLeveragedOut = 15_000 * 1e18; // Minimum leveraged tokens expected (leverage > 1)
+MinterETHZap_v3(minterZapAddress).zapEthToLeveraged{value: 10 ether}(
+    bobAddress,        // Receiver address (Bob)
+    minLeveragedOut    // Minimum leveraged tokens expected
+);
+```
+
+**Flow Summary:**
+- **Input**: 10 ETH
+- **Step 1**: 10 ETH → ~10 stETH → ~8.1 wstETH
+- **Step 2**: ~8.1 wstETH → Leveraged tokens (via Minter mint with leverage)
+- **Output**: Bob receives leveraged tokens
+
+#### Alice deposits 5 stETH to mint pegged tokens using `zapStEthToPegged`
+
+**Step 1: Approve and execute the zap**
+```solidity
+// 1. Approve the zap contract to spend stETH
+IERC20(STETH).approve(minterZapAddress, 5 ether);
+
+// 2. Execute the zap
+uint256 minPeggedOut = 4_000 * 1e18; // Minimum pegged tokens expected
+MinterETHZap_v3(minterZapAddress).zapStEthToPegged(
+    5 ether,          // Amount of stETH
+    aliceAddress,     // Receiver address (Alice)
+    minPeggedOut      // Minimum pegged tokens expected
+);
+```
+
+**Flow Summary:**
+- **Input**: 5 stETH
+- **Step 1**: 5 stETH → ~4.05 wstETH (wstETH exchange rate)
+- **Step 2**: ~4.05 wstETH → Pegged tokens (via Minter mint)
+- **Output**: Alice receives pegged tokens
+
+#### Alice deposits 5 stETH to mint leveraged tokens using `zapStEthToLeveraged`
+
+**Step 1: Approve and execute the zap**
+```solidity
+IERC20(STETH).approve(minterZapAddress, 5 ether);
+uint256 minLeveragedOut = 7_500 * 1e18; // Minimum leveraged tokens expected
+MinterETHZap_v3(minterZapAddress).zapStEthToLeveraged(
+    5 ether,
+    aliceAddress,
+    minLeveragedOut
+);
+```
+
+**Flow Summary:**
+- **Input**: 5 stETH
+- **Step 1**: 5 stETH → ~4.05 wstETH
+- **Step 2**: ~4.05 wstETH → Leveraged tokens (via Minter mint with leverage)
+- **Output**: Alice receives leveraged tokens
+
+#### Alice deposits 5 stETH with permit to mint pegged tokens using `zapStEthToPeggedWithPermit`
+
+**Step 1: Sign permit message off-chain and execute in one transaction**
+```solidity
+// Off-chain: Alice signs permit message for stETH
+bytes32 permitHash = _buildPermitHash(
+    STETH,
+    aliceAddress,
+    minterZapAddress,
+    5 ether,
+    deadline,
+    nonce
+);
+(uint8 v, bytes32 r, bytes32 s) = _signPermit(alicePrivateKey, permitHash);
+
+// On-chain: Single transaction combines permit + zap execution
+uint256 minPeggedOut = 4_000 * 1e18;
+MinterETHZap_v3(minterZapAddress).zapStEthToPeggedWithPermit(
+    5 ether,
+    aliceAddress,
+    minPeggedOut,
+    deadline,
+    v, r, s
+);
+```
+
+**Flow Summary:**
+- **Input**: 5 stETH (approved via permit)
+- **Step 1**: 5 stETH → ~4.05 wstETH
+- **Step 2**: ~4.05 wstETH → Pegged tokens
+- **Output**: Alice receives pegged tokens
+
+#### Bob deposits 10 ETH to Stability Pool using `zapEthToStabilityPool`
+
+**Step 1: Execute the zap**
+```solidity
+address stabilityPool = 0x...; // Stability pool address
+uint256 minPeggedOut = 8_000 * 1e18; // Minimum pegged tokens from minting (accounts for mint fees)
+// Note: Stability pool deposits don't incur fees, so minStabilityPoolOut should equal minPeggedOut
+// Add only a small slippage buffer (0.1-0.5%) for rounding protection
+uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buffer
+
+MinterETHZap_v3(minterZapAddress).zapEthToStabilityPool{value: 10 ether}(
+    bobAddress,           // Receiver address (Bob)
+    minPeggedOut,         // Minimum pegged tokens expected (accounts for mint fees)
+    stabilityPool,        // Stability pool address
+    minStabilityPoolOut   // Minimum deposited into stability pool (should equal peggedOut, minus small rounding buffer)
+);
+```
+
+**Flow Summary:**
+- **Input**: 10 ETH
+- **Step 1**: 10 ETH → ~10 stETH → ~8.1 wstETH
+- **Step 2**: ~8.1 wstETH → Pegged tokens (via Minter mint, fees incurred here)
+- **Step 3**: Pegged tokens → Deposited into Stability Pool (no fees on deposit)
+- **Output**: Bob receives Stability Pool deposit (full pegged amount minus mint fees only)
+
+#### Alice deposits 5 stETH to Stability Pool using `zapStEthToStabilityPoolWithPermit`
+
+**Step 1: Sign permit and execute**
+```solidity
+address stabilityPool = 0x...;
+uint256 minPeggedOut = 4_000 * 1e18; // Minimum pegged tokens from minting (accounts for mint fees)
+// Note: Stability pool deposits don't incur fees, so minStabilityPoolOut should equal minPeggedOut
+// Add only a small slippage buffer (0.1-0.5%) for rounding protection
+uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buffer
+
+// Off-chain permit signing (similar to above)
+// ...
+
+MinterETHZap_v3(minterZapAddress).zapStEthToStabilityPoolWithPermit(
+    5 ether,
+    aliceAddress,
+    minPeggedOut,         // Minimum pegged tokens expected (accounts for mint fees)
+    stabilityPool,
+    minStabilityPoolOut,  // Minimum deposited (should equal peggedOut, minus small rounding buffer)
+    deadline,
+    v, r, s
+);
+```
+
+**Flow Summary:**
+- **Input**: 5 stETH (approved via permit)
+- **Step 1**: 5 stETH → ~4.05 wstETH
+- **Step 2**: ~4.05 wstETH → Pegged tokens (via Minter mint, fees incurred here)
+- **Step 3**: Pegged tokens → Deposited into Stability Pool (no fees on deposit)
+- **Output**: Alice receives Stability Pool deposit (full pegged amount minus mint fees only)
+
+### MinterUSDCZap_v3: Mint Pegged and Leveraged Tokens
+
+#### Bob deposits 10,000 USDC to mint pegged tokens using `zapUsdcToPegged`
+
+**Step 1: Approve and execute the zap**
+```solidity
+// 1. Approve the zap contract to spend USDC
+IERC20(USDC).approve(minterZapAddress, 10_000 * 1e6);
+
+// 2. Execute the zap
+// The zap contract will:
+// - Transfer 10,000 USDC from Bob
+// - Convert 10,000 USDC → ~9,345.79 fxSAVE via fxUSD Diamond (fxSAVE ≈ 1.07 USDC)
+// - Mint pegged tokens using the Minter contract
+
+uint256 minPeggedOut = 9_000 * 1e18; // Minimum pegged tokens expected
+MinterUSDCZap_v3(minterZapAddress).zapUsdcToPegged(
+    10_000 * 1e6,     // Amount of USDC (6 decimals)
+    bobAddress,       // Receiver address (Bob)
+    minPeggedOut      // Minimum pegged tokens expected
+);
+```
+
+**Flow Summary:**
+- **Input**: 10,000 USDC
+- **Step 1**: 10,000 USDC → ~9,345.79 fxSAVE (fxSAVE ≈ 1.07 USDC)
+- **Step 2**: ~9,345.79 fxSAVE → Pegged tokens (via Minter mint)
+- **Output**: Bob receives pegged tokens
+
+#### Bob deposits 10,000 USDC to mint pegged tokens using `zapUsdcToPeggedWithPermit` (ERC-2612)
+
+**Step 1: Sign permit and execute in one transaction**
+```solidity
+// Off-chain: Bob signs permit message for USDC
+bytes32 permitHash = _buildPermitHash(
+    USDC,
+    bobAddress,
+    minterZapAddress,
+    10_000 * 1e6,
+    deadline,
+    nonce
+);
+(uint8 v, bytes32 r, bytes32 s) = _signPermit(bobPrivateKey, permitHash);
+
+// On-chain: Single transaction
+uint256 minPeggedOut = 9_000 * 1e18;
+MinterUSDCZap_v3(minterZapAddress).zapUsdcToPeggedWithPermit(
+    10_000 * 1e6,
+    bobAddress,
+    minPeggedOut,
+    deadline,
+    v, r, s
+);
+```
+
+**Flow Summary:**
+- **Input**: 10,000 USDC (approved via permit)
+- **Step 1**: 10,000 USDC → ~9,345.79 fxSAVE
+- **Step 2**: ~9,345.79 fxSAVE → Pegged tokens
+- **Output**: Bob receives pegged tokens
+
+#### Bob deposits 10,000 USDC to mint leveraged tokens using `zapUsdcToLeveraged`
+
+**Step 1: Approve and execute the zap**
+```solidity
+IERC20(USDC).approve(minterZapAddress, 10_000 * 1e6);
+uint256 minLeveragedOut = 18_000 * 1e18; // Minimum leveraged tokens expected (leverage > 1)
+MinterUSDCZap_v3(minterZapAddress).zapUsdcToLeveraged(
+    10_000 * 1e6,
+    bobAddress,
+    minLeveragedOut
+);
+```
+
+**Flow Summary:**
+- **Input**: 10,000 USDC
+- **Step 1**: 10,000 USDC → ~9,345.79 fxSAVE
+- **Step 2**: ~9,345.79 fxSAVE → Leveraged tokens (via Minter mint with leverage)
+- **Output**: Bob receives leveraged tokens
+
+#### Alice deposits 10,000 fxUSD to mint pegged tokens using `zapFxUsdToPegged`
+
+**Step 1: Approve and execute the zap**
+```solidity
+IERC20(FXUSD).approve(minterZapAddress, 10_000 * 1e18);
+uint256 minPeggedOut = 9_000 * 1e18;
+MinterUSDCZap_v3(minterZapAddress).zapFxUsdToPegged(
+    10_000 * 1e18,    // Amount of fxUSD (18 decimals)
+    aliceAddress,     // Receiver address (Alice)
+    minPeggedOut      // Minimum pegged tokens expected
+);
+```
+
+**Flow Summary:**
+- **Input**: 10,000 fxUSD
+- **Step 1**: 10,000 fxUSD → ~9,345.79 fxSAVE (fxSAVE ≈ 1.07 USDC)
+- **Step 2**: ~9,345.79 fxSAVE → Pegged tokens (via Minter mint)
+- **Output**: Alice receives pegged tokens
+
+#### Alice deposits 10,000 fxUSD to mint pegged tokens using `zapFxUsdToPeggedWithPermit` (ERC-2612)
+
+**Step 1: Sign permit and execute**
+```solidity
+// Off-chain permit signing
+// ...
+
+MinterUSDCZap_v3(minterZapAddress).zapFxUsdToPeggedWithPermit(
+    10_000 * 1e18,
+    aliceAddress,
+    minPeggedOut,
+    deadline,
+    v, r, s
+);
+```
+
+**Flow Summary:**
+- **Input**: 10,000 fxUSD (approved via permit)
+- **Step 1**: 10,000 fxUSD → ~9,345.79 fxSAVE
+- **Step 2**: ~9,345.79 fxSAVE → Pegged tokens
+- **Output**: Alice receives pegged tokens
+
+#### Bob deposits 10,000 USDC to Stability Pool using `zapUsdcToStabilityPoolWithPermit`
+
+**Step 1: Sign permit and execute**
+```solidity
+address stabilityPool = 0x...;
+uint256 minPeggedOut = 9_000 * 1e18; // Minimum pegged tokens from minting (accounts for mint fees)
+// Note: Stability pool deposits don't incur fees, so minStabilityPoolOut should equal minPeggedOut
+// Add only a small slippage buffer (0.1-0.5%) for rounding protection
+uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buffer
+
+// Off-chain permit signing
+// ...
+
+MinterUSDCZap_v3(minterZapAddress).zapUsdcToStabilityPoolWithPermit(
+    10_000 * 1e6,
+    bobAddress,
+    minPeggedOut,         // Minimum pegged tokens expected (accounts for mint fees)
+    stabilityPool,
+    minStabilityPoolOut,  // Minimum deposited (should equal peggedOut, minus small rounding buffer)
+    deadline,
+    v, r, s
+);
+```
+
+**Flow Summary:**
+- **Input**: 10,000 USDC (approved via permit)
+- **Step 1**: 10,000 USDC → ~9,345.79 fxSAVE
+- **Step 2**: ~9,345.79 fxSAVE → Pegged tokens (via Minter mint, fees incurred here)
+- **Step 3**: Pegged tokens → Deposited into Stability Pool (no fees on deposit)
+- **Output**: Bob receives Stability Pool deposit (full pegged amount minus mint fees only)
+
+#### Alice deposits 10,000 fxUSD to Stability Pool using `zapFxUsdToStabilityPoolWithPermit`
+
+**Step 1: Sign permit and execute**
+```solidity
+address stabilityPool = 0x...;
+uint256 minPeggedOut = 9_000 * 1e18; // Minimum pegged tokens from minting (accounts for mint fees)
+// Note: Stability pool deposits don't incur fees, so minStabilityPoolOut should equal minPeggedOut
+// Add only a small slippage buffer (0.1-0.5%) for rounding protection
+uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buffer
+
+// Off-chain permit signing
+// ...
+
+MinterUSDCZap_v3(minterZapAddress).zapFxUsdToStabilityPoolWithPermit(
+    10_000 * 1e18,
+    aliceAddress,
+    minPeggedOut,         // Minimum pegged tokens expected (accounts for mint fees)
+    stabilityPool,
+    minStabilityPoolOut,  // Minimum deposited (should equal peggedOut, minus small rounding buffer)
+    deadline,
+    v, r, s
+);
+```
+
+**Flow Summary:**
+- **Input**: 10,000 fxUSD (approved via permit)
+- **Step 1**: 10,000 fxUSD → ~9,345.79 fxSAVE
+- **Step 2**: ~9,345.79 fxSAVE → Pegged tokens (via Minter mint, fees incurred here)
+- **Step 3**: Pegged tokens → Deposited into Stability Pool (no fees on deposit)
+- **Output**: Alice receives Stability Pool deposit (full pegged amount minus mint fees only)
+
 ## Contracts
 
 ### ETH/wstETH Zap Contracts
 
-- `GenesisETHZap_v3`: Zap ETH or stETH into Genesis contracts (non-upgradeable)
 - `GenesisETHZap_v4`: Zap ETH or stETH into Genesis contracts (upgradeable)
-- `MinterETHZap_v2`: Zap ETH or stETH to mint pegged or leveraged tokens, or deposit into Stability Pools (non-upgradeable)
 - `MinterETHZap_v3`: Zap ETH or stETH to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
 
 ### USDC/fxSAVE Zap Contracts
 
-- `GenesisUSDCZap_v2`: Zap USDC or fxUSD into Genesis contracts (non-upgradeable)
 - `GenesisUSDCZap_v4`: Zap USDC or fxUSD into Genesis contracts (upgradeable)
-- `MinterUSDCZap_v2`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (non-upgradeable)
 - `MinterUSDCZap_v3`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
 
 ## Prerequisites
@@ -64,147 +700,9 @@ forge test
 
 ## Deployment
 
-### Quick Deployment
-
-Deploy ETH/wstETH zap contracts (uses default Genesis/Minter addresses):
-```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-bash script/deploy-eth-zaps.sh
-```
-
-To use different Genesis/Minter addresses for ETH/wstETH:
-```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-export GENESIS_ETH="0xYOUR_GENESIS_ETH_ADDRESS"    # Optional: override default
-export MINTER_ETH="0xYOUR_MINTER_ETH_ADDRESS"      # Optional: override default
-export REFERRAL_ETH="0xYOUR_REFERRAL_ADDRESS"      # Optional: override default
-bash script/deploy-eth-zaps.sh
-```
-
-Deploy USDC/fxSAVE zap contracts (requires Genesis/Minter addresses):
-```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-export GENESIS_USDC="0xYOUR_GENESIS_USDC_ADDRESS"  # Required
-export MINTER_USDC="0xYOUR_MINTER_USDC_ADDRESS"    # Required
-bash script/deploy-usdc-zaps.sh
-```
-
-### Deployment Scripts
-
-#### ETH/wstETH Deployment (`script/deploy-eth-zaps.sh`)
-
-Deploys:
-- `GenesisETHZap_v3`
-- `MinterETHZap_v2`
-
-**Default Configuration:**
-- Genesis: `0x59C2776E88fF80841c88138a2CD0f375F544EeaE`
-- Minter: `0x6d64EC8B95Eeab780745d3bDF5BB06D08e38cC29`
-- Referral: `0x3dFc49e5112005179Da613BdE5973229082dAc35` (Harbor's Lido referral)
-
-**Environment Variables:**
-- `RPC_URL`: Ethereum RPC endpoint (default: `http://127.0.0.1:8545`)
-- `PRIVATE_KEY`: Deployer private key (required)
-- `GENESIS_ETH`: Genesis contract address (optional, has default: `0x59C2776E88fF80841c88138a2CD0f375F544EeaE`)
-- `MINTER_ETH`: Minter contract address (optional, has default: `0x6d64EC8B95Eeab780745d3bDF5BB06D08e38cC29`)
-- `REFERRAL_ETH`: Lido referral address (optional, has default: `0x3dFc49e5112005179Da613BdE5973229082dAc35`)
-
-**Usage (with defaults):**
-```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-bash script/deploy-eth-zaps.sh
-```
-
-**Usage (with custom addresses):**
-```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-export GENESIS_ETH="0xYOUR_CUSTOM_GENESIS_ADDRESS"
-export MINTER_ETH="0xYOUR_CUSTOM_MINTER_ADDRESS"
-export REFERRAL_ETH="0xYOUR_CUSTOM_REFERRAL_ADDRESS"  # Optional
-bash script/deploy-eth-zaps.sh
-```
-
-#### USDC/fxSAVE Deployment (`script/deploy-usdc-zaps.sh`)
-
-Deploys:
-- `GenesisUSDCZap_v2`
-- `MinterUSDCZap_v2`
-
-**Required Environment Variables:**
-- `RPC_URL`: Ethereum RPC endpoint
-- `PRIVATE_KEY`: Deployer private key
-- `GENESIS_USDC`: Genesis contract address (must accept fxSAVE as collateral)
-- `MINTER_USDC`: Minter contract address (must accept fxSAVE as collateral)
-
-**Usage:**
-```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-export GENESIS_USDC="0xYOUR_GENESIS_USDC_ADDRESS"
-export MINTER_USDC="0xYOUR_MINTER_USDC_ADDRESS"
-bash script/deploy-usdc-zaps.sh
-```
-
-### Manual Deployment
-
-You can also deploy contracts manually using `forge create`:
-
-**GenesisETHZap_v3:**
-```bash
-forge create src/zap/GenesisETHZap_v3.sol:GenesisETHZapV3 \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --constructor-args <GENESIS_ADDRESS> <REFERRAL_ADDRESS>
-```
-
-**MinterETHZap_v2:**
-```bash
-forge create src/zap/MinterETHZap_v2.sol:MinterETHZapV2 \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --constructor-args <MINTER_ADDRESS> <REFERRAL_ADDRESS>
-```
-
-**GenesisUSDCZap_v2:**
-```bash
-forge create src/zap/GenesisUSDCZap_v2.sol:GenesisUSDCZapV2 \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --constructor-args <GENESIS_ADDRESS>
-```
-
-**MinterUSDCZap_v2:**
-```bash
-forge create src/zap/MinterUSDCZap_v2.sol:MinterUSDCZapV2 \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --constructor-args <MINTER_ADDRESS>
-```
-
-### Deployment to Anvil Fork (Local Testing)
-
-For local testing with an Anvil fork:
-
-1. Start Anvil with a mainnet fork:
-```bash
-anvil --fork-url https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY --host 0.0.0.0 --port 8546
-```
-
-2. Deploy to the fork:
-```bash
-export RPC_URL="http://127.0.0.1:8546"
-export PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"  # Anvil default
-bash script/deploy-eth-zaps.sh
-```
+Deployment scripts were removed as part of the upgradeable-only cleanup. Use your preferred
+deployment flow to deploy the UUPS implementations and proxies for:
+`GenesisETHZap_v4`, `GenesisUSDCZap_v4`, `MinterETHZap_v3`, and `MinterUSDCZap_v3`.
 
 ## Post-Deployment
 
@@ -219,13 +717,6 @@ cast send <ZAP_ADDRESS> "transferOwnership(address)" <NEW_OWNER> \
 
 2. **Verify Contracts** (optional): Verify contracts on Etherscan:
 ```bash
-# For non-upgradeable contracts (in src/zap/)
-forge verify-contract <CONTRACT_ADDRESS> \
-  src/zap/<ContractName>.sol:<ContractName> \
-  --etherscan-api-key $ETHERSCAN_API_KEY \
-  --chain-id 1
-
-# For upgradeable contracts (in src/zap/upgradeable/)
 forge verify-contract <CONTRACT_ADDRESS> \
   src/zap/upgradeable/<ContractName>.sol:<ContractName> \
   --etherscan-api-key $ETHERSCAN_API_KEY \
@@ -244,15 +735,11 @@ cast send <ZAP_ADDRESS> "setReferral(address)" <NEW_REFERRAL> \
 ### Mainnet (when deployed)
 
 ETH/wstETH Zaps:
-- GenesisETHZap_v3: TBD
 - GenesisETHZap_v4: TBD (upgradeable)
-- MinterETHZap_v2: TBD
 - MinterETHZap_v3: TBD (upgradeable)
 
 USDC/fxSAVE Zaps:
-- GenesisUSDCZap_v2: TBD
 - GenesisUSDCZap_v4: TBD (upgradeable)
-- MinterUSDCZap_v2: TBD
 - MinterUSDCZap_v3: TBD (upgradeable)
 
 ## Security Considerations
@@ -271,11 +758,11 @@ harbor-zap-contracts/
 ├── src/
 │   ├── interfaces/      # Interface definitions
 │   ├── minter/          # Core contracts (Genesis_v1, Minter_v1, ReservePool_v1)
-│   ├── zap/             # Zap contract implementations (non-upgradeable)
+│   ├── zap/             # Zap contracts (upgradeable)
 │   │   └── upgradeable/ # Upgradeable zap contracts (UUPS proxy)
 │   └── util/            # Utility contracts (ReentrancyGuard, etc.)
 ├── test/                # Test files
-├── script/              # Deployment scripts
+├── script/              # Utility scripts
 └── foundry.toml         # Foundry configuration
 ```
 

@@ -7,12 +7,15 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
+import {
+    ReentrancyGuardTransientUpgradeable
+} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
 import {ISTETHV2, IStETH} from "src/interfaces/IStETH.sol";
 import {IWstETHWrapV2, IWstETH} from "src/interfaces/IWstETH.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
+import {WstETHConstants} from "src/constants/ethereum/WstETHConstants.sol";
 
 /// @title GenesisETHZap V4
 /// @notice One-click zapper: ETH or stETH → wstETH → Genesis vault
@@ -32,9 +35,9 @@ contract GenesisETHZap_v4 is
     using SafeERC20 for IERC20;
 
     // ========== Constants ==========
-    address public constant STETH = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
-    address public constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
-    address public constant DEFAULT_REFERRAL = 0x3dFc49e5112005179Da613BdE5973229082dAc35;
+    address public constant STETH = WstETHConstants.STETH;
+    address public constant WSTETH = WstETHConstants.WSTETH;
+    address public constant DEFAULT_REFERRAL = WstETHConstants.DEFAULT_REFERRAL;
 
     // ========== Immutables ==========
     address public immutable GENESIS;
@@ -68,6 +71,7 @@ contract GenesisETHZap_v4 is
     );
 
     event ReferralUpdated(address indexed oldReferral, address indexed newReferral);
+    event Upgraded(address indexed implementation);
 
     // ========== Constructor ==========
     /// @notice Deploy zapper locked to a specific Genesis vault
@@ -75,8 +79,13 @@ contract GenesisETHZap_v4 is
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address genesis_) {
         _disableInitializers();
-
         if (genesis_ == address(0)) revert IZapErrors.ZeroAddress();
+
+        // Verify that wstETH matches the Genesis wrapped collateral token
+        address expectedCollateral = IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN();
+        if (WSTETH != expectedCollateral) {
+            revert IZapErrors.CollateralMismatch(expectedCollateral, WSTETH);
+        }
 
         GENESIS = genesis_;
         stETH = IStETH(STETH);
@@ -101,7 +110,9 @@ contract GenesisETHZap_v4 is
     /// @notice The check that allows this contract to be upgraded
     /// @dev In UUPS proxies the implementation is responsible for upgrading itself
     /// @dev Only owners can upgrade this contract
-    function _authorizeUpgrade(address) internal override onlyOwner {} // solhint-disable-line no-empty-blocks
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+        emit Upgraded(newImplementation);
+    }
 
     // =================================================================
     // ====================== USER FACING ZAPS =========================
@@ -111,48 +122,35 @@ contract GenesisETHZap_v4 is
     /// @dev Includes slippage protection against front-running/MEV
     /// @param receiver Address receiving Genesis vault shares
     /// @param minWstEthOut Minimum acceptable wstETH (use preview for 0.1-0.5% buffer)
+    /// @param minEthEquivalentOut Minimum acceptable ETH value (slippage protection)
     /// @return sharesOut Exact amount of Genesis shares minted
-    function zapEth(
-        address receiver,
-        uint256 minWstEthOut
-    ) external payable nonReentrant returns (uint256 sharesOut) {
+    function zapEth(address receiver, uint256 minWstEthOut, uint256 minEthEquivalentOut)
+        external
+        payable
+        nonReentrant
+        returns (uint256 sharesOut)
+    {
         if (msg.value == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         uint256 ethIn = msg.value;
 
-        // 1. ETH → stETH via Lido (never trust return value)
-        uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
-        ISTETHV2(STETH).submit{value: ethIn}(referral);
-        uint256 stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
-        if (stEthReceived == 0) revert IZapErrors.NoStETHReceived();
-
+        // 1. ETH → stETH via Lido
+        uint256 stEthReceived = _convertEthToStEth(ethIn);
         // 2. stETH → wstETH
-        IERC20(STETH).forceApprove(WSTETH, stEthReceived);
-        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
-        sharesOut = IWstETHWrapV2(WSTETH).wrap(stEthReceived);
-        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthReceived = wstEthAfter - wstEthBefore;
-        
-        // Verify we received wstETH
-        if (wstEthReceived == 0) revert IZapErrors.NoStETHReceived();
-        if (wstEthReceived != sharesOut) {
-            // Use actual balance if different (shouldn't happen, but be safe)
-            sharesOut = wstEthReceived;
-        }
-
+        sharesOut = _convertStEthToWstEth(stEthReceived);
         // 3. Slippage protection
-        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHigh();
-
-        // 4. Deposit to Genesis
+        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHighWstETH(sharesOut, minWstEthOut);
+        // 4. Value protection
+        (uint256 ethValueNow,) = _getCurrentValues(sharesOut);
+        if (ethValueNow < minEthEquivalentOut) {
+            revert IZapErrors.SlippageTooHighETHValue(ethValueNow, minEthEquivalentOut);
+        }
+        // 5. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
-
-        // 5. Emit real-time values for indexers/frontends
+        // 6. Emit real-time values for indexers/frontends
         (uint256 ethNow, uint256 stEthNow) = _getCurrentValues(sharesOut);
         emit ZappedETH(_msgSender(), receiver, ethIn, sharesOut, ethNow, stEthNow);
-
-        // Clean up
-        IERC20(STETH).forceApprove(WSTETH, 0);
     }
 
     /// @notice Zap existing stETH → wstETH → Genesis
@@ -160,43 +158,25 @@ contract GenesisETHZap_v4 is
     /// @param receiver Address receiving Genesis vault shares
     /// @param minWstEthOut Minimum acceptable wstETH out
     /// @return sharesOut Exact amount of Genesis shares minted
-    function zapStEth(
-        uint256 stEthAmount,
-        address receiver,
-        uint256 minWstEthOut
-    ) external nonReentrant returns (uint256 sharesOut) {
+    function zapStEth(uint256 stEthAmount, address receiver, uint256 minWstEthOut)
+        external
+        nonReentrant
+        returns (uint256 sharesOut)
+    {
         if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         // 1. Transfer stETH from user
         IERC20(STETH).safeTransferFrom(_msgSender(), address(this), stEthAmount);
-
         // 2. stETH → wstETH
-        IERC20(STETH).forceApprove(WSTETH, stEthAmount);
-        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
-        sharesOut = IWstETHWrapV2(WSTETH).wrap(stEthAmount);
-        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthReceived = wstEthAfter - wstEthBefore;
-        
-        // Verify we received wstETH
-        if (wstEthReceived == 0) revert IZapErrors.NoStETHReceived();
-        if (wstEthReceived != sharesOut) {
-            // Use actual balance if different (shouldn't happen, but be safe)
-            sharesOut = wstEthReceived;
-        }
-
+        sharesOut = _convertStEthToWstEth(stEthAmount);
         // 3. Slippage protection
-        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHigh();
-
+        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHighWstETH(sharesOut, minWstEthOut);
         // 4. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
-
         // 5. Emit real-time values for indexers/frontends
         (uint256 ethNow, uint256 stEthNow) = _getCurrentValues(sharesOut);
         emit ZappedStETH(_msgSender(), receiver, stEthAmount, sharesOut, ethNow, stEthNow);
-
-        // Clean up
-        IERC20(STETH).forceApprove(WSTETH, 0);
     }
 
     /// @notice Zap stETH → wstETH → Genesis using permit (single transaction, no approval needed)
@@ -222,40 +202,44 @@ contract GenesisETHZap_v4 is
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         _permitStEth(stEthAmount, deadline, v, r, s);
-        
+
         // 1. Transfer stETH from user
         IERC20(STETH).safeTransferFrom(_msgSender(), address(this), stEthAmount);
-
         // 2. stETH → wstETH
-        IERC20(STETH).forceApprove(WSTETH, stEthAmount);
-        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
-        sharesOut = IWstETHWrapV2(WSTETH).wrap(stEthAmount);
-        uint256 wstEthAfter = IERC20(WSTETH).balanceOf(address(this));
-        uint256 wstEthReceived = wstEthAfter - wstEthBefore;
-        
-        // Verify we received wstETH
-        if (wstEthReceived == 0) revert IZapErrors.NoStETHReceived();
-        if (wstEthReceived != sharesOut) {
-            sharesOut = wstEthReceived;
-        }
-
+        sharesOut = _convertStEthToWstEth(stEthAmount);
         // 3. Slippage protection
-        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHigh();
-
+        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHighWstETH(sharesOut, minWstEthOut);
         // 4. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
-
         // 5. Emit real-time values for indexers/frontends
         (uint256 ethNow, uint256 stEthNow) = _getCurrentValues(sharesOut);
         emit ZappedStETH(_msgSender(), receiver, stEthAmount, sharesOut, ethNow, stEthNow);
-
-        // Clean up
-        IERC20(STETH).forceApprove(WSTETH, 0);
     }
 
     // =================================================================
     // ====================== INTERNAL HELPERS =========================
     // =================================================================
+
+    /// @notice Convert ETH to stETH via Lido
+    /// @param ethAmount Amount of ETH to convert
+    /// @return stEthReceived Amount of stETH received (using balance checks, never trust return value)
+    function _convertEthToStEth(uint256 ethAmount) internal returns (uint256 stEthReceived) {
+        uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
+        ISTETHV2(STETH).submit{value: ethAmount}(referral);
+        stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
+        if (stEthReceived == 0) revert IZapErrors.NoStETHReceived();
+    }
+
+    /// @notice Convert stETH to wstETH
+    /// @param stEthAmount Amount of stETH to convert
+    /// @return wstEthReceived Amount of wstETH received (using balance checks, never trust return value)
+    function _convertStEthToWstEth(uint256 stEthAmount) internal returns (uint256 wstEthReceived) {
+        IERC20(STETH).forceApprove(WSTETH, stEthAmount);
+        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
+        IWstETHWrapV2(WSTETH).wrap(stEthAmount);
+        wstEthReceived = IERC20(WSTETH).balanceOf(address(this)) - wstEthBefore;
+        if (wstEthReceived == 0) revert IZapErrors.NoStETHReceived();
+    }
 
     /// @notice Helper to handle stETH permit
     /// @param amount Amount to permit
@@ -267,43 +251,38 @@ contract GenesisETHZap_v4 is
         IERC20Permit(STETH).permit(_msgSender(), address(this), amount, deadline, v, r, s);
     }
 
+    /// @notice Deposit wstETH into Genesis and validate shares
+    /// @param amount Amount of wstETH to deposit
+    /// @param receiver Address receiving Genesis shares
     function _depositToGenesis(uint256 amount, address receiver) internal {
-        // Verify contract has sufficient balance before deposit
-        uint256 balanceBefore = IERC20(WSTETH).balanceOf(address(this));
-        if (balanceBefore < amount) revert IZapErrors.NoStETHReceived();
-        
-        // Double-check receiver is not zero (defensive)
+        if (amount == 0) revert IZapErrors.ZeroAmount();
+
+        uint256 balance = IERC20(WSTETH).balanceOf(address(this));
+        if (balance < amount) revert IZapErrors.InsufficientBalance(balance, amount);
+
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        
-        // Check receiver's Genesis balance before deposit
+
         uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
-        
-        // wstETH uses standard ERC20 approve (returns bool)
-        // Reset approval first if needed (some tokens require reset before new approval)
+
         uint256 currentAllowance = IERC20(WSTETH).allowance(address(this), GENESIS);
-        if (currentAllowance > 0) {
-            // Reset to 0 first
-            IERC20(WSTETH).approve(GENESIS, 0);
+        if (currentAllowance < amount) {
+            if (currentAllowance > 0) {
+                IERC20(WSTETH).approve(GENESIS, 0);
+            }
+            IERC20(WSTETH).approve(GENESIS, type(uint256).max);
         }
-        // Approve the amount (wstETH approve returns bool, but we don't need to check it)
-        IERC20(WSTETH).approve(GENESIS, amount);
-        
-        // Genesis deposit function pulls tokens via safeTransferFrom
-        // Try interface call directly - should work with proper approval
+
         IGenesis(GENESIS).deposit(amount, receiver);
-        
-        // Validate that shares were actually minted
+
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
-        if (sharesReceived != amount) {
-            revert IZapErrors.DepositFailed();
-        }
-        
-        // Reset approval after successful deposit
-        IERC20(WSTETH).approve(GENESIS, 0);
+        if (sharesReceived != amount) revert IZapErrors.MintMismatchExpected(amount, sharesReceived);
     }
 
-    /// @dev Returns real-time redeemable values for any wstETH amount
+    /// @notice Returns real-time redeemable values for any wstETH amount
+    /// @param wstEthAmount Amount of wstETH
+    /// @return ethValue Equivalent ETH value
+    /// @return stEthValue Equivalent stETH value
     function _getCurrentValues(uint256 wstEthAmount) internal view returns (uint256 ethValue, uint256 stEthValue) {
         stEthValue = wstETH.getStETHByWstETH(wstEthAmount);
         ethValue = stETH.getPooledEthByShares(stEthValue);
@@ -346,11 +325,8 @@ contract GenesisETHZap_v4 is
     /// @param ethAmount Amount of ETH
     /// @return wstEthAmount Expected wstETH amount (which equals Genesis shares)
     function previewWstEthFromEth(uint256 ethAmount) external view returns (uint256 wstEthAmount) {
-        // Calculate stETH shares that will be minted for this ETH amount
         uint256 stEthShares = IStETH(STETH).getSharesByPooledEth(ethAmount);
-        // Convert shares back to stETH token amount (accounts for rounding)
         uint256 stEthAmount = IStETH(STETH).getPooledEthByShares(stEthShares);
-        // Convert stETH to wstETH
         wstEthAmount = IWstETH(WSTETH).getWstETHByStETH(stEthAmount);
     }
 
@@ -376,7 +352,11 @@ contract GenesisETHZap_v4 is
     /// @param stEthAmount Amount of stETH
     /// @return sharesOut Expected Genesis shares that will be minted
     /// @return wstEthAmount Expected wstETH amount
-    function previewGenesisFromStEth(uint256 stEthAmount) external view returns (uint256 sharesOut, uint256 wstEthAmount) {
+    function previewGenesisFromStEth(uint256 stEthAmount)
+        external
+        view
+        returns (uint256 sharesOut, uint256 wstEthAmount)
+    {
         wstEthAmount = this.previewWstEthFromStEth(stEthAmount);
         sharesOut = wstEthAmount; // 1:1 mapping
     }
@@ -397,18 +377,21 @@ contract GenesisETHZap_v4 is
         payable(owner()).transfer(address(this).balance);
     }
 
-    /// @notice Rescue any ERC20 (except stETH/wstETH which should never be stuck)
+    /// @notice Rescue any ERC20 (except stETH/wstETH/Genesis which should never be stuck)
     function rescueToken(address token) external onlyOwner {
+        if (token == STETH || token == WSTETH || token == GENESIS) {
+            revert IZapErrors.CannotRescueProtectedToken(token);
+        }
         IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
     }
 
     // =================================================================
-    // ====================== RECEIVE ETH ==============================
+    // ====================== RECEIVE / FALLBACK =======================
     // =================================================================
+
     receive() external payable {}
 
     fallback() external payable {
         revert IZapErrors.FunctionNotFound();
     }
 }
-

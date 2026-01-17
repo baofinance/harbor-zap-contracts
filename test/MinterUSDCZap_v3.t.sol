@@ -7,7 +7,6 @@ import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.
 
 import {MinterUSDCZap_v3} from "src/zap/upgradeable/MinterUSDCZap_v3.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
-import {IMinter} from "src/interfaces/IMinter.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
@@ -56,10 +55,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
         zapImpl = address(new MinterUSDCZap_v3(minter));
-        zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl,
-            abi.encodeCall(MinterUSDCZap_v3.initialize, (zapOwner))
-        );
+        zapProxy = UnsafeUpgrades.deployUUPSProxy(zapImpl, abi.encodeCall(MinterUSDCZap_v3.initialize, (zapOwner)));
         zap = MinterUSDCZap_v3(payable(zapProxy));
         vm.label(address(zap), "MinterUSDCZapV3");
 
@@ -121,7 +117,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
 
-        vm.expectRevert(IZapErrors.InvalidAddress.selector);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
         zap.zapUsdcToPegged(usdcAmount, address(0), 0);
 
         vm.stopPrank();
@@ -190,10 +186,10 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
     function test_ZapUsdcToStabilityPool_Success() public {
         uint256 usdcAmount = 1000 * 1e6;
-        
+
         // Deploy mock stability pool
         MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
-        
+
         // Allow stability pool
         vm.prank(zapOwner);
         zap.setStabilityPoolAllowed(address(stabilityPool), true);
@@ -206,13 +202,8 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         uint256 minPeggedOut = previewPegged * 99 / 100;
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
-        (uint256 peggedOut, uint256 deposited) = zap.zapUsdcToStabilityPool(
-            usdcAmount,
-            receiver,
-            minPeggedOut,
-            address(stabilityPool),
-            minStabilityPoolOut
-        );
+        (uint256 peggedOut, uint256 deposited) =
+            zap.zapUsdcToStabilityPool(usdcAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut);
 
         vm.stopPrank();
 
@@ -236,7 +227,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
     function test_ZapFxUsdToStabilityPool_Success() public {
         deal(FXUSD, user1, 10000 * 1e18);
         uint256 fxUsdAmount = 1000 * 1e18;
-        
+
         MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
         vm.prank(zapOwner);
         zap.setStabilityPoolAllowed(address(stabilityPool), true);
@@ -250,11 +241,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
         (uint256 peggedOut, uint256 deposited) = zap.zapFxUsdToStabilityPool(
-            fxUsdAmount,
-            receiver,
-            minPeggedOut,
-            address(stabilityPool),
-            minStabilityPoolOut
+            fxUsdAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -265,24 +252,24 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
     // ============ Preview Function Tests ============
 
-    function test_PreviewPeggedFromFxSave() public {
+    function test_PreviewPeggedFromFxSave() public view {
         uint256 fxSaveAmount = 1000 * 1e18;
         uint256 previewPegged = zap.previewPeggedFromFxSave(fxSaveAmount);
-        
+
         assertGt(previewPegged, 0, "Preview should return > 0");
     }
 
-    function test_PreviewLeveragedFromFxSave() public {
+    function test_PreviewLeveragedFromFxSave() public view {
         uint256 fxSaveAmount = 1000 * 1e18;
         uint256 previewLeveraged = zap.previewLeveragedFromFxSave(fxSaveAmount);
-        
+
         assertGt(previewLeveraged, 0, "Preview should return > 0");
     }
 
-    function test_PreviewStabilityPoolFromFxSave() public {
+    function test_PreviewStabilityPoolFromFxSave() public view {
         uint256 fxSaveAmount = 1000 * 1e18;
         uint256 previewPegged = zap.previewStabilityPoolFromFxSave(fxSaveAmount);
-        
+
         assertGt(previewPegged, 0, "Preview should return > 0");
     }
 
@@ -291,27 +278,27 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
     function test_Upgrade() public {
         // Deploy new implementation
         address newImpl = address(new MinterUSDCZap_v3(minter));
-        
+
         // Upgrade proxy
         vm.prank(zapOwner);
         zap.upgradeToAndCall(newImpl, "");
-        
+
         // Verify upgrade worked
         assertEq(UnsafeUpgrades.getImplementationAddress(address(zap)), newImpl, "Implementation should be upgraded");
-        
+
         // Verify functionality still works
         uint256 usdcAmount = 1000 * 1e6;
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
         uint256 peggedOut = zap.zapUsdcToPegged(usdcAmount, receiver, 0);
         vm.stopPrank();
-        
+
         assertGt(peggedOut, 0, "Should still work after upgrade");
     }
 
     function test_Upgrade_OnlyOwner() public {
         address newImpl = address(new MinterUSDCZap_v3(minter));
-        
+
         vm.prank(user1);
         vm.expectRevert();
         zap.upgradeToAndCall(newImpl, "");
@@ -321,21 +308,21 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
     function test_SetStabilityPoolAllowed() public {
         address stabilityPool = makeAddr("stabilityPool");
-        
+
         vm.prank(zapOwner);
         zap.setStabilityPoolAllowed(stabilityPool, true);
-        
+
         assertTrue(zap.allowedStabilityPools(stabilityPool), "Stability pool should be allowed");
-        
+
         vm.prank(zapOwner);
         zap.setStabilityPoolAllowed(stabilityPool, false);
-        
+
         assertFalse(zap.allowedStabilityPools(stabilityPool), "Stability pool should not be allowed");
     }
 
     function test_SetStabilityPoolAllowed_OnlyOwner() public {
         address stabilityPool = makeAddr("stabilityPool");
-        
+
         vm.prank(user1);
         vm.expectRevert();
         zap.setStabilityPoolAllowed(stabilityPool, true);
@@ -343,22 +330,31 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
     function test_RescueEth() public {
         vm.deal(address(zap), 1 ether);
-        
+
         uint256 ownerBalanceBefore = zapOwner.balance;
         vm.prank(zapOwner);
         zap.rescueEth();
-        
+
         assertEq(zapOwner.balance, ownerBalanceBefore + 1 ether, "ETH should be rescued");
     }
 
-    function test_RescueToken() public {
+    function test_RescueToken_ProtectedToken() public {
         deal(USDC, address(zap), 1000 * 1e6);
-        
-        uint256 ownerBalanceBefore = IERC20(USDC).balanceOf(zapOwner);
+
         vm.prank(zapOwner);
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.CannotRescueProtectedToken.selector, USDC));
         zap.rescueToken(USDC);
-        
-        assertEq(IERC20(USDC).balanceOf(zapOwner), ownerBalanceBefore + 1000 * 1e6, "Token should be rescued");
+    }
+
+    function test_RescueToken_UnprotectedToken() public {
+        MockERC20 token = new MockERC20("Mock", "MOCK", 18);
+        deal(address(token), address(zap), 1000 ether);
+
+        uint256 ownerBalanceBefore = token.balanceOf(zapOwner);
+        vm.prank(zapOwner);
+        zap.rescueToken(address(token));
+
+        assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
     }
 }
 

@@ -4,41 +4,55 @@ pragma solidity >=0.8.28 <0.9.0;
 // creates arrays of uint, int and address
 
 contract Array {
-    function ua() internal pure returns (uint[] memory result) {
-        result = new uint[](0);
+    function ua() internal pure returns (uint256[] memory result) {
+        result = new uint256[](0);
     }
-    function ua(uint a_) internal pure returns (uint[] memory result) {
-        result = new uint[](1);
+
+    function ua(uint256 a_) internal pure returns (uint256[] memory result) {
+        result = new uint256[](1);
         result[0] = a_;
     }
-    function ua(uint a_, uint b) internal pure returns (uint[] memory result) {
-        result = new uint[](2);
+
+    function ua(uint256 a_, uint256 b) internal pure returns (uint256[] memory result) {
+        result = new uint256[](2);
         result[0] = a_;
         result[1] = b;
     }
-    function ua(uint a_, uint b, uint c) internal pure returns (uint[] memory result) {
-        result = new uint[](3);
+
+    function ua(uint256 a_, uint256 b, uint256 c) internal pure returns (uint256[] memory result) {
+        result = new uint256[](3);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
     }
-    function ua(uint a_, uint b, uint c, uint d) internal pure returns (uint[] memory result) {
-        result = new uint[](4);
+
+    function ua(uint256 a_, uint256 b, uint256 c, uint256 d) internal pure returns (uint256[] memory result) {
+        result = new uint256[](4);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
         result[3] = d;
     }
-    function ua(uint a_, uint b, uint c, uint d, uint e) internal pure returns (uint[] memory result) {
-        result = new uint[](5);
+
+    function ua(uint256 a_, uint256 b, uint256 c, uint256 d, uint256 e)
+        internal
+        pure
+        returns (uint256[] memory result)
+    {
+        result = new uint256[](5);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
         result[3] = d;
         result[4] = e;
     }
-    function ua(uint a_, uint b, uint c, uint d, uint e, uint f) internal pure returns (uint[] memory result) {
-        result = new uint[](6);
+
+    function ua(uint256 a_, uint256 b, uint256 c, uint256 d, uint256 e, uint256 f)
+        internal
+        pure
+        returns (uint256[] memory result)
+    {
+        result = new uint256[](6);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -46,8 +60,13 @@ contract Array {
         result[4] = e;
         result[5] = f;
     }
-    function ua(uint a_, uint b, uint c, uint d, uint e, uint f, uint g) internal pure returns (uint[] memory result) {
-        result = new uint[](7);
+
+    function ua(uint256 a_, uint256 b, uint256 c, uint256 d, uint256 e, uint256 f, uint256 g)
+        internal
+        pure
+        returns (uint256[] memory result)
+    {
+        result = new uint256[](7);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -56,17 +75,13 @@ contract Array {
         result[5] = f;
         result[6] = g;
     }
-    function ua(
-        uint a_,
-        uint b,
-        uint c,
-        uint d,
-        uint e,
-        uint f,
-        uint g,
-        uint h
-    ) internal pure returns (uint[] memory result) {
-        result = new uint[](8);
+
+    function ua(uint256 a_, uint256 b, uint256 c, uint256 d, uint256 e, uint256 f, uint256 g, uint256 h)
+        internal
+        pure
+        returns (uint256[] memory result)
+    {
+        result = new uint256[](8);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -77,18 +92,12 @@ contract Array {
         result[7] = h;
     }
 
-    function ua(
-        uint a_,
-        uint b,
-        uint c,
-        uint d,
-        uint e,
-        uint f,
-        uint g,
-        uint h,
-        uint i
-    ) internal pure returns (uint[] memory result) {
-        result = new uint[](9);
+    function ua(uint256 a_, uint256 b, uint256 c, uint256 d, uint256 e, uint256 f, uint256 g, uint256 h, uint256 i)
+        internal
+        pure
+        returns (uint256[] memory result)
+    {
+        result = new uint256[](9);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -101,18 +110,18 @@ contract Array {
     }
 
     function ua(
-        uint a_,
-        uint b,
-        uint c,
-        uint d,
-        uint e,
-        uint f,
-        uint g,
-        uint h,
-        uint i,
-        uint j
-    ) internal pure returns (uint[] memory result) {
-        result = new uint[](10);
+        uint256 a_,
+        uint256 b,
+        uint256 c,
+        uint256 d,
+        uint256 e,
+        uint256 f,
+        uint256 g,
+        uint256 h,
+        uint256 i,
+        uint256 j
+    ) internal pure returns (uint256[] memory result) {
+        result = new uint256[](10);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -126,19 +135,19 @@ contract Array {
     }
 
     function ua(
-        uint a_,
-        uint b,
-        uint c,
-        uint d,
-        uint e,
-        uint f,
-        uint g,
-        uint h,
-        uint i,
-        uint j,
-        uint k
-    ) internal pure returns (uint[] memory result) {
-        result = new uint[](11);
+        uint256 a_,
+        uint256 b,
+        uint256 c,
+        uint256 d,
+        uint256 e,
+        uint256 f,
+        uint256 g,
+        uint256 h,
+        uint256 i,
+        uint256 j,
+        uint256 k
+    ) internal pure returns (uint256[] memory result) {
+        result = new uint256[](11);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -153,20 +162,20 @@ contract Array {
     }
 
     function ua(
-        uint a_,
-        uint b,
-        uint c,
-        uint d,
-        uint e,
-        uint f,
-        uint g,
-        uint h,
-        uint i,
-        uint j,
-        uint k,
-        uint l
-    ) internal pure returns (uint[] memory result) {
-        result = new uint[](12);
+        uint256 a_,
+        uint256 b,
+        uint256 c,
+        uint256 d,
+        uint256 e,
+        uint256 f,
+        uint256 g,
+        uint256 h,
+        uint256 i,
+        uint256 j,
+        uint256 k,
+        uint256 l
+    ) internal pure returns (uint256[] memory result) {
+        result = new uint256[](12);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -182,21 +191,21 @@ contract Array {
     }
 
     function ua(
-        uint a_,
-        uint b,
-        uint c,
-        uint d,
-        uint e,
-        uint f,
-        uint g,
-        uint h,
-        uint i,
-        uint j,
-        uint k,
-        uint l,
-        uint m
-    ) internal pure returns (uint[] memory result) {
-        result = new uint[](13);
+        uint256 a_,
+        uint256 b,
+        uint256 c,
+        uint256 d,
+        uint256 e,
+        uint256 f,
+        uint256 g,
+        uint256 h,
+        uint256 i,
+        uint256 j,
+        uint256 k,
+        uint256 l,
+        uint256 m
+    ) internal pure returns (uint256[] memory result) {
+        result = new uint256[](13);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -212,38 +221,38 @@ contract Array {
         result[12] = m;
     }
 
-    function ia() internal pure returns (int[] memory result) {
-        result = new int[](0);
+    function ia() internal pure returns (int256[] memory result) {
+        result = new int256[](0);
     }
 
-    function ia(int a_) internal pure returns (int[] memory result) {
-        result = new int[](1);
+    function ia(int256 a_) internal pure returns (int256[] memory result) {
+        result = new int256[](1);
         result[0] = a_;
     }
 
-    function ia(int a_, int b) internal pure returns (int[] memory result) {
-        result = new int[](2);
+    function ia(int256 a_, int256 b) internal pure returns (int256[] memory result) {
+        result = new int256[](2);
         result[0] = a_;
         result[1] = b;
     }
 
-    function ia(int a_, int b, int c) internal pure returns (int[] memory result) {
-        result = new int[](3);
+    function ia(int256 a_, int256 b, int256 c) internal pure returns (int256[] memory result) {
+        result = new int256[](3);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
     }
 
-    function ia(int a_, int b, int c, int d) internal pure returns (int[] memory result) {
-        result = new int[](4);
+    function ia(int256 a_, int256 b, int256 c, int256 d) internal pure returns (int256[] memory result) {
+        result = new int256[](4);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
         result[3] = d;
     }
 
-    function ia(int a_, int b, int c, int d, int e) internal pure returns (int[] memory result) {
-        result = new int[](5);
+    function ia(int256 a_, int256 b, int256 c, int256 d, int256 e) internal pure returns (int256[] memory result) {
+        result = new int256[](5);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -251,8 +260,12 @@ contract Array {
         result[4] = e;
     }
 
-    function ia(int a_, int b, int c, int d, int e, int f) internal pure returns (int[] memory result) {
-        result = new int[](6);
+    function ia(int256 a_, int256 b, int256 c, int256 d, int256 e, int256 f)
+        internal
+        pure
+        returns (int256[] memory result)
+    {
+        result = new int256[](6);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -261,8 +274,12 @@ contract Array {
         result[5] = f;
     }
 
-    function ia(int a_, int b, int c, int d, int e, int f, int g) internal pure returns (int[] memory result) {
-        result = new int[](7);
+    function ia(int256 a_, int256 b, int256 c, int256 d, int256 e, int256 f, int256 g)
+        internal
+        pure
+        returns (int256[] memory result)
+    {
+        result = new int256[](7);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -272,8 +289,12 @@ contract Array {
         result[6] = g;
     }
 
-    function ia(int a_, int b, int c, int d, int e, int f, int g, int h) internal pure returns (int[] memory result) {
-        result = new int[](8);
+    function ia(int256 a_, int256 b, int256 c, int256 d, int256 e, int256 f, int256 g, int256 h)
+        internal
+        pure
+        returns (int256[] memory result)
+    {
+        result = new int256[](8);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -284,18 +305,12 @@ contract Array {
         result[7] = h;
     }
 
-    function ia(
-        int a_,
-        int b,
-        int c,
-        int d,
-        int e,
-        int f,
-        int g,
-        int h,
-        int i
-    ) internal pure returns (int[] memory result) {
-        result = new int[](9);
+    function ia(int256 a_, int256 b, int256 c, int256 d, int256 e, int256 f, int256 g, int256 h, int256 i)
+        internal
+        pure
+        returns (int256[] memory result)
+    {
+        result = new int256[](9);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -307,19 +322,12 @@ contract Array {
         result[8] = i;
     }
 
-    function ia(
-        int a_,
-        int b,
-        int c,
-        int d,
-        int e,
-        int f,
-        int g,
-        int h,
-        int i,
-        int j
-    ) internal pure returns (int[] memory result) {
-        result = new int[](10);
+    function ia(int256 a_, int256 b, int256 c, int256 d, int256 e, int256 f, int256 g, int256 h, int256 i, int256 j)
+        internal
+        pure
+        returns (int256[] memory result)
+    {
+        result = new int256[](10);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
@@ -335,21 +343,25 @@ contract Array {
     function aa() internal pure returns (address[] memory result) {
         result = new address[](0);
     }
+
     function aa(address a_) internal pure returns (address[] memory result) {
         result = new address[](1);
         result[0] = a_;
     }
+
     function aa(address a_, address b) internal pure returns (address[] memory result) {
         result = new address[](2);
         result[0] = a_;
         result[1] = b;
     }
+
     function aa(address a_, address b, address c) internal pure returns (address[] memory result) {
         result = new address[](3);
         result[0] = a_;
         result[1] = b;
         result[2] = c;
     }
+
     function aa(address a_, address b, address c, address d) internal pure returns (address[] memory result) {
         result = new address[](4);
         result[0] = a_;
@@ -357,13 +369,12 @@ contract Array {
         result[2] = c;
         result[3] = d;
     }
-    function aa(
-        address a_,
-        address b,
-        address c,
-        address d,
-        address e
-    ) internal pure returns (address[] memory result) {
+
+    function aa(address a_, address b, address c, address d, address e)
+        internal
+        pure
+        returns (address[] memory result)
+    {
         result = new address[](5);
         result[0] = a_;
         result[1] = b;
@@ -371,14 +382,12 @@ contract Array {
         result[3] = d;
         result[4] = e;
     }
-    function aa(
-        address a_,
-        address b,
-        address c,
-        address d,
-        address e,
-        address f
-    ) internal pure returns (address[] memory result) {
+
+    function aa(address a_, address b, address c, address d, address e, address f)
+        internal
+        pure
+        returns (address[] memory result)
+    {
         result = new address[](6);
         result[0] = a_;
         result[1] = b;
@@ -391,15 +400,18 @@ contract Array {
     function sa() internal pure returns (string[] memory result) {
         result = new string[](0);
     }
+
     function sa(string memory a_) internal pure returns (string[] memory result) {
         result = new string[](1);
         result[0] = a_;
     }
+
     function sa(string memory a_, string memory b) internal pure returns (string[] memory result) {
         result = new string[](2);
         result[0] = a_;
         result[1] = b;
     }
+
     function sa(string memory a_, string memory b, string memory c) internal pure returns (string[] memory result) {
         result = new string[](3);
         result[0] = a_;
@@ -407,12 +419,11 @@ contract Array {
         result[2] = c;
     }
 
-    function sa(
-        string memory a_,
-        string memory b,
-        string memory c,
-        string memory d
-    ) internal pure returns (string[] memory result) {
+    function sa(string memory a_, string memory b, string memory c, string memory d)
+        internal
+        pure
+        returns (string[] memory result)
+    {
         result = new string[](4);
         result[0] = a_;
         result[1] = b;
@@ -420,13 +431,11 @@ contract Array {
         result[3] = d;
     }
 
-    function sa(
-        string memory a_,
-        string memory b,
-        string memory c,
-        string memory d,
-        string memory e
-    ) internal pure returns (string[] memory result) {
+    function sa(string memory a_, string memory b, string memory c, string memory d, string memory e)
+        internal
+        pure
+        returns (string[] memory result)
+    {
         result = new string[](5);
         result[0] = a_;
         result[1] = b;
@@ -435,14 +444,11 @@ contract Array {
         result[4] = e;
     }
 
-    function sa(
-        string memory a_,
-        string memory b,
-        string memory c,
-        string memory d,
-        string memory e,
-        string memory f
-    ) internal pure returns (string[] memory result) {
+    function sa(string memory a_, string memory b, string memory c, string memory d, string memory e, string memory f)
+        internal
+        pure
+        returns (string[] memory result)
+    {
         result = new string[](6);
         result[0] = a_;
         result[1] = b;
@@ -627,18 +633,18 @@ contract Array {
         result[12] = m;
     }
 
-    function cons(uint car, uint[] memory cdr) private pure returns (uint[] memory list) {
-        list = new uint[](cdr.length + 1);
+    function cons(uint256 car, uint256[] memory cdr) private pure returns (uint256[] memory list) {
+        list = new uint256[](cdr.length + 1);
         list[0] = car;
-        for (uint i = 0; i < cdr.length; i++) {
+        for (uint256 i = 0; i < cdr.length; i++) {
             list[i + 1] = cdr[i];
         }
     }
 
-    function cons(int car, int[] memory cdr) private pure returns (int[] memory list) {
-        list = new int[](cdr.length + 1);
+    function cons(int256 car, int256[] memory cdr) private pure returns (int256[] memory list) {
+        list = new int256[](cdr.length + 1);
         list[0] = car;
-        for (uint i = 0; i < cdr.length; i++) {
+        for (uint256 i = 0; i < cdr.length; i++) {
             list[i + 1] = cdr[i];
         }
     }
@@ -646,16 +652,16 @@ contract Array {
     function cons(address car, address[] memory cdr) private pure returns (address[] memory list) {
         list = new address[](cdr.length + 1);
         list[0] = car;
-        for (uint i = 0; i < cdr.length; i++) {
+        for (uint256 i = 0; i < cdr.length; i++) {
             list[i + 1] = cdr[i];
         }
     }
 
-    function ultimate(uint[] memory list) internal pure returns (uint) {
+    function ultimate(uint256[] memory list) internal pure returns (uint256) {
         return list[list.length - 1];
     }
 
-    function ultimate(int[] memory list) internal pure returns (int) {
+    function ultimate(int256[] memory list) internal pure returns (int256) {
         return list[list.length - 1];
     }
 
@@ -663,11 +669,11 @@ contract Array {
         return list[list.length - 1];
     }
 
-    function penultimate(uint[] memory list) internal pure returns (uint) {
+    function penultimate(uint256[] memory list) internal pure returns (uint256) {
         return list[list.length - 2];
     }
 
-    function penultimate(int[] memory list) internal pure returns (int) {
+    function penultimate(int256[] memory list) internal pure returns (int256) {
         return list[list.length - 2];
     }
 
@@ -675,11 +681,11 @@ contract Array {
         return list[list.length - 2];
     }
 
-    function initial(uint[] memory list) internal pure returns (uint) {
+    function initial(uint256[] memory list) internal pure returns (uint256) {
         return list[0];
     }
 
-    function initial(int[] memory list) internal pure returns (int) {
+    function initial(int256[] memory list) internal pure returns (int256) {
         return list[0];
     }
 
@@ -687,11 +693,11 @@ contract Array {
         return list[0];
     }
 
-    function second(uint[] memory list) internal pure returns (uint) {
+    function second(uint256[] memory list) internal pure returns (uint256) {
         return list[1];
     }
 
-    function second(int[] memory list) internal pure returns (int) {
+    function second(int256[] memory list) internal pure returns (int256) {
         return list[1];
     }
 

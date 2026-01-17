@@ -22,6 +22,7 @@ contract Clog {
     // set a prefix string, prepended to each log line.
     // use this to distinguish contracts or e.g. "C" for contract and "T" for test
     string private prefix = "";
+
     function clogContext(string memory prefix_) public {
         prefix = string.concat(prefix_, " ");
     }
@@ -38,11 +39,11 @@ contract Clog {
         _clog(value);
     }
 
-    function clog(string memory name, uint i, uint256 value) internal view {
+    function clog(string memory name, uint256 i, uint256 value) internal view {
         clog(string.concat(name, "[", _i2s(i), "]"), value);
     }
 
-    function clog(string memory name, uint i, int256 value) internal view {
+    function clog(string memory name, uint256 i, int256 value) internal view {
         clog(string.concat(name, "[", _i2s(i), "]"), value);
     }
 
@@ -77,7 +78,7 @@ contract Clog {
         return string.concat(neg, "%s [", neg, "%e]");
     }
 
-    uint private spacesPerIndentLevel = 2;
+    uint256 private spacesPerIndentLevel = 2;
 
     function _indent() private view returns (string memory indent_) {
         indent_ = new string(stack.length * spacesPerIndentLevel);
@@ -96,7 +97,7 @@ contract Clog {
     }
 
     // TODO: upgrade this to a full int to string coverter
-    function _i2s(uint i) private pure returns (string memory) {
+    function _i2s(uint256 i) private pure returns (string memory) {
         bytes memory byteArray = new bytes(1);
         byteArray[0] = bytes1(uint8(i) + 48);
         return string(byteArray);
@@ -298,7 +299,7 @@ library Useful {
         }
 
         string memory result = strings[0];
-        for (uint i = 1; i < strings.length; i++) {
+        for (uint256 i = 1; i < strings.length; i++) {
             result = string.concat(result, separator, strings[i]);
         }
         return result;
