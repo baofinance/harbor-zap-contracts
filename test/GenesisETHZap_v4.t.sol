@@ -72,7 +72,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         zapOwner = makeAddr("zapOwner");
         zapImpl = address(new GenesisETHZap_v4(genesis));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(GenesisETHZap_v4.initialize, (zapOwner, address(0)))
+            zapImpl, abi.encodeCall(GenesisETHZap_v4.initialize, (address(this), zapOwner, address(0)))
         );
         zap = GenesisETHZap_v4(payable(zapProxy));
         vm.label(address(zap), "GenesisETHZapV4");

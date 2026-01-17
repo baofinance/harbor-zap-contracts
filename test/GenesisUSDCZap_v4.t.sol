@@ -61,7 +61,9 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
         zapImpl = address(new GenesisUSDCZap_v4(genesis));
-        zapProxy = UnsafeUpgrades.deployUUPSProxy(zapImpl, abi.encodeCall(GenesisUSDCZap_v4.initialize, (zapOwner)));
+        zapProxy = UnsafeUpgrades.deployUUPSProxy(
+            zapImpl, abi.encodeCall(GenesisUSDCZap_v4.initialize, (address(this), zapOwner))
+        );
         zap = GenesisUSDCZap_v4(payable(zapProxy));
         vm.label(address(zap), "GenesisUSDCZapV4");
 

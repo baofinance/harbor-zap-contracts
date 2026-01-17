@@ -200,7 +200,7 @@ fi
 echo "✅ Implementation deployed: $impl_address"
 
 DEPLOYER=$("$CAST" wallet address --private-key "$PRIVATE_KEY")
-init_data=$("$CAST" calldata "initialize(address)" "$DEPLOYER")
+init_data=$("$CAST" calldata "initialize(address,address)" "$DEPLOYER" "$FINAL_OWNER")
 impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$MINTER_USDC")
 
 echo "Deploying proxy..."
@@ -253,9 +253,10 @@ cat > "$DEPLOYMENT_FILE" <<EOF
     "minter": "$MINTER_USDC"
   },
   "initializer": {
-    "signature": "initialize(address)",
+    "signature": "initialize(address,address)",
     "args": {
-      "owner": "$DEPLOYER"
+      "deployerOwner": "$DEPLOYER",
+      "pendingOwner": "$FINAL_OWNER"
     }
   },
   "initializerData": "$init_data",

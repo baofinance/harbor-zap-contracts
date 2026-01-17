@@ -105,9 +105,10 @@ contract GenesisUSDCZap_v4 is
 
     // ============ Initialization ============
     /// @notice Initialize the contract
-    /// @param owner_ Address that will own the contract
-    function initialize(address owner_) external initializer {
-        _initializeOwner(owner_);
+    /// @param deployerOwner Address used for initial setup
+    /// @param pendingOwner Address eligible to complete ownership transfer
+    function initialize(address deployerOwner, address pendingOwner) external initializer {
+        _initializeOwner(deployerOwner, pendingOwner);
         __UUPSUpgradeable_init();
         __Context_init();
         __ReentrancyGuardTransient_init();

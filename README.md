@@ -813,6 +813,7 @@ MARKET=GOLD ./script/deploy-minterusdc-zap.sh
 Notes:
 - Ownership is transferred to `owner` from `zap-addresses.json` during deployment.
 - Verification is performed during deployment when enabled. Use `script/verify-zaps.sh` if you skipped it.
+- Ownership transfer must be completed within 1 hour (BaoOwnable pending owner window).
 
 Optional follow-ups:
 

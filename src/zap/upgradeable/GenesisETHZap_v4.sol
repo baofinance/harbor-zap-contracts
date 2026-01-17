@@ -94,10 +94,11 @@ contract GenesisETHZap_v4 is
 
     // ========== Initialization ==========
     /// @notice Initialize the contract
-    /// @param owner_ Address that will own the contract
+    /// @param deployerOwner Address used for initial setup
+    /// @param pendingOwner Address eligible to complete ownership transfer
     /// @param referral_ Optional Lido referral (use address(0) for default)
-    function initialize(address owner_, address referral_) external initializer {
-        _initializeOwner(owner_);
+    function initialize(address deployerOwner, address pendingOwner, address referral_) external initializer {
+        _initializeOwner(deployerOwner, pendingOwner);
         __UUPSUpgradeable_init();
         __Context_init();
         __ReentrancyGuardTransient_init();

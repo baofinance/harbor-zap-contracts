@@ -66,8 +66,9 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
         zapImpl = address(new MinterETHZap_v3(minter, address(0)));
-        zapProxy =
-            UnsafeUpgrades.deployUUPSProxy(zapImpl, abi.encodeCall(MinterETHZap_v3.initialize, (zapOwner, address(0))));
+        zapProxy = UnsafeUpgrades.deployUUPSProxy(
+            zapImpl, abi.encodeCall(MinterETHZap_v3.initialize, (address(this), zapOwner, address(0)))
+        );
         zap = MinterETHZap_v3(payable(zapProxy));
         vm.label(address(zap), "MinterETHZapV3");
 

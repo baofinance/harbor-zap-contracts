@@ -202,7 +202,7 @@ fi
 echo "✅ Implementation deployed: $impl_address"
 
 DEPLOYER=$("$CAST" wallet address --private-key "$PRIVATE_KEY")
-init_data=$("$CAST" calldata "initialize(address,address)" "$DEPLOYER" "$REFERRAL_ETH")
+init_data=$("$CAST" calldata "initialize(address,address,address)" "$DEPLOYER" "$FINAL_OWNER" "$REFERRAL_ETH")
 impl_ctor_args=$("$CAST" abi-encode "constructor(address,address)" "$MINTER_ETH" "$REFERRAL_ETH")
 
 echo "Deploying proxy..."
@@ -256,9 +256,10 @@ cat > "$DEPLOYMENT_FILE" <<EOF
     "referral": "$REFERRAL_ETH"
   },
   "initializer": {
-    "signature": "initialize(address,address)",
+    "signature": "initialize(address,address,address)",
     "args": {
-      "owner": "$DEPLOYER",
+      "deployerOwner": "$DEPLOYER",
+      "pendingOwner": "$FINAL_OWNER",
       "referral": "$REFERRAL_ETH"
     }
   },
