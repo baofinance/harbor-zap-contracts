@@ -58,8 +58,9 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
         zapImpl = address(new MinterUSDCZap_v3(minter));
-        zapProxy =
-            UnsafeUpgrades.deployUUPSProxy(zapImpl, abi.encodeCall(MinterUSDCZap_v3.initialize, (address(this), zapOwner)));
+        zapProxy = UnsafeUpgrades.deployUUPSProxy(
+            zapImpl, abi.encodeCall(MinterUSDCZap_v3.initialize, (address(this), zapOwner))
+        );
         zap = MinterUSDCZap_v3(payable(zapProxy));
         vm.label(address(zap), "MinterUSDCZapV3");
 
