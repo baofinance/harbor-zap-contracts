@@ -167,6 +167,24 @@ contract MinterETHZap_v3 is
         uint256 deposited
     );
 
+    /// @notice Emitted when wstETH is zapped to StabilityPool
+    /// @param user Address that initiated the zap
+    /// @param minter Address of the Minter contract
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param wstEthAmount Amount of wstETH deposited
+    /// @param peggedOut Amount of pegged tokens minted
+    /// @param stabilityPool Address of the StabilityPool
+    /// @param deposited Amount deposited into StabilityPool
+    event WSTETHZappedToStabilityPool(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 wstEthAmount,
+        uint256 peggedOut,
+        address stabilityPool,
+        uint256 deposited
+    );
+
     event ReferralUpdated(address indexed oldReferral, address indexed newReferral);
     event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
     event Upgraded(address indexed implementation);
@@ -375,6 +393,39 @@ contract MinterETHZap_v3 is
         _resetAllowances();
     }
 
+    /// @notice Zap wstETH into StabilityPool in one transaction
+    /// @dev Flow: wstETH → Minter mint pegged → StabilityPool deposit
+    /// @dev Use previewStabilityPoolFromWstEth() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param wstEthAmount Amount of wstETH to zap
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromWstEth with slippage buffer)
+    /// @param stabilityPool StabilityPool address to deposit pegged tokens into
+    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
+    /// @return peggedOut Amount of pegged tokens minted
+    /// @return deposited Amount deposited into StabilityPool
+    function zapWstEthToStabilityPool(
+        uint256 wstEthAmount,
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut
+    ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
+        if (wstEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
+
+        IERC20(WSTETH).safeTransferFrom(_msgSender(), address(this), wstEthAmount);
+
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(wstEthAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+
+        emit WSTETHZappedToStabilityPool(
+            _msgSender(), MINTER, receiver, wstEthAmount, peggedOut, stabilityPool, deposited
+        );
+        _resetAllowances();
+    }
+
     // ============ Permit-Based Functions ============
 
     /// @notice Zap stETH into pegged tokens using permit (single transaction, no approval needed)
@@ -478,6 +529,47 @@ contract MinterETHZap_v3 is
         _resetAllowances();
     }
 
+    /// @notice Zap wstETH into StabilityPool using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit wstETH → wstETH → Minter mint pegged → StabilityPool deposit
+    /// @param wstEthAmount Amount of wstETH to zap
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive
+    /// @param stabilityPool StabilityPool address to deposit pegged tokens into
+    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
+    /// @param deadline Permit signature deadline
+    /// @param v Permit signature v component
+    /// @param r Permit signature r component
+    /// @param s Permit signature s component
+    /// @return peggedOut Amount of pegged tokens minted
+    /// @return deposited Amount deposited into StabilityPool
+    function zapWstEthToStabilityPoolWithPermit(
+        uint256 wstEthAmount,
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
+        if (wstEthAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
+
+        _permitWstEth(wstEthAmount, deadline, v, r, s);
+        IERC20(WSTETH).safeTransferFrom(_msgSender(), address(this), wstEthAmount);
+
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(wstEthAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+
+        emit WSTETHZappedToStabilityPool(
+            _msgSender(), MINTER, receiver, wstEthAmount, peggedOut, stabilityPool, deposited
+        );
+        _resetAllowances();
+    }
+
     // ============ Internal Helper Functions ============
 
     /// @notice Helper to handle stETH permit
@@ -488,6 +580,16 @@ contract MinterETHZap_v3 is
     /// @param s Permit signature s
     function _permitStEth(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
         IERC20Permit(STETH).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+    }
+
+    /// @notice Helper to handle wstETH permit
+    /// @param amount Amount to permit
+    /// @param deadline Permit deadline
+    /// @param v Permit signature v
+    /// @param r Permit signature r
+    /// @param s Permit signature s
+    function _permitWstEth(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
+        IERC20Permit(WSTETH).permit(_msgSender(), address(this), amount, deadline, v, r, s);
     }
 
     /// @notice Convert ETH to wstETH via stETH
@@ -735,6 +837,15 @@ contract MinterETHZap_v3 is
         returns (uint256 peggedOut, uint256 wstEthAmount)
     {
         wstEthAmount = IWstETHView(WSTETH).getWstETHByStETH(stEthAmount);
+        (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wstEthAmount);
+    }
+
+    /// @notice Preview the expected StabilityPool deposit from a wstETH zap
+    /// @dev Returns the expected pegged tokens that will be minted and deposited into StabilityPool
+    /// @dev Use this to set minStabilityPoolOut with a slippage buffer (0.5-1%)
+    /// @param wstEthAmount Amount of wstETH to zap
+    /// @return peggedOut Expected amount of pegged tokens that will be minted (and deposited)
+    function previewStabilityPoolFromWstEth(uint256 wstEthAmount) external view returns (uint256 peggedOut) {
         (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wstEthAmount);
     }
 

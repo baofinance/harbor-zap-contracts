@@ -459,11 +459,46 @@ MinterETHZap_v3(minterZapAddress).zapStEthToStabilityPoolWithPermit(
 );
 ```
 
+#### Alice deposits 5 wstETH to Stability Pool using `zapWstEthToStabilityPool`
+
+```solidity
+uint256 wstEthAmount = 5 ether;
+uint256 minPeggedOut = MinterETHZap_v3(minterZapAddress).previewStabilityPoolFromWstEth(wstEthAmount);
+uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000;
+
+IERC20(WSTETH).approve(minterZapAddress, wstEthAmount);
+MinterETHZap_v3(minterZapAddress).zapWstEthToStabilityPool(
+    wstEthAmount,
+    aliceAddress,
+    minPeggedOut,
+    stabilityPool,
+    minStabilityPoolOut
+);
+```
+
+#### Alice deposits 5 wstETH to Stability Pool using `zapWstEthToStabilityPoolWithPermit`
+
+```solidity
+uint256 wstEthAmount = 5 ether;
+uint256 minPeggedOut = MinterETHZap_v3(minterZapAddress).previewStabilityPoolFromWstEth(wstEthAmount);
+uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000;
+
+// Permit signature created off-chain for WSTETH
+MinterETHZap_v3(minterZapAddress).zapWstEthToStabilityPoolWithPermit(
+    wstEthAmount,
+    aliceAddress,
+    minPeggedOut,
+    stabilityPool,
+    minStabilityPoolOut,
+    deadline,
+    v, r, s
+);
+```
+
 **Flow Summary:**
-- **Input**: 5 stETH (approved via permit)
-- **Step 1**: 5 stETH → ~4.05 wstETH
-- **Step 2**: ~4.05 wstETH → Pegged tokens (via Minter mint, fees incurred here)
-- **Step 3**: Pegged tokens → Deposited into Stability Pool (no fees on deposit)
+- **Input**: 5 wstETH (approved via permit)
+- **Step 1**: 5 wstETH → Pegged tokens (via Minter mint, fees incurred here)
+- **Step 2**: Pegged tokens → Deposited into Stability Pool (no fees on deposit)
 - **Output**: Alice receives Stability Pool deposit (full pegged amount minus mint fees only)
 
 ### MinterUSDCZap_v3: Mint Pegged and Leveraged Tokens
@@ -642,6 +677,38 @@ MinterUSDCZap_v3(minterZapAddress).zapFxUsdToStabilityPoolWithPermit(
 );
 ```
 
+#### Alice deposits 10,000 fxSAVE to Stability Pool using `zapFxSaveToStabilityPool`
+
+```solidity
+uint256 fxSaveAmount = 10_000 * 1e18;
+uint256 minPeggedOut = MinterUSDCZap_v3(minterZapAddress).previewStabilityPoolFromFxSave(fxSaveAmount);
+uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000;
+
+IERC20(FXSAVE).approve(minterZapAddress, fxSaveAmount);
+MinterUSDCZap_v3(minterZapAddress).zapFxSaveToStabilityPool(
+    fxSaveAmount,
+    aliceAddress,
+    minPeggedOut,
+    stabilityPool,
+    minStabilityPoolOut
+);
+```
+
+Permit variant available: `zapFxSaveToStabilityPoolWithPermit`.
+
+```solidity
+// Permit signature created off-chain for FXSAVE
+MinterUSDCZap_v3(minterZapAddress).zapFxSaveToStabilityPoolWithPermit(
+    fxSaveAmount,
+    aliceAddress,
+    minPeggedOut,
+    stabilityPool,
+    minStabilityPoolOut,
+    deadline,
+    v, r, s
+);
+```
+
 **Flow Summary:**
 - **Input**: 10,000 fxUSD (approved via permit)
 - **Step 1**: 10,000 fxUSD → ~9,345.79 fxSAVE
@@ -700,30 +767,56 @@ forge test
 
 ## Deployment
 
-Deployment scripts were removed as part of the upgradeable-only cleanup. Use your preferred
-deployment flow to deploy the UUPS implementations and proxies for:
-`GenesisETHZap_v4`, `GenesisUSDCZap_v4`, `MinterETHZap_v3`, and `MinterUSDCZap_v3`.
+UUPS deployments are handled by per-zap scripts:
+- `script/deploy-genesiseth-zap.sh` (requires `GENESIS_ETH`)
+- `script/deploy-genesisusdc-zap.sh` (requires `GENESIS_USDC`)
+- `script/deploy-mintereth-zap.sh` (requires `MINTER_ETH`)
+- `script/deploy-minterusdc-zap.sh` (requires `MINTER_USDC`)
+- `script/verify-zaps.sh` (verifies deployment JSONs)
+
+All scripts require `MAINNET_RPC_URL` and `PRIVATE_KEY`. Ownership is taken from
+`deployments/mainnet/zap-addresses.json` (`owner`) or `OWNER` env. ETH zaps also accept
+optional `REFERRAL_ETH` (defaults to zero address, which uses the contract default).
+
+You can provide zap target addresses via env vars or `deployments/mainnet/zap-addresses.json`:
+- `GENESIS_ETH` or `markets.<MARKET>.addresses.genesisEth`
+- `GENESIS_USDC` or `markets.<MARKET>.addresses.genesisUsdc`
+- `MINTER_ETH` or `markets.<MARKET>.addresses.minterEth`
+- `MINTER_USDC` or `markets.<MARKET>.addresses.minterUsdc`
+
+The config file also supports:
+- `owner` for final ownership transfer (initializer uses deployer)
+- `markets.<MARKET>.stabilityPools.eth` and `markets.<MARKET>.stabilityPools.usdc`
+
+Each deploy script writes a timestamped deployment file in `deployments/mainnet/` so
+previous deployments are not overwritten.
+
+Options:
+- `MARKET`: `ETH`, `BTC`, `GOLD`, `SILVER`, `EUR`, `MCAP`
+- Required env: `MAINNET_RPC_URL`, `PRIVATE_KEY`
+- Verification env: `ETHERSCAN_API_KEY` (required for on-chain verification unless disabled)
+- Optional env: `REFERRAL_ETH` (ETH zaps only)
+- Config file: `deployments/mainnet/zap-addresses.json` with `owner` and `markets.<MARKET>`
+- Verification control: `VERIFY=true|false` and `VERIFY_REQUIRED=true|false` (default required)
+
+Examples:
+```bash
+# Deploy GOLD ETH Genesis
+MARKET=GOLD ./script/deploy-genesiseth-zap.sh
+
+# Deploy GOLD USDC Minter
+MARKET=GOLD ./script/deploy-minterusdc-zap.sh
+```
 
 ## Post-Deployment
 
-After deployment, you should:
+Notes:
+- Ownership is transferred to `owner` from `zap-addresses.json` during deployment.
+- Verification is performed during deployment when enabled. Use `script/verify-zaps.sh` if you skipped it.
 
-1. **Transfer Ownership**: Transfer ownership of the zap contracts to your desired owner address:
-```bash
-cast send <ZAP_ADDRESS> "transferOwnership(address)" <NEW_OWNER> \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY
-```
+Optional follow-ups:
 
-2. **Verify Contracts** (optional): Verify contracts on Etherscan:
-```bash
-forge verify-contract <CONTRACT_ADDRESS> \
-  src/zap/upgradeable/<ContractName>.sol:<ContractName> \
-  --etherscan-api-key $ETHERSCAN_API_KEY \
-  --chain-id 1
-```
-
-3. **Update Referral** (ETH zaps only, optional): Update Lido referral address if needed:
+1. **Update Referral** (ETH zaps only, optional): Update Lido referral address if needed:
 ```bash
 cast send <ZAP_ADDRESS> "setReferral(address)" <NEW_REFERRAL> \
   --rpc-url $RPC_URL \

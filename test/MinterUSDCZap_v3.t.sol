@@ -3,6 +3,7 @@ pragma solidity >=0.8.28 <0.9.0;
 
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {MinterUSDCZap_v3} from "src/zap/upgradeable/MinterUSDCZap_v3.sol";
@@ -14,6 +15,8 @@ import {MockERC20} from "test/mock/MockERC20.sol";
 import {MockStabilityPool} from "test/mock/MockStabilityPool.sol";
 
 contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
+    bytes32 private constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
     MinterUSDCZap_v3 zap;
     address zapImpl;
     address zapProxy;
@@ -248,6 +251,88 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
         assertGt(peggedOut, 0, "Should mint pegged tokens");
         assertGt(deposited, 0, "Should deposit to stability pool");
+    }
+
+    function test_ZapFxSaveToStabilityPool_Success() public {
+        uint256 fxSaveAmount = 1000 * 1e18;
+        deal(FXSAVE, user1, fxSaveAmount);
+
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+        vm.prank(zapOwner);
+        zap.setStabilityPoolAllowed(address(stabilityPool), true);
+
+        vm.startPrank(user1);
+        IERC20(FXSAVE).approve(address(zap), fxSaveAmount);
+
+        uint256 previewPegged = zap.previewStabilityPoolFromFxSave(fxSaveAmount);
+        uint256 minPeggedOut = previewPegged * 99 / 100;
+        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+
+        (uint256 peggedOut, uint256 deposited) = zap.zapFxSaveToStabilityPool(
+            fxSaveAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+        );
+
+        vm.stopPrank();
+
+        assertGt(peggedOut, 0, "Should mint pegged tokens");
+        assertGt(deposited, 0, "Should deposit to stability pool");
+    }
+
+    function test_ZapFxSaveToStabilityPool_ZeroAmount() public {
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
+        zap.zapFxSaveToStabilityPool(0, receiver, 0, address(stabilityPool), 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapFxSaveToStabilityPoolWithPermit_Success() public {
+        uint256 userPk = 0xA11CE;
+        address userPermit = vm.addr(userPk);
+        uint256 fxSaveAmount = 1000 * 1e18;
+        deal(FXSAVE, userPermit, fxSaveAmount);
+
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+        vm.prank(zapOwner);
+        zap.setStabilityPoolAllowed(address(stabilityPool), true);
+
+        uint256 nonce = IERC20Permit(FXSAVE).nonces(userPermit);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 structHash =
+            keccak256(abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), fxSaveAmount, nonce, deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(FXSAVE).DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
+
+        uint256 previewPegged = zap.previewStabilityPoolFromFxSave(fxSaveAmount);
+        uint256 minPeggedOut = previewPegged * 99 / 100;
+        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+
+        vm.prank(userPermit);
+        (uint256 peggedOut, uint256 deposited) = zap.zapFxSaveToStabilityPoolWithPermit(
+            fxSaveAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut, deadline, v, r, s
+        );
+
+        assertGt(peggedOut, 0, "Should mint pegged tokens");
+        assertGt(deposited, 0, "Should deposit to stability pool");
+    }
+
+    function test_ZapFxSaveToStabilityPoolWithPermit_ZeroAmount() public {
+        uint256 userPk = 0xB0B;
+        address userPermit = vm.addr(userPk);
+
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+
+        uint256 nonce = IERC20Permit(FXSAVE).nonces(userPermit);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 structHash =
+            keccak256(abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), uint256(0), nonce, deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(FXSAVE).DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
+
+        vm.prank(userPermit);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
+        zap.zapFxSaveToStabilityPoolWithPermit(0, receiver, 0, address(stabilityPool), 0, deadline, v, r, s);
     }
 
     // ============ Preview Function Tests ============

@@ -169,6 +169,24 @@ contract MinterUSDCZap_v3 is
         uint256 deposited
     );
 
+    /// @notice Emitted when fxSAVE is zapped to StabilityPool
+    /// @param user Address that initiated the zap
+    /// @param minter Address of the Minter contract
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param fxSaveAmount Amount of fxSAVE deposited
+    /// @param peggedOut Amount of pegged tokens minted
+    /// @param stabilityPool Address of the StabilityPool
+    /// @param deposited Amount deposited into StabilityPool
+    event FXSAVEZappedToStabilityPool(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 fxSaveAmount,
+        uint256 peggedOut,
+        address stabilityPool,
+        uint256 deposited
+    );
+
     event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
     event Upgraded(address indexed implementation);
 
@@ -354,6 +372,39 @@ contract MinterUSDCZap_v3 is
 
         emit FXUSDZappedToStabilityPool(
             _msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
+        );
+        _resetAllowances();
+    }
+
+    /// @notice Zap fxSAVE into StabilityPool in one transaction
+    /// @dev Flow: fxSAVE → Minter mint pegged → StabilityPool deposit
+    /// @dev Use previewStabilityPoolFromFxSave() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param fxSaveAmount Amount of fxSAVE to zap
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromFxSave with slippage buffer)
+    /// @param stabilityPool StabilityPool address to deposit pegged tokens into
+    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
+    /// @return peggedOut Amount of pegged tokens minted
+    /// @return deposited Amount deposited into StabilityPool
+    function zapFxSaveToStabilityPool(
+        uint256 fxSaveAmount,
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut
+    ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
+        if (fxSaveAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
+
+        IERC20(FXSAVE).safeTransferFrom(_msgSender(), address(this), fxSaveAmount);
+
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+
+        emit FXSAVEZappedToStabilityPool(
+            _msgSender(), MINTER, receiver, fxSaveAmount, peggedOut, stabilityPool, deposited
         );
         _resetAllowances();
     }
@@ -563,6 +614,47 @@ contract MinterUSDCZap_v3 is
         _resetAllowances();
     }
 
+    /// @notice Zap fxSAVE into StabilityPool using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit fxSAVE → fxSAVE → Minter mint pegged → StabilityPool deposit
+    /// @param fxSaveAmount Amount of fxSAVE to zap
+    /// @param receiver Address that will receive the StabilityPool deposit
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive
+    /// @param stabilityPool StabilityPool address to deposit pegged tokens into
+    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
+    /// @param deadline Permit signature deadline
+    /// @param v Permit signature v component
+    /// @param r Permit signature r component
+    /// @param s Permit signature s component
+    /// @return peggedOut Amount of pegged tokens minted
+    /// @return deposited Amount deposited into StabilityPool
+    function zapFxSaveToStabilityPoolWithPermit(
+        uint256 fxSaveAmount,
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
+        if (fxSaveAmount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
+
+        _permitFxSave(fxSaveAmount, deadline, v, r, s);
+        IERC20(FXSAVE).safeTransferFrom(_msgSender(), address(this), fxSaveAmount);
+
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+
+        emit FXSAVEZappedToStabilityPool(
+            _msgSender(), MINTER, receiver, fxSaveAmount, peggedOut, stabilityPool, deposited
+        );
+        _resetAllowances();
+    }
+
     // ============ Internal Helper Functions ============
 
     /// @notice Helper to handle USDC permit
@@ -583,6 +675,16 @@ contract MinterUSDCZap_v3 is
     /// @param s Permit signature s
     function _permitFxUsd(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
         IERC20Permit(FXUSD).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+    }
+
+    /// @notice Helper to handle fxSAVE permit
+    /// @param amount Amount to permit
+    /// @param deadline Permit deadline
+    /// @param v Permit signature v
+    /// @param r Permit signature r
+    /// @param s Permit signature s
+    function _permitFxSave(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
+        IERC20Permit(FXSAVE).permit(_msgSender(), address(this), amount, deadline, v, r, s);
     }
 
     /// @notice Convert USDC to fxSAVE via diamond contract

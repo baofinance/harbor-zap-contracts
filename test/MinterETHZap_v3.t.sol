@@ -3,6 +3,7 @@ pragma solidity >=0.8.28 <0.9.0;
 
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {MinterETHZap_v3} from "src/zap/upgradeable/MinterETHZap_v3.sol";
@@ -18,7 +19,13 @@ interface ISTETHV2 {
     function submit(address referral) external payable returns (uint256);
 }
 
+interface IWstETHWrapV2 {
+    function wrap(uint256 stEthAmount) external returns (uint256);
+}
+
 contract MinterETHZapV3ForkTest is TestMinterSetUp {
+    bytes32 private constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
     MinterETHZap_v3 zap;
     address zapImpl;
     address zapProxy;
@@ -274,6 +281,103 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         assertGt(deposited, 0, "Should deposit to stability pool");
     }
 
+    function test_ZapWstEthToStabilityPool_Success() public {
+        vm.deal(user1, 100 ether);
+        vm.startPrank(user1);
+        ISTETHV2(STETH).submit{value: 100 ether}(address(0));
+        uint256 stEthAmount = 10 ether;
+        IERC20(STETH).approve(WSTETH, stEthAmount);
+        IWstETHWrapV2(WSTETH).wrap(stEthAmount);
+        vm.stopPrank();
+
+        uint256 wstEthAmount = IERC20(WSTETH).balanceOf(user1);
+        assertGt(wstEthAmount, 0, "Should receive wstETH");
+
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+        vm.prank(zapOwner);
+        zap.setStabilityPoolAllowed(address(stabilityPool), true);
+
+        vm.startPrank(user1);
+        IERC20(WSTETH).approve(address(zap), wstEthAmount);
+
+        uint256 previewPegged = zap.previewStabilityPoolFromWstEth(wstEthAmount);
+        uint256 minPeggedOut = previewPegged * 99 / 100;
+        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+
+        (uint256 peggedOut, uint256 deposited) = zap.zapWstEthToStabilityPool(
+            wstEthAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+        );
+
+        vm.stopPrank();
+
+        assertGt(peggedOut, 0, "Should mint pegged tokens");
+        assertGt(deposited, 0, "Should deposit to stability pool");
+    }
+
+    function test_ZapWstEthToStabilityPoolWithPermit_Success() public {
+        uint256 userPk = 0xA11CE;
+        address userPermit = vm.addr(userPk);
+        vm.deal(userPermit, 100 ether);
+
+        vm.startPrank(userPermit);
+        ISTETHV2(STETH).submit{value: 100 ether}(address(0));
+        uint256 stEthAmount = 10 ether;
+        IERC20(STETH).approve(WSTETH, stEthAmount);
+        IWstETHWrapV2(WSTETH).wrap(stEthAmount);
+        uint256 wstEthAmount = IERC20(WSTETH).balanceOf(userPermit);
+        vm.stopPrank();
+
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+        vm.prank(zapOwner);
+        zap.setStabilityPoolAllowed(address(stabilityPool), true);
+
+        uint256 nonce = IERC20Permit(WSTETH).nonces(userPermit);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 structHash =
+            keccak256(abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), wstEthAmount, nonce, deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(WSTETH).DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
+
+        uint256 previewPegged = zap.previewStabilityPoolFromWstEth(wstEthAmount);
+        uint256 minPeggedOut = previewPegged * 99 / 100;
+        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+
+        vm.prank(userPermit);
+        (uint256 peggedOut, uint256 deposited) = zap.zapWstEthToStabilityPoolWithPermit(
+            wstEthAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut, deadline, v, r, s
+        );
+
+        assertGt(peggedOut, 0, "Should mint pegged tokens");
+        assertGt(deposited, 0, "Should deposit to stability pool");
+    }
+
+    function test_ZapWstEthToStabilityPoolWithPermit_ZeroAmount() public {
+        uint256 userPk = 0xB0B;
+        address userPermit = vm.addr(userPk);
+
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+
+        uint256 nonce = IERC20Permit(WSTETH).nonces(userPermit);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 structHash =
+            keccak256(abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), uint256(0), nonce, deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(WSTETH).DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
+
+        vm.prank(userPermit);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
+        zap.zapWstEthToStabilityPoolWithPermit(0, receiver, 0, address(stabilityPool), 0, deadline, v, r, s);
+    }
+
+    function test_ZapWstEthToStabilityPool_ZeroAmount() public {
+        MockStabilityPool stabilityPool = new MockStabilityPool(peggedToken);
+
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
+        zap.zapWstEthToStabilityPool(0, receiver, 0, address(stabilityPool), 0);
+        vm.stopPrank();
+    }
+
     // ============ Preview Function Tests ============
 
     function test_PreviewWstEthFromEth() public view {
@@ -368,6 +472,13 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         // Should match previewPeggedFromStEth since it's the same calculation
         (uint256 peggedFromStEth,) = zap.previewPeggedFromStEth(stEthAmount);
         assertEq(previewPegged, peggedFromStEth, "Should match pegged preview");
+    }
+
+    function test_PreviewStabilityPoolFromWstEth() public view {
+        uint256 wstEthAmount = 1 ether;
+        uint256 previewPegged = zap.previewStabilityPoolFromWstEth(wstEthAmount);
+
+        assertGt(previewPegged, 0, "Preview should return > 0");
     }
 
     // ============ Upgrade Tests ============
