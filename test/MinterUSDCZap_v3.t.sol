@@ -349,16 +349,11 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
     function test_ZapNameAndSymbol() public view {
         string memory expectedName = string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).name()));
-        string memory expectedSymbol = string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).symbol()));
-
         string memory name = zap.zapName();
-        string memory symbol = zap.zapSymbol();
 
         console.log("Minter zap name:", name);
-        console.log("Minter zap symbol:", symbol);
 
         assertEq(name, expectedName, "Zap name mismatch");
-        assertEq(symbol, expectedSymbol, "Zap symbol mismatch");
     }
 
     function test_PreviewLeveragedFromFxSave() public view {

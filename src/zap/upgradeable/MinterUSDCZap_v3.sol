@@ -241,14 +241,10 @@ contract MinterUSDCZap_v3 is
         nonReentrant
         returns (uint256 peggedOut)
     {
-        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 fxSaveAmount = _convertUsdcToFxSave(usdcAmount);
-        peggedOut = _mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, peggedOut) = _zapToPegged(USDC, usdcAmount, receiver, minPeggedOut);
 
         emit USDCZappedToPegged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut);
-        _resetAllowances();
     }
 
     /// @notice Zap USDC into leveraged tokens in one transaction
@@ -262,14 +258,10 @@ contract MinterUSDCZap_v3 is
         nonReentrant
         returns (uint256 leveragedOut)
     {
-        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 fxSaveAmount = _convertUsdcToFxSave(usdcAmount);
-        leveragedOut = _mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, leveragedOut) = _zapToLeveraged(USDC, usdcAmount, receiver, minLeveragedOut);
 
         emit USDCZappedToLeveraged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, leveragedOut);
-        _resetAllowances();
     }
 
     /// @notice Zap fxUSD into pegged tokens in one transaction
@@ -283,14 +275,10 @@ contract MinterUSDCZap_v3 is
         nonReentrant
         returns (uint256 peggedOut)
     {
-        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 fxSaveAmount = _convertFxUsdToFxSave(fxUsdAmount);
-        peggedOut = _mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, peggedOut) = _zapToPegged(FXUSD, fxUsdAmount, receiver, minPeggedOut);
 
         emit FXUSDZappedToPegged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut);
-        _resetAllowances();
     }
 
     /// @notice Zap fxUSD into leveraged tokens in one transaction
@@ -304,14 +292,10 @@ contract MinterUSDCZap_v3 is
         nonReentrant
         returns (uint256 leveragedOut)
     {
-        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 fxSaveAmount = _convertFxUsdToFxSave(fxUsdAmount);
-        leveragedOut = _mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, leveragedOut) = _zapToLeveraged(FXUSD, fxUsdAmount, receiver, minLeveragedOut);
 
         emit FXUSDZappedToLeveraged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, leveragedOut);
-        _resetAllowances();
     }
 
     /// @notice Zap USDC into StabilityPool in one transaction
@@ -330,20 +314,13 @@ contract MinterUSDCZap_v3 is
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 fxSaveAmount = _convertUsdcToFxSave(usdcAmount);
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, peggedOut, deposited) =
+            _zapToStabilityPoolFromToken(USDC, usdcAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut);
 
         emit USDCZappedToStabilityPool(
             _msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
         );
-        _resetAllowances();
     }
 
     /// @notice Zap fxUSD into StabilityPool in one transaction
@@ -362,20 +339,14 @@ contract MinterUSDCZap_v3 is
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 fxSaveAmount = _convertFxUsdToFxSave(fxUsdAmount);
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            FXUSD, fxUsdAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        );
 
         emit FXUSDZappedToStabilityPool(
             _msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
         );
-        _resetAllowances();
     }
 
     /// @notice Zap fxSAVE into StabilityPool in one transaction
@@ -395,20 +366,13 @@ contract MinterUSDCZap_v3 is
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (fxSaveAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
-        IERC20(FXSAVE).safeTransferFrom(_msgSender(), address(this), fxSaveAmount);
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            FXSAVE, fxSaveAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        );
 
         emit FXSAVEZappedToStabilityPool(
             _msgSender(), MINTER, receiver, fxSaveAmount, peggedOut, stabilityPool, deposited
         );
-        _resetAllowances();
     }
 
     // ============ Permit-Based Functions ============
@@ -432,15 +396,11 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut) {
-        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
         _permitUsdc(usdcAmount, deadline, v, r, s);
-        uint256 fxSaveAmount = _convertUsdcToFxSave(usdcAmount);
-        peggedOut = _mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, peggedOut) = _zapToPegged(USDC, usdcAmount, receiver, minPeggedOut);
 
         emit USDCZappedToPegged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut);
-        _resetAllowances();
     }
 
     /// @notice Zap USDC into leveraged tokens using permit (single transaction, no approval needed)
@@ -462,15 +422,11 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 leveragedOut) {
-        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
         _permitUsdc(usdcAmount, deadline, v, r, s);
-        uint256 fxSaveAmount = _convertUsdcToFxSave(usdcAmount);
-        leveragedOut = _mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, leveragedOut) = _zapToLeveraged(USDC, usdcAmount, receiver, minLeveragedOut);
 
         emit USDCZappedToLeveraged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, leveragedOut);
-        _resetAllowances();
     }
 
     /// @notice Zap fxUSD into pegged tokens using permit (single transaction, no approval needed)
@@ -492,15 +448,11 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut) {
-        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
         _permitFxUsd(fxUsdAmount, deadline, v, r, s);
-        uint256 fxSaveAmount = _convertFxUsdToFxSave(fxUsdAmount);
-        peggedOut = _mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, peggedOut) = _zapToPegged(FXUSD, fxUsdAmount, receiver, minPeggedOut);
 
         emit FXUSDZappedToPegged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut);
-        _resetAllowances();
     }
 
     /// @notice Zap fxUSD into leveraged tokens using permit (single transaction, no approval needed)
@@ -522,15 +474,11 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 leveragedOut) {
-        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
         _permitFxUsd(fxUsdAmount, deadline, v, r, s);
-        uint256 fxSaveAmount = _convertFxUsdToFxSave(fxUsdAmount);
-        leveragedOut = _mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, leveragedOut) = _zapToLeveraged(FXUSD, fxUsdAmount, receiver, minLeveragedOut);
 
         emit FXUSDZappedToLeveraged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, leveragedOut);
-        _resetAllowances();
     }
 
     /// @notice Zap USDC into StabilityPool using permit (single transaction, no approval needed)
@@ -557,22 +505,14 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
         _permitUsdc(usdcAmount, deadline, v, r, s);
-
-        uint256 fxSaveAmount = _convertUsdcToFxSave(usdcAmount);
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, peggedOut, deposited) =
+            _zapToStabilityPoolFromToken(USDC, usdcAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut);
 
         emit USDCZappedToStabilityPool(
             _msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
         );
-        _resetAllowances();
     }
 
     /// @notice Zap fxUSD into StabilityPool using permit (single transaction, no approval needed)
@@ -599,21 +539,15 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
         _permitFxUsd(fxUsdAmount, deadline, v, r, s);
-        uint256 fxSaveAmount = _convertFxUsdToFxSave(fxUsdAmount);
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        uint256 fxSaveAmount;
+        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            FXUSD, fxUsdAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        );
 
         emit FXUSDZappedToStabilityPool(
             _msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
         );
-        _resetAllowances();
     }
 
     /// @notice Zap fxSAVE into StabilityPool using permit (single transaction, no approval needed)
@@ -640,21 +574,14 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (fxSaveAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
         _permitFxSave(fxSaveAmount, deadline, v, r, s);
-        IERC20(FXSAVE).safeTransferFrom(_msgSender(), address(this), fxSaveAmount);
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            FXSAVE, fxSaveAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        );
 
         emit FXSAVEZappedToStabilityPool(
             _msgSender(), MINTER, receiver, fxSaveAmount, peggedOut, stabilityPool, deposited
         );
-        _resetAllowances();
     }
 
     // ============ Internal Helper Functions ============
@@ -689,54 +616,103 @@ contract MinterUSDCZap_v3 is
         IERC20Permit(FXSAVE).permit(_msgSender(), address(this), amount, deadline, v, r, s);
     }
 
-    /// @notice Convert USDC to fxSAVE via diamond contract
-    /// @param usdcAmount Amount of USDC to convert
+    /// @notice Convert USDC or fxUSD to fxSAVE via diamond contract
+    /// @param tokenIn Token to convert (USDC or fxUSD)
+    /// @param amountIn Amount of tokenIn to convert
     /// @return fxSaveAmount Amount of fxSAVE received
-    function _convertUsdcToFxSave(uint256 usdcAmount) internal returns (uint256 fxSaveAmount) {
-        // Pull USDC from user
-        IERC20(USDC).safeTransferFrom(_msgSender(), address(this), usdcAmount);
+    function _convertToFxSave(address tokenIn, uint256 amountIn) internal returns (uint256 fxSaveAmount) {
+        // Pull token from user
+        IERC20(tokenIn).safeTransferFrom(_msgSender(), address(this), amountIn);
 
-        // USDC → fxSAVE via diamond contract
-        IERC20 usdcToken = IERC20(USDC);
-        _safeApprove(usdcToken, FXUSD_DIAMOND, usdcAmount);
+        // tokenIn → fxSAVE via diamond contract
+        IERC20 token = IERC20(tokenIn);
+        _safeApprove(token, FXUSD_DIAMOND, amountIn);
 
         bytes memory swapData =
-            abi.encodeWithSelector(FxSAVEConstants.CONVERT_SELECTOR, USDC, usdcAmount, uint256(0), "");
+            abi.encodeWithSelector(FxSAVEConstants.CONVERT_SELECTOR, tokenIn, amountIn, uint256(0), "");
 
         IFxUSDDiamondV2.ConvertInParams memory params = IFxUSDDiamondV2.ConvertInParams({
-            tokenIn: USDC, amount: usdcAmount, target: FXUSD_SWAP_ROUTER, data: swapData, minOut: 0, signature: ""
+            tokenIn: tokenIn, amount: amountIn, target: FXUSD_SWAP_ROUTER, data: swapData, minOut: 0, signature: ""
         });
 
         uint256 fxSaveBalanceBefore = IERC20(FXSAVE).balanceOf(address(this));
-        IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, USDC, 0, address(this));
+        IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, tokenIn, 0, address(this));
         uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
         fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
         if (fxSaveAmount == 0) revert IZapErrors.NoFxSaveReceived();
     }
 
-    /// @notice Convert fxUSD to fxSAVE via diamond contract
-    /// @param fxUsdAmount Amount of fxUSD to convert
+    /// @notice Zap a token into pegged tokens and reset allowances
+    /// @param tokenIn Token to zap (USDC or fxUSD)
+    /// @param amountIn Amount of tokenIn to zap
+    /// @param receiver Address receiving pegged tokens
+    /// @param minPeggedOut Minimum pegged tokens to receive
     /// @return fxSaveAmount Amount of fxSAVE received
-    function _convertFxUsdToFxSave(uint256 fxUsdAmount) internal returns (uint256 fxSaveAmount) {
-        // Pull fxUSD from user
-        IERC20(FXUSD).safeTransferFrom(_msgSender(), address(this), fxUsdAmount);
+    /// @return peggedOut Amount of pegged tokens minted
+    function _zapToPegged(address tokenIn, uint256 amountIn, address receiver, uint256 minPeggedOut)
+        internal
+        returns (uint256 fxSaveAmount, uint256 peggedOut)
+    {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        // fxUSD → fxSAVE via diamond contract
-        IERC20 fxUsdToken = IERC20(FXUSD);
-        _safeApprove(fxUsdToken, FXUSD_DIAMOND, fxUsdAmount);
+        fxSaveAmount = _convertToFxSave(tokenIn, amountIn);
+        peggedOut = _mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
+        _resetAllowances();
+    }
 
-        bytes memory swapData =
-            abi.encodeWithSelector(FxSAVEConstants.CONVERT_SELECTOR, FXUSD, fxUsdAmount, uint256(0), "");
+    /// @notice Zap a token into leveraged tokens and reset allowances
+    /// @param tokenIn Token to zap (USDC or fxUSD)
+    /// @param amountIn Amount of tokenIn to zap
+    /// @param receiver Address receiving leveraged tokens
+    /// @param minLeveragedOut Minimum leveraged tokens to receive
+    /// @return fxSaveAmount Amount of fxSAVE received
+    /// @return leveragedOut Amount of leveraged tokens minted
+    function _zapToLeveraged(address tokenIn, uint256 amountIn, address receiver, uint256 minLeveragedOut)
+        internal
+        returns (uint256 fxSaveAmount, uint256 leveragedOut)
+    {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        IFxUSDDiamondV2.ConvertInParams memory params = IFxUSDDiamondV2.ConvertInParams({
-            tokenIn: FXUSD, amount: fxUsdAmount, target: FXUSD_SWAP_ROUTER, data: swapData, minOut: 0, signature: ""
-        });
+        fxSaveAmount = _convertToFxSave(tokenIn, amountIn);
+        leveragedOut = _mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
+        _resetAllowances();
+    }
 
-        uint256 fxSaveBalanceBefore = IERC20(FXSAVE).balanceOf(address(this));
-        IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, FXUSD, 0, address(this));
-        uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
-        fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
-        if (fxSaveAmount == 0) revert IZapErrors.NoFxSaveReceived();
+    /// @notice Zap a token into StabilityPool via minted pegged tokens
+    /// @param tokenIn Token to zap (USDC, fxUSD, or fxSAVE)
+    /// @param amountIn Amount of tokenIn to zap
+    /// @param receiver Address receiving StabilityPool deposit
+    /// @param minPeggedOut Minimum pegged tokens to receive
+    /// @param stabilityPool StabilityPool address
+    /// @param minStabilityPoolOut Minimum StabilityPool deposit amount
+    /// @return fxSaveAmount Amount of fxSAVE used to mint pegged tokens
+    /// @return peggedOut Amount of pegged tokens minted
+    /// @return deposited Amount deposited into StabilityPool
+    function _zapToStabilityPoolFromToken(
+        address tokenIn,
+        uint256 amountIn,
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut
+    ) internal returns (uint256 fxSaveAmount, uint256 peggedOut, uint256 deposited) {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
+
+        if (tokenIn == FXSAVE) {
+            IERC20(FXSAVE).safeTransferFrom(_msgSender(), address(this), amountIn);
+            fxSaveAmount = amountIn;
+        } else {
+            fxSaveAmount = _convertToFxSave(tokenIn, amountIn);
+        }
+
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        _resetAllowances();
     }
 
     /// @notice Mint pegged tokens and validate the result
@@ -886,12 +862,6 @@ contract MinterUSDCZap_v3 is
     function zapName() external view returns (string memory) {
         address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
         return string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).name()));
-    }
-
-    /// @notice Human-readable zap symbol based on the pegged token
-    function zapSymbol() external view returns (string memory) {
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        return string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).symbol()));
     }
 
     // ============ Owner Functions ============

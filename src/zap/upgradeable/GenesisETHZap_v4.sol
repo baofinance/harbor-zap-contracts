@@ -369,12 +369,6 @@ contract GenesisETHZap_v4 is
         return string(abi.encodePacked("Genesis zap ", IERC20Metadata(peggedToken).name()));
     }
 
-    /// @notice Human-readable zap symbol based on the pegged token
-    function zapSymbol() external view returns (string memory) {
-        address peggedToken = IGenesis(GENESIS).PEGGED_TOKEN();
-        return string(abi.encodePacked("Genesis zap ", IERC20Metadata(peggedToken).symbol()));
-    }
-
     // =================================================================
     // ====================== OWNER FUNCTIONS ==========================
     // =================================================================

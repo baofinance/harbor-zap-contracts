@@ -123,17 +123,11 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
     function test_ZapNameAndSymbol() public view {
         string memory expectedName =
             string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name()));
-        string memory expectedSymbol =
-            string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).symbol()));
-
         string memory name = zap.zapName();
-        string memory symbol = zap.zapSymbol();
 
         console.log("Genesis zap name:", name);
-        console.log("Genesis zap symbol:", symbol);
 
         assertEq(name, expectedName, "Zap name mismatch");
-        assertEq(symbol, expectedSymbol, "Zap symbol mismatch");
     }
 
     // ============ Preview Function Tests ============
@@ -149,21 +143,6 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
     function test_PreviewGenesisFromFxSave_Zero() public view {
         uint256 previewShares = zap.previewGenesisFromFxSave(0);
         assertEq(previewShares, 0, "Preview should return 0 for zero input");
-    }
-
-    function test_PreviewFxSaveFromUsdc() public view {
-        uint256 usdcAmount = 1000 * 1e6;
-        uint256 previewFxSave = zap.previewFxSaveFromUsdc(usdcAmount);
-
-        uint8 usdcDecimals = IERC20Metadata(USDC).decimals();
-        uint8 fxSaveDecimals = IERC20Metadata(FXSAVE).decimals();
-        uint256 expected = usdcDecimals == fxSaveDecimals
-            ? usdcAmount
-            : usdcDecimals > fxSaveDecimals
-                ? usdcAmount / (10 ** (usdcDecimals - fxSaveDecimals))
-                : usdcAmount * (10 ** (fxSaveDecimals - usdcDecimals));
-
-        assertEq(previewFxSave, expected, "Preview should match decimals-normalized amount");
     }
 
     // ============ Upgrade Tests ============

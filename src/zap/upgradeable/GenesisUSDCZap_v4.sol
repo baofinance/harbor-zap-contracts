@@ -136,43 +136,9 @@ contract GenesisUSDCZap_v4 is
         nonReentrant
         returns (uint256 collateralAmount)
     {
-        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        // 1. Pull USDC
-        IERC20(USDC).safeTransferFrom(_msgSender(), address(this), usdcAmount);
-
-        // 2. Convert USDC → fxSAVE via diamond
-        uint256 fxSaveReceived = _convertToFxSave(USDC, usdcAmount, minFxSaveOut);
-
-        // 3. Deposit into Genesis
-        uint256 balance = IERC20(FXSAVE).balanceOf(address(this));
-        if (balance < fxSaveReceived) {
-            revert IZapErrors.InsufficientBalance(balance, fxSaveReceived);
-        }
-        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), GENESIS);
-        if (currentAllowance < fxSaveReceived) {
-            if (currentAllowance > 0) {
-                IERC20(FXSAVE).approve(GENESIS, 0);
-            }
-            IERC20(FXSAVE).approve(GENESIS, type(uint256).max);
-        }
-        IGenesis(GENESIS).deposit(fxSaveReceived, receiver);
-
-        // Validate that shares were actually minted
-        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 sharesReceived = sharesAfter - sharesBefore;
-        if (sharesReceived != fxSaveReceived) {
-            revert IZapErrors.MintMismatchExpected(fxSaveReceived, sharesReceived);
-        }
-
+        uint256 fxSaveReceived = _zapToGenesis(USDC, usdcAmount, minFxSaveOut, receiver);
         collateralAmount = fxSaveReceived;
-
         emit USDCZappedToGenesis(_msgSender(), GENESIS, receiver, usdcAmount, fxSaveReceived, collateralAmount);
-
-        // Clean approvals
-        _safeApprove(IERC20(USDC), FXUSD_DIAMOND, 0);
     }
 
     /// @notice Zap fxUSD → fxSAVE → Genesis in one tx
@@ -186,43 +152,9 @@ contract GenesisUSDCZap_v4 is
         nonReentrant
         returns (uint256 collateralAmount)
     {
-        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        // 1. Pull fxUSD
-        IERC20(FXUSD).safeTransferFrom(_msgSender(), address(this), fxUsdAmount);
-
-        // 2. Convert fxUSD → fxSAVE
-        uint256 fxSaveReceived = _convertToFxSave(FXUSD, fxUsdAmount, minFxSaveOut);
-
-        // 3. Deposit into Genesis
-        uint256 balance = IERC20(FXSAVE).balanceOf(address(this));
-        if (balance < fxSaveReceived) {
-            revert IZapErrors.InsufficientBalance(balance, fxSaveReceived);
-        }
-        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), GENESIS);
-        if (currentAllowance < fxSaveReceived) {
-            if (currentAllowance > 0) {
-                IERC20(FXSAVE).approve(GENESIS, 0);
-            }
-            IERC20(FXSAVE).approve(GENESIS, type(uint256).max);
-        }
-        IGenesis(GENESIS).deposit(fxSaveReceived, receiver);
-
-        // Validate that shares were actually minted
-        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 sharesReceived = sharesAfter - sharesBefore;
-        if (sharesReceived != fxSaveReceived) {
-            revert IZapErrors.MintMismatchExpected(fxSaveReceived, sharesReceived);
-        }
-
+        uint256 fxSaveReceived = _zapToGenesis(FXUSD, fxUsdAmount, minFxSaveOut, receiver);
         collateralAmount = fxSaveReceived;
-
         emit FXUSDZappedToGenesis(_msgSender(), GENESIS, receiver, fxUsdAmount, fxSaveReceived, collateralAmount);
-
-        // Clean approvals
-        _safeApprove(IERC20(FXUSD), FXUSD_DIAMOND, 0);
     }
 
     // =============================================================
@@ -248,46 +180,12 @@ contract GenesisUSDCZap_v4 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 collateralAmount) {
-        if (usdcAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
         // Use permit to approve this contract
         IERC20Permit(USDC).permit(_msgSender(), address(this), usdcAmount, deadline, v, r, s);
 
-        // 1. Pull USDC
-        IERC20(USDC).safeTransferFrom(_msgSender(), address(this), usdcAmount);
-
-        // 2. Convert USDC → fxSAVE via diamond
-        uint256 fxSaveReceived = _convertToFxSave(USDC, usdcAmount, minFxSaveOut);
-
-        // 3. Deposit into Genesis
-        uint256 balance = IERC20(FXSAVE).balanceOf(address(this));
-        if (balance < fxSaveReceived) {
-            revert IZapErrors.InsufficientBalance(balance, fxSaveReceived);
-        }
-        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), GENESIS);
-        if (currentAllowance < fxSaveReceived) {
-            if (currentAllowance > 0) {
-                IERC20(FXSAVE).approve(GENESIS, 0);
-            }
-            IERC20(FXSAVE).approve(GENESIS, type(uint256).max);
-        }
-        IGenesis(GENESIS).deposit(fxSaveReceived, receiver);
-
-        // Validate that shares were actually minted
-        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 sharesReceived = sharesAfter - sharesBefore;
-        if (sharesReceived != fxSaveReceived) {
-            revert IZapErrors.MintMismatchExpected(fxSaveReceived, sharesReceived);
-        }
-
+        uint256 fxSaveReceived = _zapToGenesis(USDC, usdcAmount, minFxSaveOut, receiver);
         collateralAmount = fxSaveReceived;
-
         emit USDCZappedToGenesis(_msgSender(), GENESIS, receiver, usdcAmount, fxSaveReceived, collateralAmount);
-
-        // Clean approvals
-        _safeApprove(IERC20(USDC), FXUSD_DIAMOND, 0);
     }
 
     /// @notice Zap fxUSD → fxSAVE → Genesis using permit (single transaction, no approval needed)
@@ -309,46 +207,12 @@ contract GenesisUSDCZap_v4 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 collateralAmount) {
-        if (fxUsdAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
         // Use permit to approve this contract
         IERC20Permit(FXUSD).permit(_msgSender(), address(this), fxUsdAmount, deadline, v, r, s);
 
-        // 1. Pull fxUSD
-        IERC20(FXUSD).safeTransferFrom(_msgSender(), address(this), fxUsdAmount);
-
-        // 2. Convert fxUSD → fxSAVE
-        uint256 fxSaveReceived = _convertToFxSave(FXUSD, fxUsdAmount, minFxSaveOut);
-
-        // 3. Deposit into Genesis
-        uint256 balance = IERC20(FXSAVE).balanceOf(address(this));
-        if (balance < fxSaveReceived) {
-            revert IZapErrors.InsufficientBalance(balance, fxSaveReceived);
-        }
-        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), GENESIS);
-        if (currentAllowance < fxSaveReceived) {
-            if (currentAllowance > 0) {
-                IERC20(FXSAVE).approve(GENESIS, 0);
-            }
-            IERC20(FXSAVE).approve(GENESIS, type(uint256).max);
-        }
-        IGenesis(GENESIS).deposit(fxSaveReceived, receiver);
-
-        // Validate that shares were actually minted
-        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 sharesReceived = sharesAfter - sharesBefore;
-        if (sharesReceived != fxSaveReceived) {
-            revert IZapErrors.MintMismatchExpected(fxSaveReceived, sharesReceived);
-        }
-
+        uint256 fxSaveReceived = _zapToGenesis(FXUSD, fxUsdAmount, minFxSaveOut, receiver);
         collateralAmount = fxSaveReceived;
-
         emit FXUSDZappedToGenesis(_msgSender(), GENESIS, receiver, fxUsdAmount, fxSaveReceived, collateralAmount);
-
-        // Clean approvals
-        _safeApprove(IERC20(FXUSD), FXUSD_DIAMOND, 0);
     }
 
     // =============================================================
@@ -384,6 +248,53 @@ contract GenesisUSDCZap_v4 is
         if (fxSaveReceived < minOut) revert IZapErrors.SlippageExceeded();
     }
 
+    /// @notice Pull token, convert to fxSAVE, and deposit into Genesis
+    /// @param tokenIn Token to zap (USDC or fxUSD)
+    /// @param amountIn Amount of tokenIn to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive
+    /// @param receiver Address receiving Genesis shares
+    /// @return fxSaveReceived Amount of fxSAVE deposited
+    function _zapToGenesis(address tokenIn, uint256 amountIn, uint256 minFxSaveOut, address receiver)
+        internal
+        returns (uint256 fxSaveReceived)
+    {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+
+        IERC20(tokenIn).safeTransferFrom(_msgSender(), address(this), amountIn);
+
+        fxSaveReceived = _convertToFxSave(tokenIn, amountIn, minFxSaveOut);
+        _depositToGenesis(fxSaveReceived, receiver);
+
+        // Clean approvals
+        _safeApprove(IERC20(tokenIn), FXUSD_DIAMOND, 0);
+    }
+
+    /// @notice Deposit fxSAVE into Genesis and validate shares
+    /// @param amount Amount of fxSAVE to deposit
+    /// @param receiver Address receiving Genesis shares
+    function _depositToGenesis(uint256 amount, address receiver) internal {
+        uint256 balance = IERC20(FXSAVE).balanceOf(address(this));
+        if (balance < amount) {
+            revert IZapErrors.InsufficientBalance(balance, amount);
+        }
+        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
+        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), GENESIS);
+        if (currentAllowance < amount) {
+            if (currentAllowance > 0) {
+                IERC20(FXSAVE).approve(GENESIS, 0);
+            }
+            IERC20(FXSAVE).approve(GENESIS, type(uint256).max);
+        }
+        IGenesis(GENESIS).deposit(amount, receiver);
+
+        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
+        uint256 sharesReceived = sharesAfter - sharesBefore;
+        if (sharesReceived != amount) {
+            revert IZapErrors.MintMismatchExpected(amount, sharesReceived);
+        }
+    }
+
     /// @notice Safely set allowance to a target amount
     /// @param token Token to approve
     /// @param spender Spender address
@@ -411,30 +322,10 @@ contract GenesisUSDCZap_v4 is
         sharesOut = fxSaveAmount; // 1:1 mapping
     }
 
-    /// @notice Preview expected fxSAVE amount from USDC
-    /// @dev Assumes 1:1 USD value and ignores fees/slippage
-    /// @param usdcAmount Amount of USDC
-    /// @return expectedFxSave Estimated fxSAVE received
-    function previewFxSaveFromUsdc(uint256 usdcAmount) external view returns (uint256 expectedFxSave) {
-        uint8 usdcDecimals = IERC20Metadata(USDC).decimals();
-        uint8 fxSaveDecimals = IERC20Metadata(FXSAVE).decimals();
-        if (usdcDecimals == fxSaveDecimals) return usdcAmount;
-        if (usdcDecimals > fxSaveDecimals) {
-            return usdcAmount / (10 ** (usdcDecimals - fxSaveDecimals));
-        }
-        return usdcAmount * (10 ** (fxSaveDecimals - usdcDecimals));
-    }
-
     /// @notice Human-readable zap name based on the pegged token
     function zapName() external view returns (string memory) {
         address peggedToken = IGenesis(GENESIS).PEGGED_TOKEN();
         return string(abi.encodePacked("Genesis zap ", IERC20Metadata(peggedToken).name()));
-    }
-
-    /// @notice Human-readable zap symbol based on the pegged token
-    function zapSymbol() external view returns (string memory) {
-        address peggedToken = IGenesis(GENESIS).PEGGED_TOKEN();
-        return string(abi.encodePacked("Genesis zap ", IERC20Metadata(peggedToken).symbol()));
     }
 
     // =============================================================

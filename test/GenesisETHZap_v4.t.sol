@@ -133,17 +133,11 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
     function test_ZapNameAndSymbol() public view {
         string memory expectedName =
             string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name()));
-        string memory expectedSymbol =
-            string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).symbol()));
-
         string memory name = zap.zapName();
-        string memory symbol = zap.zapSymbol();
 
         console.log("Genesis zap name:", name);
-        console.log("Genesis zap symbol:", symbol);
 
         assertEq(name, expectedName, "Zap name mismatch");
-        assertEq(symbol, expectedSymbol, "Zap symbol mismatch");
     }
 
     function test_ZapStEth_Success() public {

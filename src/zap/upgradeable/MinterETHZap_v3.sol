@@ -857,12 +857,6 @@ contract MinterETHZap_v3 is
         return string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).name()));
     }
 
-    /// @notice Human-readable zap symbol based on the pegged token
-    function zapSymbol() external view returns (string memory) {
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        return string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).symbol()));
-    }
-
     // ============ Owner Functions ============
 
     function setReferral(address newReferral) external onlyOwner {
