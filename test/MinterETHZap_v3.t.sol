@@ -483,7 +483,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         assertGt(previewPegged, 0, "Preview should return > 0");
     }
 
-    function test_ZapNameAndSymbol() public view {
+    function test_ZapName() public view {
         string memory expectedName = string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).name()));
         string memory name = zap.zapName();
 

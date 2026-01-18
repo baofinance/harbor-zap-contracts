@@ -130,7 +130,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         assertEq(user1.balance, 100 ether - ethAmount, "User ETH not deducted");
     }
 
-    function test_ZapNameAndSymbol() public view {
+    function test_ZapName() public view {
         string memory expectedName =
             string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name()));
         string memory name = zap.zapName();

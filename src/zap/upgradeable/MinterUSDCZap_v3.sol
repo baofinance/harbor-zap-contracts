@@ -233,16 +233,17 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap USDC into pegged tokens in one transaction
     /// @dev Flow: USDC → fxSAVE → Minter mint pegged
     /// @param usdcAmount Amount of USDC to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @return peggedOut Amount of pegged tokens minted
-    function zapUsdcToPegged(uint256 usdcAmount, address receiver, uint256 minPeggedOut)
+    function zapUsdcToPegged(uint256 usdcAmount, uint256 minFxSaveOut, address receiver, uint256 minPeggedOut)
         external
         nonReentrant
         returns (uint256 peggedOut)
     {
         uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut) = _zapToPegged(USDC, usdcAmount, receiver, minPeggedOut);
+        (fxSaveAmount, peggedOut) = _zapToPegged(USDC, usdcAmount, minFxSaveOut, receiver, minPeggedOut);
 
         emit USDCZappedToPegged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut);
     }
@@ -250,16 +251,17 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap USDC into leveraged tokens in one transaction
     /// @dev Flow: USDC → fxSAVE → Minter mint leveraged
     /// @param usdcAmount Amount of USDC to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @return leveragedOut Amount of leveraged tokens minted
-    function zapUsdcToLeveraged(uint256 usdcAmount, address receiver, uint256 minLeveragedOut)
+    function zapUsdcToLeveraged(uint256 usdcAmount, uint256 minFxSaveOut, address receiver, uint256 minLeveragedOut)
         external
         nonReentrant
         returns (uint256 leveragedOut)
     {
         uint256 fxSaveAmount;
-        (fxSaveAmount, leveragedOut) = _zapToLeveraged(USDC, usdcAmount, receiver, minLeveragedOut);
+        (fxSaveAmount, leveragedOut) = _zapToLeveraged(USDC, usdcAmount, minFxSaveOut, receiver, minLeveragedOut);
 
         emit USDCZappedToLeveraged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, leveragedOut);
     }
@@ -267,16 +269,17 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap fxUSD into pegged tokens in one transaction
     /// @dev Flow: fxUSD → fxSAVE → Minter mint pegged
     /// @param fxUsdAmount Amount of fxUSD to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @return peggedOut Amount of pegged tokens minted
-    function zapFxUsdToPegged(uint256 fxUsdAmount, address receiver, uint256 minPeggedOut)
+    function zapFxUsdToPegged(uint256 fxUsdAmount, uint256 minFxSaveOut, address receiver, uint256 minPeggedOut)
         external
         nonReentrant
         returns (uint256 peggedOut)
     {
         uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut) = _zapToPegged(FXUSD, fxUsdAmount, receiver, minPeggedOut);
+        (fxSaveAmount, peggedOut) = _zapToPegged(FXUSD, fxUsdAmount, minFxSaveOut, receiver, minPeggedOut);
 
         emit FXUSDZappedToPegged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut);
     }
@@ -284,16 +287,17 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap fxUSD into leveraged tokens in one transaction
     /// @dev Flow: fxUSD → fxSAVE → Minter mint leveraged
     /// @param fxUsdAmount Amount of fxUSD to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @return leveragedOut Amount of leveraged tokens minted
-    function zapFxUsdToLeveraged(uint256 fxUsdAmount, address receiver, uint256 minLeveragedOut)
+    function zapFxUsdToLeveraged(uint256 fxUsdAmount, uint256 minFxSaveOut, address receiver, uint256 minLeveragedOut)
         external
         nonReentrant
         returns (uint256 leveragedOut)
     {
         uint256 fxSaveAmount;
-        (fxSaveAmount, leveragedOut) = _zapToLeveraged(FXUSD, fxUsdAmount, receiver, minLeveragedOut);
+        (fxSaveAmount, leveragedOut) = _zapToLeveraged(FXUSD, fxUsdAmount, minFxSaveOut, receiver, minLeveragedOut);
 
         emit FXUSDZappedToLeveraged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, leveragedOut);
     }
@@ -301,6 +305,7 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap USDC into StabilityPool in one transaction
     /// @dev Flow: USDC → fxSAVE → Minter mint pegged → StabilityPool deposit
     /// @dev Use previewStabilityPoolFromFxSave() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromFxSave with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -309,14 +314,16 @@ contract MinterUSDCZap_v3 is
     /// @return deposited Amount deposited into StabilityPool
     function zapUsdcToStabilityPool(
         uint256 usdcAmount,
+        uint256 minFxSaveOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
         uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut, deposited) =
-            _zapToStabilityPoolFromToken(USDC, usdcAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut);
+        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            USDC, usdcAmount, minFxSaveOut, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        );
 
         emit USDCZappedToStabilityPool(
             _msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
@@ -326,6 +333,7 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap fxUSD into StabilityPool in one transaction
     /// @dev Flow: fxUSD → fxSAVE → Minter mint pegged → StabilityPool deposit
     /// @dev Use previewStabilityPoolFromFxSave() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromFxSave with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -334,6 +342,7 @@ contract MinterUSDCZap_v3 is
     /// @return deposited Amount deposited into StabilityPool
     function zapFxUsdToStabilityPool(
         uint256 fxUsdAmount,
+        uint256 minFxSaveOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
@@ -341,7 +350,7 @@ contract MinterUSDCZap_v3 is
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
         uint256 fxSaveAmount;
         (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            FXUSD, fxUsdAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+            FXUSD, fxUsdAmount, minFxSaveOut, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
         );
 
         emit FXUSDZappedToStabilityPool(
@@ -367,7 +376,7 @@ contract MinterUSDCZap_v3 is
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
         (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            FXSAVE, fxSaveAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+            FXSAVE, fxSaveAmount, 0, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
         );
 
         emit FXSAVEZappedToStabilityPool(
@@ -380,6 +389,7 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap USDC into pegged tokens using permit (single transaction, no approval needed)
     /// @dev Flow: Permit USDC → USDC → fxSAVE → Minter mint pegged
     /// @param usdcAmount Amount of USDC to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param deadline Permit signature deadline
@@ -389,6 +399,7 @@ contract MinterUSDCZap_v3 is
     /// @return peggedOut Amount of pegged tokens minted
     function zapUsdcToPeggedWithPermit(
         uint256 usdcAmount,
+        uint256 minFxSaveOut,
         address receiver,
         uint256 minPeggedOut,
         uint256 deadline,
@@ -398,7 +409,7 @@ contract MinterUSDCZap_v3 is
     ) external nonReentrant returns (uint256 peggedOut) {
         _permitUsdc(usdcAmount, deadline, v, r, s);
         uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut) = _zapToPegged(USDC, usdcAmount, receiver, minPeggedOut);
+        (fxSaveAmount, peggedOut) = _zapToPegged(USDC, usdcAmount, minFxSaveOut, receiver, minPeggedOut);
 
         emit USDCZappedToPegged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut);
     }
@@ -406,6 +417,7 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap USDC into leveraged tokens using permit (single transaction, no approval needed)
     /// @dev Flow: Permit USDC → USDC → fxSAVE → Minter mint leveraged
     /// @param usdcAmount Amount of USDC to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @param deadline Permit signature deadline
@@ -415,6 +427,7 @@ contract MinterUSDCZap_v3 is
     /// @return leveragedOut Amount of leveraged tokens minted
     function zapUsdcToLeveragedWithPermit(
         uint256 usdcAmount,
+        uint256 minFxSaveOut,
         address receiver,
         uint256 minLeveragedOut,
         uint256 deadline,
@@ -424,7 +437,7 @@ contract MinterUSDCZap_v3 is
     ) external nonReentrant returns (uint256 leveragedOut) {
         _permitUsdc(usdcAmount, deadline, v, r, s);
         uint256 fxSaveAmount;
-        (fxSaveAmount, leveragedOut) = _zapToLeveraged(USDC, usdcAmount, receiver, minLeveragedOut);
+        (fxSaveAmount, leveragedOut) = _zapToLeveraged(USDC, usdcAmount, minFxSaveOut, receiver, minLeveragedOut);
 
         emit USDCZappedToLeveraged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, leveragedOut);
     }
@@ -432,6 +445,7 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap fxUSD into pegged tokens using permit (single transaction, no approval needed)
     /// @dev Flow: Permit fxUSD → fxUSD → fxSAVE → Minter mint pegged
     /// @param fxUsdAmount Amount of fxUSD to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param deadline Permit signature deadline
@@ -441,6 +455,7 @@ contract MinterUSDCZap_v3 is
     /// @return peggedOut Amount of pegged tokens minted
     function zapFxUsdToPeggedWithPermit(
         uint256 fxUsdAmount,
+        uint256 minFxSaveOut,
         address receiver,
         uint256 minPeggedOut,
         uint256 deadline,
@@ -450,7 +465,7 @@ contract MinterUSDCZap_v3 is
     ) external nonReentrant returns (uint256 peggedOut) {
         _permitFxUsd(fxUsdAmount, deadline, v, r, s);
         uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut) = _zapToPegged(FXUSD, fxUsdAmount, receiver, minPeggedOut);
+        (fxSaveAmount, peggedOut) = _zapToPegged(FXUSD, fxUsdAmount, minFxSaveOut, receiver, minPeggedOut);
 
         emit FXUSDZappedToPegged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut);
     }
@@ -458,6 +473,7 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap fxUSD into leveraged tokens using permit (single transaction, no approval needed)
     /// @dev Flow: Permit fxUSD → fxUSD → fxSAVE → Minter mint leveraged
     /// @param fxUsdAmount Amount of fxUSD to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @param deadline Permit signature deadline
@@ -467,6 +483,7 @@ contract MinterUSDCZap_v3 is
     /// @return leveragedOut Amount of leveraged tokens minted
     function zapFxUsdToLeveragedWithPermit(
         uint256 fxUsdAmount,
+        uint256 minFxSaveOut,
         address receiver,
         uint256 minLeveragedOut,
         uint256 deadline,
@@ -476,7 +493,7 @@ contract MinterUSDCZap_v3 is
     ) external nonReentrant returns (uint256 leveragedOut) {
         _permitFxUsd(fxUsdAmount, deadline, v, r, s);
         uint256 fxSaveAmount;
-        (fxSaveAmount, leveragedOut) = _zapToLeveraged(FXUSD, fxUsdAmount, receiver, minLeveragedOut);
+        (fxSaveAmount, leveragedOut) = _zapToLeveraged(FXUSD, fxUsdAmount, minFxSaveOut, receiver, minLeveragedOut);
 
         emit FXUSDZappedToLeveraged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, leveragedOut);
     }
@@ -484,6 +501,7 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap USDC into StabilityPool using permit (single transaction, no approval needed)
     /// @dev Flow: Permit USDC → USDC → fxSAVE → Minter mint pegged → StabilityPool deposit
     /// @param usdcAmount Amount of USDC to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -496,6 +514,7 @@ contract MinterUSDCZap_v3 is
     /// @return deposited Amount deposited into StabilityPool
     function zapUsdcToStabilityPoolWithPermit(
         uint256 usdcAmount,
+        uint256 minFxSaveOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
@@ -507,8 +526,9 @@ contract MinterUSDCZap_v3 is
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
         _permitUsdc(usdcAmount, deadline, v, r, s);
         uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut, deposited) =
-            _zapToStabilityPoolFromToken(USDC, usdcAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut);
+        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            USDC, usdcAmount, minFxSaveOut, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        );
 
         emit USDCZappedToStabilityPool(
             _msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
@@ -518,6 +538,7 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap fxUSD into StabilityPool using permit (single transaction, no approval needed)
     /// @dev Flow: Permit fxUSD → fxUSD → fxSAVE → Minter mint pegged → StabilityPool deposit
     /// @param fxUsdAmount Amount of fxUSD to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -530,6 +551,7 @@ contract MinterUSDCZap_v3 is
     /// @return deposited Amount deposited into StabilityPool
     function zapFxUsdToStabilityPoolWithPermit(
         uint256 fxUsdAmount,
+        uint256 minFxSaveOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
@@ -542,7 +564,7 @@ contract MinterUSDCZap_v3 is
         _permitFxUsd(fxUsdAmount, deadline, v, r, s);
         uint256 fxSaveAmount;
         (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            FXUSD, fxUsdAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+            FXUSD, fxUsdAmount, minFxSaveOut, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
         );
 
         emit FXUSDZappedToStabilityPool(
@@ -576,7 +598,7 @@ contract MinterUSDCZap_v3 is
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
         _permitFxSave(fxSaveAmount, deadline, v, r, s);
         (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            FXSAVE, fxSaveAmount, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+            FXSAVE, fxSaveAmount, 0, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
         );
 
         emit FXSAVEZappedToStabilityPool(
@@ -619,8 +641,12 @@ contract MinterUSDCZap_v3 is
     /// @notice Convert USDC or fxUSD to fxSAVE via diamond contract
     /// @param tokenIn Token to convert (USDC or fxUSD)
     /// @param amountIn Amount of tokenIn to convert
+    /// @param minFxSaveOut Minimum fxSAVE to receive
     /// @return fxSaveAmount Amount of fxSAVE received
-    function _convertToFxSave(address tokenIn, uint256 amountIn) internal returns (uint256 fxSaveAmount) {
+    function _convertToFxSave(address tokenIn, uint256 amountIn, uint256 minFxSaveOut)
+        internal
+        returns (uint256 fxSaveAmount)
+    {
         // Pull token from user
         IERC20(tokenIn).safeTransferFrom(_msgSender(), address(this), amountIn);
 
@@ -629,10 +655,15 @@ contract MinterUSDCZap_v3 is
         _safeApprove(token, FXUSD_DIAMOND, amountIn);
 
         bytes memory swapData =
-            abi.encodeWithSelector(FxSAVEConstants.CONVERT_SELECTOR, tokenIn, amountIn, uint256(0), "");
+            abi.encodeWithSelector(FxSAVEConstants.CONVERT_SELECTOR, tokenIn, amountIn, minFxSaveOut, "");
 
         IFxUSDDiamondV2.ConvertInParams memory params = IFxUSDDiamondV2.ConvertInParams({
-            tokenIn: tokenIn, amount: amountIn, target: FXUSD_SWAP_ROUTER, data: swapData, minOut: 0, signature: ""
+            tokenIn: tokenIn,
+            amount: amountIn,
+            target: FXUSD_SWAP_ROUTER,
+            data: swapData,
+            minOut: minFxSaveOut,
+            signature: ""
         });
 
         uint256 fxSaveBalanceBefore = IERC20(FXSAVE).balanceOf(address(this));
@@ -640,23 +671,28 @@ contract MinterUSDCZap_v3 is
         uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
         fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
         if (fxSaveAmount == 0) revert IZapErrors.NoFxSaveReceived();
+        if (fxSaveAmount < minFxSaveOut) revert IZapErrors.SlippageExceeded();
     }
 
     /// @notice Zap a token into pegged tokens and reset allowances
     /// @param tokenIn Token to zap (USDC or fxUSD)
     /// @param amountIn Amount of tokenIn to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive
     /// @param receiver Address receiving pegged tokens
     /// @param minPeggedOut Minimum pegged tokens to receive
     /// @return fxSaveAmount Amount of fxSAVE received
     /// @return peggedOut Amount of pegged tokens minted
-    function _zapToPegged(address tokenIn, uint256 amountIn, address receiver, uint256 minPeggedOut)
-        internal
-        returns (uint256 fxSaveAmount, uint256 peggedOut)
-    {
+    function _zapToPegged(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minFxSaveOut,
+        address receiver,
+        uint256 minPeggedOut
+    ) internal returns (uint256 fxSaveAmount, uint256 peggedOut) {
         if (amountIn == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        fxSaveAmount = _convertToFxSave(tokenIn, amountIn);
+        fxSaveAmount = _convertToFxSave(tokenIn, amountIn, minFxSaveOut);
         peggedOut = _mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
         _resetAllowances();
     }
@@ -664,18 +700,22 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap a token into leveraged tokens and reset allowances
     /// @param tokenIn Token to zap (USDC or fxUSD)
     /// @param amountIn Amount of tokenIn to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive
     /// @param receiver Address receiving leveraged tokens
     /// @param minLeveragedOut Minimum leveraged tokens to receive
     /// @return fxSaveAmount Amount of fxSAVE received
     /// @return leveragedOut Amount of leveraged tokens minted
-    function _zapToLeveraged(address tokenIn, uint256 amountIn, address receiver, uint256 minLeveragedOut)
-        internal
-        returns (uint256 fxSaveAmount, uint256 leveragedOut)
-    {
+    function _zapToLeveraged(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minFxSaveOut,
+        address receiver,
+        uint256 minLeveragedOut
+    ) internal returns (uint256 fxSaveAmount, uint256 leveragedOut) {
         if (amountIn == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        fxSaveAmount = _convertToFxSave(tokenIn, amountIn);
+        fxSaveAmount = _convertToFxSave(tokenIn, amountIn, minFxSaveOut);
         leveragedOut = _mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
         _resetAllowances();
     }
@@ -683,6 +723,7 @@ contract MinterUSDCZap_v3 is
     /// @notice Zap a token into StabilityPool via minted pegged tokens
     /// @param tokenIn Token to zap (USDC, fxUSD, or fxSAVE)
     /// @param amountIn Amount of tokenIn to zap
+    /// @param minFxSaveOut Minimum fxSAVE to receive
     /// @param receiver Address receiving StabilityPool deposit
     /// @param minPeggedOut Minimum pegged tokens to receive
     /// @param stabilityPool StabilityPool address
@@ -693,6 +734,7 @@ contract MinterUSDCZap_v3 is
     function _zapToStabilityPoolFromToken(
         address tokenIn,
         uint256 amountIn,
+        uint256 minFxSaveOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
@@ -705,8 +747,9 @@ contract MinterUSDCZap_v3 is
         if (tokenIn == FXSAVE) {
             IERC20(FXSAVE).safeTransferFrom(_msgSender(), address(this), amountIn);
             fxSaveAmount = amountIn;
+            if (fxSaveAmount < minFxSaveOut) revert IZapErrors.SlippageExceeded();
         } else {
-            fxSaveAmount = _convertToFxSave(tokenIn, amountIn);
+            fxSaveAmount = _convertToFxSave(tokenIn, amountIn, minFxSaveOut);
         }
 
         address peggedToken = IMinter(MINTER).PEGGED_TOKEN();

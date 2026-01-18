@@ -120,7 +120,7 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
         assertEq(genBalAfter, genBalBefore + collateralAmount, "Shares mismatch");
     }
 
-    function test_ZapNameAndSymbol() public view {
+    function test_ZapName() public view {
         string memory expectedName =
             string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name()));
         string memory name = zap.zapName();

@@ -85,7 +85,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         uint256 peggedBalBefore = IERC20(peggedToken).balanceOf(receiver);
         uint256 fxBalBefore = IERC20(FXSAVE).balanceOf(minter);
 
-        uint256 peggedOut = zap.zapUsdcToPegged(usdcAmount, receiver, 0);
+        uint256 peggedOut = zap.zapUsdcToPegged(usdcAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -112,7 +112,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), type(uint256).max);
 
         vm.expectRevert(IZapErrors.ZeroAmount.selector);
-        zap.zapUsdcToPegged(0, receiver, 0);
+        zap.zapUsdcToPegged(0, 0, receiver, 0);
 
         vm.stopPrank();
     }
@@ -124,7 +124,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), usdcAmount);
 
         vm.expectRevert(IZapErrors.ZeroAddress.selector);
-        zap.zapUsdcToPegged(usdcAmount, address(0), 0);
+        zap.zapUsdcToPegged(usdcAmount, 0, address(0), 0);
 
         vm.stopPrank();
     }
@@ -138,7 +138,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), usdcAmount);
 
         uint256 leveragedBalBefore = IERC20(leveragedToken).balanceOf(receiver);
-        uint256 leveragedOut = zap.zapUsdcToLeveraged(usdcAmount, receiver, 0);
+        uint256 leveragedOut = zap.zapUsdcToLeveraged(usdcAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -158,7 +158,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
         uint256 peggedBalBefore = IERC20(peggedToken).balanceOf(receiver);
-        uint256 peggedOut = zap.zapFxUsdToPegged(fxUsdAmount, receiver, 0);
+        uint256 peggedOut = zap.zapFxUsdToPegged(fxUsdAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -178,7 +178,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
         uint256 leveragedBalBefore = IERC20(leveragedToken).balanceOf(receiver);
-        uint256 leveragedOut = zap.zapFxUsdToLeveraged(fxUsdAmount, receiver, 0);
+        uint256 leveragedOut = zap.zapFxUsdToLeveraged(fxUsdAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -208,8 +208,9 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         uint256 minPeggedOut = previewPegged * 99 / 100;
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
-        (uint256 peggedOut, uint256 deposited) =
-            zap.zapUsdcToStabilityPool(usdcAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut);
+        (uint256 peggedOut, uint256 deposited) = zap.zapUsdcToStabilityPool(
+            usdcAmount, 0, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+        );
 
         vm.stopPrank();
 
@@ -225,7 +226,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), usdcAmount);
 
         vm.expectRevert(IZapErrors.StabilityPoolNotAllowed.selector);
-        zap.zapUsdcToStabilityPool(usdcAmount, receiver, 0, address(stabilityPool), 0);
+        zap.zapUsdcToStabilityPool(usdcAmount, 0, receiver, 0, address(stabilityPool), 0);
 
         vm.stopPrank();
     }
@@ -247,7 +248,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
         (uint256 peggedOut, uint256 deposited) = zap.zapFxUsdToStabilityPool(
-            fxUsdAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+            fxUsdAmount, 0, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -347,7 +348,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         assertGt(previewPegged, 0, "Preview should return > 0");
     }
 
-    function test_ZapNameAndSymbol() public view {
+    function test_ZapName() public view {
         string memory expectedName = string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).name()));
         string memory name = zap.zapName();
 
@@ -387,7 +388,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         uint256 usdcAmount = 1000 * 1e6;
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
-        uint256 peggedOut = zap.zapUsdcToPegged(usdcAmount, receiver, 0);
+        uint256 peggedOut = zap.zapUsdcToPegged(usdcAmount, 0, receiver, 0);
         vm.stopPrank();
 
         assertGt(peggedOut, 0, "Should still work after upgrade");

@@ -516,9 +516,11 @@ IERC20(USDC).approve(minterZapAddress, 10_000 * 1e6);
 // - Convert 10,000 USDC → ~9,345.79 fxSAVE via fxUSD Diamond (fxSAVE ≈ 1.07 USDC)
 // - Mint pegged tokens using the Minter contract
 
+uint256 minFxSaveOut = 9_300 * 1e18; // Minimum fxSAVE expected (slippage protection)
 uint256 minPeggedOut = 9_000 * 1e18; // Minimum pegged tokens expected
 MinterUSDCZap_v3(minterZapAddress).zapUsdcToPegged(
     10_000 * 1e6,     // Amount of USDC (6 decimals)
+    minFxSaveOut,     // Minimum fxSAVE expected
     bobAddress,       // Receiver address (Bob)
     minPeggedOut      // Minimum pegged tokens expected
 );
@@ -546,9 +548,11 @@ bytes32 permitHash = _buildPermitHash(
 (uint8 v, bytes32 r, bytes32 s) = _signPermit(bobPrivateKey, permitHash);
 
 // On-chain: Single transaction
+uint256 minFxSaveOut = 9_300 * 1e18;
 uint256 minPeggedOut = 9_000 * 1e18;
 MinterUSDCZap_v3(minterZapAddress).zapUsdcToPeggedWithPermit(
     10_000 * 1e6,
+    minFxSaveOut,
     bobAddress,
     minPeggedOut,
     deadline,
@@ -567,9 +571,11 @@ MinterUSDCZap_v3(minterZapAddress).zapUsdcToPeggedWithPermit(
 **Step 1: Approve and execute the zap**
 ```solidity
 IERC20(USDC).approve(minterZapAddress, 10_000 * 1e6);
+uint256 minFxSaveOut = 9_300 * 1e18;
 uint256 minLeveragedOut = 18_000 * 1e18; // Minimum leveraged tokens expected (leverage > 1)
 MinterUSDCZap_v3(minterZapAddress).zapUsdcToLeveraged(
     10_000 * 1e6,
+    minFxSaveOut,
     bobAddress,
     minLeveragedOut
 );
@@ -586,9 +592,11 @@ MinterUSDCZap_v3(minterZapAddress).zapUsdcToLeveraged(
 **Step 1: Approve and execute the zap**
 ```solidity
 IERC20(FXUSD).approve(minterZapAddress, 10_000 * 1e18);
+uint256 minFxSaveOut = 9_300 * 1e18;
 uint256 minPeggedOut = 9_000 * 1e18;
 MinterUSDCZap_v3(minterZapAddress).zapFxUsdToPegged(
     10_000 * 1e18,    // Amount of fxUSD (18 decimals)
+    minFxSaveOut,     // Minimum fxSAVE expected
     aliceAddress,     // Receiver address (Alice)
     minPeggedOut      // Minimum pegged tokens expected
 );
@@ -609,6 +617,7 @@ MinterUSDCZap_v3(minterZapAddress).zapFxUsdToPegged(
 
 MinterUSDCZap_v3(minterZapAddress).zapFxUsdToPeggedWithPermit(
     10_000 * 1e18,
+    minFxSaveOut,
     aliceAddress,
     minPeggedOut,
     deadline,
@@ -627,6 +636,7 @@ MinterUSDCZap_v3(minterZapAddress).zapFxUsdToPeggedWithPermit(
 **Step 1: Sign permit and execute**
 ```solidity
 address stabilityPool = 0x...;
+uint256 minFxSaveOut = 9_300 * 1e18; // Minimum fxSAVE expected (slippage protection)
 uint256 minPeggedOut = 9_000 * 1e18; // Minimum pegged tokens from minting (accounts for mint fees)
 // Note: Stability pool deposits don't incur fees, so minStabilityPoolOut should equal minPeggedOut
 // Add only a small slippage buffer (0.1-0.5%) for rounding protection
@@ -637,6 +647,7 @@ uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buff
 
 MinterUSDCZap_v3(minterZapAddress).zapUsdcToStabilityPoolWithPermit(
     10_000 * 1e6,
+    minFxSaveOut,
     bobAddress,
     minPeggedOut,         // Minimum pegged tokens expected (accounts for mint fees)
     stabilityPool,
@@ -658,6 +669,7 @@ MinterUSDCZap_v3(minterZapAddress).zapUsdcToStabilityPoolWithPermit(
 **Step 1: Sign permit and execute**
 ```solidity
 address stabilityPool = 0x...;
+uint256 minFxSaveOut = 9_300 * 1e18; // Minimum fxSAVE expected (slippage protection)
 uint256 minPeggedOut = 9_000 * 1e18; // Minimum pegged tokens from minting (accounts for mint fees)
 // Note: Stability pool deposits don't incur fees, so minStabilityPoolOut should equal minPeggedOut
 // Add only a small slippage buffer (0.1-0.5%) for rounding protection
@@ -668,6 +680,7 @@ uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buff
 
 MinterUSDCZap_v3(minterZapAddress).zapFxUsdToStabilityPoolWithPermit(
     10_000 * 1e18,
+    minFxSaveOut,
     aliceAddress,
     minPeggedOut,         // Minimum pegged tokens expected (accounts for mint fees)
     stabilityPool,
