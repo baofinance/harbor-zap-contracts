@@ -3,6 +3,7 @@
 pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -848,6 +849,18 @@ contract MinterETHZap_v3 is
     /// @return peggedOut Expected amount of pegged tokens that will be minted (and deposited)
     function previewStabilityPoolFromWstEth(uint256 wstEthAmount) external view returns (uint256 peggedOut) {
         (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wstEthAmount);
+    }
+
+    /// @notice Human-readable zap name based on the pegged token
+    function zapName() external view returns (string memory) {
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        return string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).name()));
+    }
+
+    /// @notice Human-readable zap symbol based on the pegged token
+    function zapSymbol() external view returns (string memory) {
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        return string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).symbol()));
     }
 
     // ============ Owner Functions ============

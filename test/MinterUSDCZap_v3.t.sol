@@ -3,6 +3,7 @@ pragma solidity >=0.8.28 <0.9.0;
 
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
@@ -344,6 +345,20 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         uint256 previewPegged = zap.previewPeggedFromFxSave(fxSaveAmount);
 
         assertGt(previewPegged, 0, "Preview should return > 0");
+    }
+
+    function test_ZapNameAndSymbol() public view {
+        string memory expectedName = string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).name()));
+        string memory expectedSymbol = string(abi.encodePacked("Minter zap ", IERC20Metadata(peggedToken).symbol()));
+
+        string memory name = zap.zapName();
+        string memory symbol = zap.zapSymbol();
+
+        console.log("Minter zap name:", name);
+        console.log("Minter zap symbol:", symbol);
+
+        assertEq(name, expectedName, "Zap name mismatch");
+        assertEq(symbol, expectedSymbol, "Zap symbol mismatch");
     }
 
     function test_PreviewLeveragedFromFxSave() public view {

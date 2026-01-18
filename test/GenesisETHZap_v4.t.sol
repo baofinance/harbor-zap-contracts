@@ -3,6 +3,7 @@ pragma solidity >=0.8.28 <0.9.0;
 
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {GenesisETHZap_v4} from "src/zap/upgradeable/GenesisETHZap_v4.sol";
@@ -127,6 +128,22 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         assertEq(genesisBalAfter, genesisBalBefore + sharesOut, "Shares mismatch");
         assertEq(wstEthBalAfter, wstEthBalBefore + sharesOut, "wstETH not deposited");
         assertEq(user1.balance, 100 ether - ethAmount, "User ETH not deducted");
+    }
+
+    function test_ZapNameAndSymbol() public view {
+        string memory expectedName =
+            string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name()));
+        string memory expectedSymbol =
+            string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).symbol()));
+
+        string memory name = zap.zapName();
+        string memory symbol = zap.zapSymbol();
+
+        console.log("Genesis zap name:", name);
+        console.log("Genesis zap symbol:", symbol);
+
+        assertEq(name, expectedName, "Zap name mismatch");
+        assertEq(symbol, expectedSymbol, "Zap symbol mismatch");
     }
 
     function test_ZapStEth_Success() public {

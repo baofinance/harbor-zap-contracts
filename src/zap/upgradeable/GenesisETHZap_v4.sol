@@ -2,6 +2,7 @@
 pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -360,6 +361,18 @@ contract GenesisETHZap_v4 is
     {
         wstEthAmount = this.previewWstEthFromStEth(stEthAmount);
         sharesOut = wstEthAmount; // 1:1 mapping
+    }
+
+    /// @notice Human-readable zap name based on the pegged token
+    function zapName() external view returns (string memory) {
+        address peggedToken = IGenesis(GENESIS).PEGGED_TOKEN();
+        return string(abi.encodePacked("Genesis zap ", IERC20Metadata(peggedToken).name()));
+    }
+
+    /// @notice Human-readable zap symbol based on the pegged token
+    function zapSymbol() external view returns (string memory) {
+        address peggedToken = IGenesis(GENESIS).PEGGED_TOKEN();
+        return string(abi.encodePacked("Genesis zap ", IERC20Metadata(peggedToken).symbol()));
     }
 
     // =================================================================
