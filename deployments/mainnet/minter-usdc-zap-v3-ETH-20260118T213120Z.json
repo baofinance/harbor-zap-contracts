@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "chainId": 1,
+  "chainName": "Mainnet",
+  "deploymentTime": "2026-01-18T21:33:02Z",
+  "contract": "MinterUSDCZap_v3",
+  "implementation": "0x0a91cCbA6A0FE516FaD97CdB96A50f1453200573",
+  "proxy": "0x97C79691407Aea845FaA24C8A905bC3151034ADD",
+  "constructorArgs": {
+    "minter": "0xd6E2F8e57b4aFB51C6fA4cbC012e1cE6aEad989F"
+  },
+  "initializer": {
+    "signature": "initialize(address,address)",
+    "args": {
+      "deployerOwner": "0x2F1567c4A651ED93dB0FC6D9Df1EA9196054f63e",
+      "pendingOwner": "0x9bABfC1A1952a6ed2caC1922BFfE80c0506364a2"
+    }
+  },
+  "initializerData": "0x485cc9550000000000000000000000002f1567c4a651ed93db0fc6d9df1ea9196054f63e0000000000000000000000009babfc1a1952a6ed2cac1922bffe80c0506364a2",
+  "finalOwner": "0x9bABfC1A1952a6ed2caC1922BFfE80c0506364a2"
+}

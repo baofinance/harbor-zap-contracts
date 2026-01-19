@@ -84,8 +84,8 @@ echo "RPC URL: $MAINNET_RPC_URL"
 echo "Chain ID: $CHAIN_ID"
 if [[ "$CHAIN_ID" != "0x1" ]] && [[ "$CHAIN_ID" != "1" ]]; then
   echo "⚠️  WARNING: Expected Mainnet chain ID (1), got: $CHAIN_ID"
-  echo "   Press Ctrl+C to cancel, or wait 5 seconds to continue..."
-  sleep 5
+  echo "   Press Ctrl+C to cancel, or wait 10 seconds to continue..."
+  sleep 10
 fi
 echo ""
 

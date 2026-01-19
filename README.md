@@ -799,7 +799,7 @@ You can provide zap target addresses via env vars or `deployments/mainnet/zap-ad
 
 The config file also supports:
 - `owner` for final ownership transfer (initializer uses deployer)
-- `markets.<MARKET>.stabilityPools.eth` and `markets.<MARKET>.stabilityPools.usdc`
+- `markets.<MARKET>.stabilityPools`
 
 Each deploy script writes a timestamped deployment file in `deployments/mainnet/` so
 previous deployments are not overwritten.

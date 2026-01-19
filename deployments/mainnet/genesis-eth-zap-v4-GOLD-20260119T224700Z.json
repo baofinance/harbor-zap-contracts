@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "chainId": 1,
+  "chainName": "Mainnet",
+  "deploymentTime": "2026-01-19T22:48:54Z",
+  "contract": "GenesisETHZap_v4",
+  "implementation": "0x49157c7C2a172b092187DE0db03C1413cF3028F4",
+  "proxy": "0xCDf5BdcD7A035C2F20782e607D4f9F8f26280f93",
+  "constructorArgs": {
+    "genesis": "0x8Ad6b177137A6c33070c27d98355717849Ce526c"
+  },
+  "initializer": {
+    "signature": "initialize(address,address,address)",
+    "args": {
+      "deployerOwner": "0x2F1567c4A651ED93dB0FC6D9Df1EA9196054f63e",
+      "pendingOwner": "0x9bABfC1A1952a6ed2caC1922BFfE80c0506364a2",
+      "referral": "0x0000000000000000000000000000000000000000"
+    }
+  },
+  "initializerData": "0xc0c53b8b0000000000000000000000002f1567c4a651ed93db0fc6d9df1ea9196054f63e0000000000000000000000009babfc1a1952a6ed2cac1922bffe80c0506364a20000000000000000000000000000000000000000000000000000000000000000",
+  "finalOwner": "0x9bABfC1A1952a6ed2caC1922BFfE80c0506364a2"
+}

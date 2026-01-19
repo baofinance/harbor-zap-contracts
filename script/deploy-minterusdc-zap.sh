@@ -93,8 +93,8 @@ echo "RPC URL: $MAINNET_RPC_URL"
 echo "Chain ID: $CHAIN_ID"
 if [[ "$CHAIN_ID" != "0x1" ]] && [[ "$CHAIN_ID" != "1" ]]; then
   echo "⚠️  WARNING: Expected Mainnet chain ID (1), got: $CHAIN_ID"
-  echo "   Press Ctrl+C to cancel, or wait 5 seconds to continue..."
-  sleep 5
+  echo "   Press Ctrl+C to cancel, or wait 10 seconds to continue..."
+  sleep 10
 fi
 echo ""
 
@@ -228,7 +228,7 @@ if [[ -z "$MARKET" ]]; then
   echo "❌ ERROR: MARKET is required to load stability pools when MINTER_USDC is not set"
   exit 1
 fi
-mapfile -t stability_pools < <(load_list ".markets[\"$MARKET\"].stabilityPools.usdc[]?")
+mapfile -t stability_pools < <(load_list ".markets[\"$MARKET\"].stabilityPools[]?")
 if (( ${#stability_pools[@]} > 0 )); then
   echo "Setting allowed stability pools..."
   for pool in "${stability_pools[@]}"; do
