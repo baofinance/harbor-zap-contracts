@@ -25,6 +25,161 @@ This repository contains zap contracts that enable users to deposit collateral i
 - **ETH/wstETH Zaps**: Convert ETH or stETH to wstETH and deposit into Genesis/Minter contracts
 - **USDC/fxSAVE Zaps**: Convert USDC or fxUSD to fxSAVE and deposit into Genesis/Minter contracts
 
+## Contracts
+
+### ETH/wstETH Zap Contracts
+
+- `GenesisETHZap_v4`: Zap ETH or stETH into Genesis contracts (upgradeable)
+- `MinterETHZap_v3`: Zap ETH or stETH to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
+
+### USDC/fxSAVE Zap Contracts
+
+- `GenesisUSDCZap_v4`: Zap USDC or fxUSD into Genesis contracts (upgradeable)
+- `MinterUSDCZap_v3`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
+
+## Prerequisites
+
+- [Foundry](https://book.getfoundry.sh/getting-started/installation) installed
+- Access to an Ethereum RPC endpoint (for mainnet deployments)
+- Private key with sufficient ETH for gas fees
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd harbor-zap-contracts
+```
+
+2. Install dependencies:
+```bash
+forge install
+```
+
+3. Build the contracts:
+```bash
+forge build
+```
+
+## Testing
+
+Run the test suite:
+```bash
+forge test
+```
+
+For fork tests, set the `MAINNET_RPC_URL` environment variable:
+```bash
+export MAINNET_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+forge test
+```
+
+## Deployment
+
+UUPS deployments are handled by per-zap scripts:
+- `script/deploy-genesiseth-zap.sh` (requires `GENESIS_ETH`)
+- `script/deploy-genesisusdc-zap.sh` (requires `GENESIS_USDC`)
+- `script/deploy-mintereth-zap.sh` (requires `MINTER_ETH`)
+- `script/deploy-minterusdc-zap.sh` (requires `MINTER_USDC`)
+- `script/verify-zaps.sh` (verifies deployment JSONs)
+
+All scripts require `MAINNET_RPC_URL` and `PRIVATE_KEY`. Ownership is taken from
+`deployments/mainnet/zap-addresses.json` (`owner`) or `OWNER` env. ETH zaps also accept
+optional `REFERRAL_ETH` (defaults to zero address, which uses the contract default).
+
+You can provide zap target addresses via env vars or `deployments/mainnet/zap-addresses.json`:
+- `GENESIS_ETH` or `markets.<MARKET>.addresses.genesisEth`
+- `GENESIS_USDC` or `markets.<MARKET>.addresses.genesisUsdc`
+- `MINTER_ETH` or `markets.<MARKET>.addresses.minterEth`
+- `MINTER_USDC` or `markets.<MARKET>.addresses.minterUsdc`
+
+The config file also supports:
+- `owner` for final ownership transfer (initializer uses deployer)
+- `markets.<MARKET>.stabilityPools`
+
+Each deploy script writes a timestamped deployment file under
+`deployments/mainnet/YYYY-MM-DD/` (UTC) so previous deployments are not overwritten.
+If `DEPLOY_NOTE` is provided, it is stored in the JSON output.
+
+Options:
+- `MARKET`: `ETH`, `BTC`, `GOLD`, `SILVER`, `EUR`, `MCAP`
+- Required env: `MAINNET_RPC_URL`, `PRIVATE_KEY`
+- Verification env: `ETHERSCAN_API_KEY` (required for on-chain verification unless disabled)
+- Optional env: `REFERRAL_ETH` (ETH zaps only)
+- Optional env: `DEPLOY_NOTE` (free-form note stored in deployment JSON)
+- Config file: `deployments/mainnet/zap-addresses.json` with `owner` and `markets.<MARKET>`
+- Verification control: `VERIFY=true|false` and `VERIFY_REQUIRED=true|false` (default required)
+
+Examples:
+```bash
+# Deploy GOLD ETH Genesis
+MARKET=GOLD ./script/deploy-genesiseth-zap.sh
+
+# Deploy GOLD USDC Minter
+MARKET=GOLD ./script/deploy-minterusdc-zap.sh
+
+# Deploy EUR ETH Genesis with a note
+MARKET=EUR DEPLOY_NOTE="Deploy EUR wstETH genesis zap" ./script/deploy-genesiseth-zap.sh
+```
+
+## Post-Deployment
+
+Notes:
+- Ownership is transferred to `owner` from `zap-addresses.json` during deployment.
+- Verification is performed during deployment when enabled. Use `script/verify-zaps.sh` if you skipped it.
+- Ownership transfer must be completed within 1 hour (BaoOwnable pending owner window).
+
+Optional follow-ups:
+
+1. **Update Referral** (ETH zaps only, optional): Update Lido referral address if needed:
+```bash
+cast send <ZAP_ADDRESS> "setReferral(address)" <NEW_REFERRAL> \
+  --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY
+```
+
+## Contract Addresses
+
+### Mainnet (when deployed)
+
+ETH/wstETH Zaps:
+- GenesisETHZap_v4: TBD (upgradeable)
+- MinterETHZap_v3: TBD (upgradeable)
+
+USDC/fxSAVE Zaps:
+- GenesisUSDCZap_v4: TBD (upgradeable)
+- MinterUSDCZap_v3: TBD (upgradeable)
+
+## Security Considerations
+
+- **Private Keys**: Never commit private keys to version control
+- **Ownership**: Transfer ownership to a multisig or secure address after deployment
+- **Referral**: The referral address receives rewards from Lido for ETH deposits
+- **Access Control**: Zap contracts have owner-only functions for rescue operations
+
+## Development
+
+### Project Structure
+
+```
+harbor-zap-contracts/
+├── src/
+│   ├── interfaces/      # Interface definitions
+│   ├── minter/          # Core contracts (Genesis_v1, Minter_v1, ReservePool_v1)
+│   ├── zap/             # Zap contracts (upgradeable)
+│   │   └── upgradeable/ # Upgradeable zap contracts (UUPS proxy)
+│   └── util/            # Utility contracts (ReentrancyGuard, etc.)
+├── test/                # Test files
+├── script/              # Utility scripts
+└── foundry.toml         # Foundry configuration
+```
+
+### Key Dependencies
+
+- OpenZeppelin Contracts (upgradeable)
+- Bao Base Contracts
+- Forge Standard Library
+
 ## Use Cases
 
 ### GenesisETHZap_v4: ETH and stETH Deposits
@@ -744,156 +899,6 @@ MinterUSDCZap_v3(minterZapAddress).zapFxSaveToStabilityPoolWithPermit(
 - **Step 2**: ~9,345.79 fxSAVE → Pegged tokens (via Minter mint, fees incurred here)
 - **Step 3**: Pegged tokens → Deposited into Stability Pool (no fees on deposit)
 - **Output**: Alice receives Stability Pool deposit (full pegged amount minus mint fees only)
-
-## Contracts
-
-### ETH/wstETH Zap Contracts
-
-- `GenesisETHZap_v4`: Zap ETH or stETH into Genesis contracts (upgradeable)
-- `MinterETHZap_v3`: Zap ETH or stETH to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
-
-### USDC/fxSAVE Zap Contracts
-
-- `GenesisUSDCZap_v4`: Zap USDC or fxUSD into Genesis contracts (upgradeable)
-- `MinterUSDCZap_v3`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
-
-## Prerequisites
-
-- [Foundry](https://book.getfoundry.sh/getting-started/installation) installed
-- Access to an Ethereum RPC endpoint (for mainnet deployments)
-- Private key with sufficient ETH for gas fees
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd harbor-zap-contracts
-```
-
-2. Install dependencies:
-```bash
-forge install
-```
-
-3. Build the contracts:
-```bash
-forge build
-```
-
-## Testing
-
-Run the test suite:
-```bash
-forge test
-```
-
-For fork tests, set the `MAINNET_RPC_URL` environment variable:
-```bash
-export MAINNET_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-forge test
-```
-
-## Deployment
-
-UUPS deployments are handled by per-zap scripts:
-- `script/deploy-genesiseth-zap.sh` (requires `GENESIS_ETH`)
-- `script/deploy-genesisusdc-zap.sh` (requires `GENESIS_USDC`)
-- `script/deploy-mintereth-zap.sh` (requires `MINTER_ETH`)
-- `script/deploy-minterusdc-zap.sh` (requires `MINTER_USDC`)
-- `script/verify-zaps.sh` (verifies deployment JSONs)
-
-All scripts require `MAINNET_RPC_URL` and `PRIVATE_KEY`. Ownership is taken from
-`deployments/mainnet/zap-addresses.json` (`owner`) or `OWNER` env. ETH zaps also accept
-optional `REFERRAL_ETH` (defaults to zero address, which uses the contract default).
-
-You can provide zap target addresses via env vars or `deployments/mainnet/zap-addresses.json`:
-- `GENESIS_ETH` or `markets.<MARKET>.addresses.genesisEth`
-- `GENESIS_USDC` or `markets.<MARKET>.addresses.genesisUsdc`
-- `MINTER_ETH` or `markets.<MARKET>.addresses.minterEth`
-- `MINTER_USDC` or `markets.<MARKET>.addresses.minterUsdc`
-
-The config file also supports:
-- `owner` for final ownership transfer (initializer uses deployer)
-- `markets.<MARKET>.stabilityPools`
-
-Each deploy script writes a timestamped deployment file in `deployments/mainnet/` so
-previous deployments are not overwritten.
-
-Options:
-- `MARKET`: `ETH`, `BTC`, `GOLD`, `SILVER`, `EUR`, `MCAP`
-- Required env: `MAINNET_RPC_URL`, `PRIVATE_KEY`
-- Verification env: `ETHERSCAN_API_KEY` (required for on-chain verification unless disabled)
-- Optional env: `REFERRAL_ETH` (ETH zaps only)
-- Config file: `deployments/mainnet/zap-addresses.json` with `owner` and `markets.<MARKET>`
-- Verification control: `VERIFY=true|false` and `VERIFY_REQUIRED=true|false` (default required)
-
-Examples:
-```bash
-# Deploy GOLD ETH Genesis
-MARKET=GOLD ./script/deploy-genesiseth-zap.sh
-
-# Deploy GOLD USDC Minter
-MARKET=GOLD ./script/deploy-minterusdc-zap.sh
-```
-
-## Post-Deployment
-
-Notes:
-- Ownership is transferred to `owner` from `zap-addresses.json` during deployment.
-- Verification is performed during deployment when enabled. Use `script/verify-zaps.sh` if you skipped it.
-- Ownership transfer must be completed within 1 hour (BaoOwnable pending owner window).
-
-Optional follow-ups:
-
-1. **Update Referral** (ETH zaps only, optional): Update Lido referral address if needed:
-```bash
-cast send <ZAP_ADDRESS> "setReferral(address)" <NEW_REFERRAL> \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY
-```
-
-## Contract Addresses
-
-### Mainnet (when deployed)
-
-ETH/wstETH Zaps:
-- GenesisETHZap_v4: TBD (upgradeable)
-- MinterETHZap_v3: TBD (upgradeable)
-
-USDC/fxSAVE Zaps:
-- GenesisUSDCZap_v4: TBD (upgradeable)
-- MinterUSDCZap_v3: TBD (upgradeable)
-
-## Security Considerations
-
-- **Private Keys**: Never commit private keys to version control
-- **Ownership**: Transfer ownership to a multisig or secure address after deployment
-- **Referral**: The referral address receives rewards from Lido for ETH deposits
-- **Access Control**: Zap contracts have owner-only functions for rescue operations
-
-## Development
-
-### Project Structure
-
-```
-harbor-zap-contracts/
-├── src/
-│   ├── interfaces/      # Interface definitions
-│   ├── minter/          # Core contracts (Genesis_v1, Minter_v1, ReservePool_v1)
-│   ├── zap/             # Zap contracts (upgradeable)
-│   │   └── upgradeable/ # Upgradeable zap contracts (UUPS proxy)
-│   └── util/            # Utility contracts (ReentrancyGuard, etc.)
-├── test/                # Test files
-├── script/              # Utility scripts
-└── foundry.toml         # Foundry configuration
-```
-
-### Key Dependencies
-
-- OpenZeppelin Contracts (upgradeable)
-- Bao Base Contracts
-- Forge Standard Library
 
 ## License
 

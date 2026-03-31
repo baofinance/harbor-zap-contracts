@@ -87,12 +87,14 @@ if [[ "$CHAIN_ID" != "0x1" ]] && [[ "$CHAIN_ID" != "1" ]]; then
 fi
 echo ""
 
-mkdir -p deployments/mainnet
+DEPLOYMENT_DATE=$(date -u +%Y-%m-%d)
 DEPLOYMENT_TS=$(date -u +%Y%m%dT%H%M%SZ)
+DEPLOYMENT_DIR="deployments/mainnet/$DEPLOYMENT_DATE"
+mkdir -p "$DEPLOYMENT_DIR"
 if [[ -n "$MARKET" ]]; then
-  DEPLOYMENT_FILE="deployments/mainnet/genesis-usdc-zap-v4-${MARKET}-${DEPLOYMENT_TS}.json"
+  DEPLOYMENT_FILE="$DEPLOYMENT_DIR/genesis-usdc-zap-v4-${MARKET}-${DEPLOYMENT_TS}.json"
 else
-  DEPLOYMENT_FILE="deployments/mainnet/genesis-usdc-zap-v4-${DEPLOYMENT_TS}.json"
+  DEPLOYMENT_FILE="$DEPLOYMENT_DIR/genesis-usdc-zap-v4-${DEPLOYMENT_TS}.json"
 fi
 
 deploy_contract() {
@@ -213,12 +215,20 @@ if ! verify_contract "$proxy_address" "$PROXY_PATH" "$proxy_ctor_args" "ERC1967P
   exit 1
 fi
 
+DEPLOY_NOTE=${DEPLOY_NOTE:-}
+NOTE_JSON=""
+if [[ -n "$DEPLOY_NOTE" ]]; then
+  note_escaped=${DEPLOY_NOTE//\\/\\\\}
+  note_escaped=${note_escaped//\"/\\\"}
+  NOTE_JSON=$(printf '  "note": "%s",\n' "$note_escaped")
+fi
+
 cat > "$DEPLOYMENT_FILE" <<EOF
 {
   "schemaVersion": 1,
   "chainId": 1,
   "chainName": "Mainnet",
-  "deploymentTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+${NOTE_JSON}  "deploymentTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "contract": "GenesisUSDCZap_v4",
   "implementation": "$impl_address",
   "proxy": "$proxy_address",
