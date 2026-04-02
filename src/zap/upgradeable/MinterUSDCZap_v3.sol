@@ -20,9 +20,9 @@ import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
 
 /// @title MinterUSDCZapV3
-/// @notice One-click zapper for minting pegged or leveraged tokens with USDC or fxUSD via fxSAVE
+/// @notice One-click zapper for minting pegged or leveraged tokens with base asset or collateral via wrapped collateral
 /// @dev Enables users to mint pegged or leveraged tokens in a single transaction
-/// @dev Flow: USDC/fxUSD → fxSAVE → Minter mint
+/// @dev Flow: base asset/collateral → wrapped collateral → Minter mint
 /// @dev Uses UUPS proxy, upgradeable
 /// @author Harbor Yield Protocol
 /// @custom:oz-upgrades
@@ -38,20 +38,23 @@ contract MinterUSDCZap_v3 is
 
     // ============ Constants ============
 
-    /// @notice USDC address (mainnet)
+    /// @notice Base asset address (mainnet)
     address public constant USDC = FxSAVEConstants.USDC;
 
-    /// @notice fxSAVE vault address (mainnet)
+    /// @notice Wrapped collateral vault address (mainnet)
     address public constant FXSAVE = FxSAVEConstants.FXSAVE;
 
-    /// @notice fxUSD Diamond contract address (handles deposits to fxSAVE)
+    /// @notice fxUSD Diamond contract address (handles deposits to wrapped collateral)
     address public constant FXUSD_DIAMOND = FxSAVEConstants.FXUSD_DIAMOND;
 
-    /// @notice fxUSD swap router/converter address (for USDC and fxUSD deposits)
+    /// @notice fxUSD swap router/converter address (for base asset and collateral deposits)
     address public constant FXUSD_SWAP_ROUTER = FxSAVEConstants.FXUSD_SWAP_ROUTER;
 
-    /// @notice fxUSD token address (mainnet)
+    /// @notice Collateral token address (mainnet)
     address public constant FXUSD = FxSAVEConstants.FXUSD;
+    address public constant BASE_ASSET = USDC;
+    address public constant COLLATERAL_ASSET = FXUSD;
+    address public constant WRAPPED_COLLATERAL_ASSET = FXSAVE;
 
     // ============ Immutables ============
 
@@ -66,123 +69,123 @@ contract MinterUSDCZap_v3 is
 
     // ============ Events ============
 
-    /// @notice Emitted when USDC is zapped to mint pegged tokens
+    /// @notice Emitted when base asset is zapped to mint pegged tokens
     /// @param user Address that initiated the zap
     /// @param minter Address of the Minter contract
     /// @param receiver Address that will receive the pegged tokens
-    /// @param usdcAmount Amount of USDC deposited
-    /// @param fxSaveAmount Amount of fxSAVE received
+    /// @param baseAssetAmount Amount of base asset deposited
+    /// @param wrappedCollateralAmount Amount of wrapped collateral received
     /// @param peggedOut Amount of pegged tokens minted
-    event USDCZappedToPegged(
+    event BaseAssetZappedToPegged(
         address indexed user,
         address indexed minter,
         address indexed receiver,
-        uint256 usdcAmount,
-        uint256 fxSaveAmount,
+        uint256 baseAssetAmount,
+        uint256 wrappedCollateralAmount,
         uint256 peggedOut
     );
 
-    /// @notice Emitted when USDC is zapped to mint leveraged tokens
+    /// @notice Emitted when base asset is zapped to mint leveraged tokens
     /// @param user Address that initiated the zap
     /// @param minter Address of the Minter contract
     /// @param receiver Address that will receive the leveraged tokens
-    /// @param usdcAmount Amount of USDC deposited
-    /// @param fxSaveAmount Amount of fxSAVE received
+    /// @param baseAssetAmount Amount of base asset deposited
+    /// @param wrappedCollateralAmount Amount of wrapped collateral received
     /// @param leveragedOut Amount of leveraged tokens minted
-    event USDCZappedToLeveraged(
+    event BaseAssetZappedToLeverage(
         address indexed user,
         address indexed minter,
         address indexed receiver,
-        uint256 usdcAmount,
-        uint256 fxSaveAmount,
+        uint256 baseAssetAmount,
+        uint256 wrappedCollateralAmount,
         uint256 leveragedOut
     );
 
-    /// @notice Emitted when fxUSD is zapped to mint pegged tokens
+    /// @notice Emitted when collateral is zapped to mint pegged tokens
     /// @param user Address that initiated the zap
     /// @param minter Address of the Minter contract
     /// @param receiver Address that will receive the pegged tokens
-    /// @param fxUsdAmount Amount of fxUSD deposited
-    /// @param fxSaveAmount Amount of fxSAVE received
+    /// @param collateralAmount Amount of collateral deposited
+    /// @param wrappedCollateralAmount Amount of wrapped collateral received
     /// @param peggedOut Amount of pegged tokens minted
-    event FXUSDZappedToPegged(
+    event CollateralZappedToPegged(
         address indexed user,
         address indexed minter,
         address indexed receiver,
-        uint256 fxUsdAmount,
-        uint256 fxSaveAmount,
+        uint256 collateralAmount,
+        uint256 wrappedCollateralAmount,
         uint256 peggedOut
     );
 
-    /// @notice Emitted when fxUSD is zapped to mint leveraged tokens
+    /// @notice Emitted when collateral is zapped to mint leveraged tokens
     /// @param user Address that initiated the zap
     /// @param minter Address of the Minter contract
     /// @param receiver Address that will receive the leveraged tokens
-    /// @param fxUsdAmount Amount of fxUSD deposited
-    /// @param fxSaveAmount Amount of fxSAVE received
+    /// @param collateralAmount Amount of collateral deposited
+    /// @param wrappedCollateralAmount Amount of wrapped collateral received
     /// @param leveragedOut Amount of leveraged tokens minted
-    event FXUSDZappedToLeveraged(
+    event CollateralZappedToLeveraged(
         address indexed user,
         address indexed minter,
         address indexed receiver,
-        uint256 fxUsdAmount,
-        uint256 fxSaveAmount,
+        uint256 collateralAmount,
+        uint256 wrappedCollateralAmount,
         uint256 leveragedOut
     );
 
-    /// @notice Emitted when USDC is zapped to StabilityPool
+    /// @notice Emitted when base asset is zapped to StabilityPool
     /// @param user Address that initiated the zap
     /// @param minter Address of the Minter contract
     /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param usdcAmount Amount of USDC deposited
-    /// @param fxSaveAmount Amount of fxSAVE received
+    /// @param baseAssetAmount Amount of base asset deposited
+    /// @param wrappedCollateralAmount Amount of wrapped collateral received
     /// @param peggedOut Amount of pegged tokens minted
     /// @param stabilityPool Address of the StabilityPool
     /// @param deposited Amount deposited into StabilityPool
-    event USDCZappedToStabilityPool(
+    event BaseAssetZappedToStabilityPool(
         address indexed user,
         address indexed minter,
         address indexed receiver,
-        uint256 usdcAmount,
-        uint256 fxSaveAmount,
+        uint256 baseAssetAmount,
+        uint256 wrappedCollateralAmount,
         uint256 peggedOut,
         address stabilityPool,
         uint256 deposited
     );
 
-    /// @notice Emitted when fxUSD is zapped to StabilityPool
+    /// @notice Emitted when collateral is zapped to StabilityPool
     /// @param user Address that initiated the zap
     /// @param minter Address of the Minter contract
     /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param fxUsdAmount Amount of fxUSD deposited
-    /// @param fxSaveAmount Amount of fxSAVE received
+    /// @param collateralAmount Amount of collateral deposited
+    /// @param wrappedCollateralAmount Amount of wrapped collateral received
     /// @param peggedOut Amount of pegged tokens minted
     /// @param stabilityPool Address of the StabilityPool
     /// @param deposited Amount deposited into StabilityPool
-    event FXUSDZappedToStabilityPool(
+    event CollateralZappedToStabilityPool(
         address indexed user,
         address indexed minter,
         address indexed receiver,
-        uint256 fxUsdAmount,
-        uint256 fxSaveAmount,
+        uint256 collateralAmount,
+        uint256 wrappedCollateralAmount,
         uint256 peggedOut,
         address stabilityPool,
         uint256 deposited
     );
 
-    /// @notice Emitted when fxSAVE is zapped to StabilityPool
+    /// @notice Emitted when wrapped collateral is zapped to StabilityPool
     /// @param user Address that initiated the zap
     /// @param minter Address of the Minter contract
     /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param fxSaveAmount Amount of fxSAVE deposited
+    /// @param wrappedCollateralAmount Amount of wrapped collateral deposited
     /// @param peggedOut Amount of pegged tokens minted
     /// @param stabilityPool Address of the StabilityPool
     /// @param deposited Amount deposited into StabilityPool
-    event FXSAVEZappedToStabilityPool(
+    event WrappedCollateralZappedToStabilityPool(
         address indexed user,
         address indexed minter,
         address indexed receiver,
-        uint256 fxSaveAmount,
+        uint256 wrappedCollateralAmount,
         uint256 peggedOut,
         address stabilityPool,
         uint256 deposited
@@ -200,10 +203,10 @@ contract MinterUSDCZap_v3 is
 
         if (minter_ == address(0)) revert IZapErrors.ZeroAddress();
 
-        // Verify that fxSAVE matches the Minter wrapped collateral token
+        // Verify that wrapped collateral matches the Minter wrapped collateral token
         address expectedCollateral = IMinter(minter_).WRAPPED_COLLATERAL_TOKEN();
-        if (FXSAVE != expectedCollateral) {
-            revert IZapErrors.CollateralMismatch(expectedCollateral, FXSAVE);
+        if (WRAPPED_COLLATERAL_ASSET != expectedCollateral) {
+            revert IZapErrors.CollateralMismatch(expectedCollateral, WRAPPED_COLLATERAL_ASSET);
         }
 
         MINTER = minter_;
@@ -230,166 +233,238 @@ contract MinterUSDCZap_v3 is
 
     // ============ External Functions ============
 
-    /// @notice Zap USDC into pegged tokens in one transaction
-    /// @dev Flow: USDC → fxSAVE → Minter mint pegged
-    /// @param usdcAmount Amount of USDC to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap base asset into pegged tokens in one transaction
+    /// @dev Flow: base asset → wrapped collateral → Minter mint pegged
+    /// @param baseAssetAmount Amount of base asset to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @return peggedOut Amount of pegged tokens minted
-    function zapUsdcToPegged(uint256 usdcAmount, uint256 minFxSaveOut, address receiver, uint256 minPeggedOut)
+    function zapBaseAssetToPegged(
+        uint256 baseAssetAmount,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minPeggedOut
+    )
         external
         nonReentrant
         returns (uint256 peggedOut)
     {
-        uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut) = _zapToPegged(USDC, usdcAmount, minFxSaveOut, receiver, minPeggedOut);
+        _requireSupportedAsset(BASE_ASSET);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut) =
+            _zapToPegged(BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver, minPeggedOut);
 
-        emit USDCZappedToPegged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut);
+        emit BaseAssetZappedToPegged(
+            _msgSender(), MINTER, receiver, baseAssetAmount, wrappedCollateralAmount, peggedOut
+        );
     }
 
-    /// @notice Zap USDC into leveraged tokens in one transaction
-    /// @dev Flow: USDC → fxSAVE → Minter mint leveraged
-    /// @param usdcAmount Amount of USDC to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap base asset into leveraged tokens in one transaction
+    /// @dev Flow: base asset → wrapped collateral → Minter mint leveraged
+    /// @param baseAssetAmount Amount of base asset to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @return leveragedOut Amount of leveraged tokens minted
-    function zapUsdcToLeveraged(uint256 usdcAmount, uint256 minFxSaveOut, address receiver, uint256 minLeveragedOut)
+    function zapBaseAssetToLeveraged(
+        uint256 baseAssetAmount,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minLeveragedOut
+    )
         external
         nonReentrant
         returns (uint256 leveragedOut)
     {
-        uint256 fxSaveAmount;
-        (fxSaveAmount, leveragedOut) = _zapToLeveraged(USDC, usdcAmount, minFxSaveOut, receiver, minLeveragedOut);
+        _requireSupportedAsset(BASE_ASSET);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, leveragedOut) =
+            _zapToLeveraged(BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver, minLeveragedOut);
 
-        emit USDCZappedToLeveraged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, leveragedOut);
+        emit BaseAssetZappedToLeverage(
+            _msgSender(), MINTER, receiver, baseAssetAmount, wrappedCollateralAmount, leveragedOut
+        );
     }
 
-    /// @notice Zap fxUSD into pegged tokens in one transaction
-    /// @dev Flow: fxUSD → fxSAVE → Minter mint pegged
-    /// @param fxUsdAmount Amount of fxUSD to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap collateral into pegged tokens in one transaction
+    /// @dev Flow: collateral → wrapped collateral → Minter mint pegged
+    /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @return peggedOut Amount of pegged tokens minted
-    function zapFxUsdToPegged(uint256 fxUsdAmount, uint256 minFxSaveOut, address receiver, uint256 minPeggedOut)
+    function zapCollateralToPegged(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minPeggedOut
+    )
         external
         nonReentrant
         returns (uint256 peggedOut)
     {
-        uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut) = _zapToPegged(FXUSD, fxUsdAmount, minFxSaveOut, receiver, minPeggedOut);
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut) = _zapToPegged(
+            COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minPeggedOut
+        );
 
-        emit FXUSDZappedToPegged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut);
+        emit CollateralZappedToPegged(
+            _msgSender(), MINTER, receiver, collateralAmount, wrappedCollateralAmount, peggedOut
+        );
     }
 
-    /// @notice Zap fxUSD into leveraged tokens in one transaction
-    /// @dev Flow: fxUSD → fxSAVE → Minter mint leveraged
-    /// @param fxUsdAmount Amount of fxUSD to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap collateral into leveraged tokens in one transaction
+    /// @dev Flow: collateral → wrapped collateral → Minter mint leveraged
+    /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @return leveragedOut Amount of leveraged tokens minted
-    function zapFxUsdToLeveraged(uint256 fxUsdAmount, uint256 minFxSaveOut, address receiver, uint256 minLeveragedOut)
+    function zapCollateralToLeveraged(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minLeveragedOut
+    )
         external
         nonReentrant
         returns (uint256 leveragedOut)
     {
-        uint256 fxSaveAmount;
-        (fxSaveAmount, leveragedOut) = _zapToLeveraged(FXUSD, fxUsdAmount, minFxSaveOut, receiver, minLeveragedOut);
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, leveragedOut) = _zapToLeveraged(
+            COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minLeveragedOut
+        );
 
-        emit FXUSDZappedToLeveraged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, leveragedOut);
+        emit CollateralZappedToLeveraged(
+            _msgSender(), MINTER, receiver, collateralAmount, wrappedCollateralAmount, leveragedOut
+        );
     }
 
-    /// @notice Zap USDC into StabilityPool in one transaction
-    /// @dev Flow: USDC → fxSAVE → Minter mint pegged → StabilityPool deposit
-    /// @dev Use previewStabilityPoolFromFxSave() to calculate expected output, then apply a slippage buffer (0.5-1%)
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap base asset into StabilityPool in one transaction
+    /// @dev Flow: base asset → wrapped collateral → Minter mint pegged → StabilityPool deposit
+    /// @dev Use previewStabilityPoolFromWrappedCollateral() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromFxSave with slippage buffer)
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromWrappedCollateral with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
     /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
-    function zapUsdcToStabilityPool(
-        uint256 usdcAmount,
-        uint256 minFxSaveOut,
+    function zapBaseAssetToStabilityPool(
+        uint256 baseAssetAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            USDC, usdcAmount, minFxSaveOut, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        _requireSupportedAsset(BASE_ASSET);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            BASE_ASSET,
+            baseAssetAmount,
+            minWrappedCollateralOut,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
         );
 
-        emit USDCZappedToStabilityPool(
-            _msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
+        emit BaseAssetZappedToStabilityPool(
+            _msgSender(),
+            MINTER,
+            receiver,
+            baseAssetAmount,
+            wrappedCollateralAmount,
+            peggedOut,
+            stabilityPool,
+            deposited
         );
     }
 
-    /// @notice Zap fxUSD into StabilityPool in one transaction
-    /// @dev Flow: fxUSD → fxSAVE → Minter mint pegged → StabilityPool deposit
-    /// @dev Use previewStabilityPoolFromFxSave() to calculate expected output, then apply a slippage buffer (0.5-1%)
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap collateral into StabilityPool in one transaction
+    /// @dev Flow: collateral → wrapped collateral → Minter mint pegged → StabilityPool deposit
+    /// @dev Use previewStabilityPoolFromWrappedCollateral() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromFxSave with slippage buffer)
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromWrappedCollateral with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
     /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
-    function zapFxUsdToStabilityPool(
-        uint256 fxUsdAmount,
-        uint256 minFxSaveOut,
+    function zapCollateralToStabilityPool(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            FXUSD, fxUsdAmount, minFxSaveOut, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            COLLATERAL_ASSET,
+            collateralAmount,
+            minWrappedCollateralOut,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
         );
 
-        emit FXUSDZappedToStabilityPool(
-            _msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
+        emit CollateralZappedToStabilityPool(
+            _msgSender(),
+            MINTER,
+            receiver,
+            collateralAmount,
+            wrappedCollateralAmount,
+            peggedOut,
+            stabilityPool,
+            deposited
         );
     }
 
-    /// @notice Zap fxSAVE into StabilityPool in one transaction
-    /// @dev Flow: fxSAVE → Minter mint pegged → StabilityPool deposit
-    /// @dev Use previewStabilityPoolFromFxSave() to calculate expected output, then apply a slippage buffer (0.5-1%)
-    /// @param fxSaveAmount Amount of fxSAVE to zap
+    /// @notice Zap wrapped collateral into StabilityPool in one transaction
+    /// @dev Flow: wrapped collateral → Minter mint pegged → StabilityPool deposit
+    /// @dev Use previewStabilityPoolFromWrappedCollateral() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param wrappedCollateralAmount Amount of wrapped collateral to zap
     /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromFxSave with slippage buffer)
+    /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromWrappedCollateral with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
     /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
-    function zapFxSaveToStabilityPool(
-        uint256 fxSaveAmount,
+    function zapWrappedCollateralToStabilityPool(
+        uint256 wrappedCollateralAmount,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            FXSAVE, fxSaveAmount, 0, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            WRAPPED_COLLATERAL_ASSET,
+            wrappedCollateralAmount,
+            0,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
         );
 
-        emit FXSAVEZappedToStabilityPool(
-            _msgSender(), MINTER, receiver, fxSaveAmount, peggedOut, stabilityPool, deposited
+        emit WrappedCollateralZappedToStabilityPool(
+            _msgSender(), MINTER, receiver, wrappedCollateralAmount, peggedOut, stabilityPool, deposited
         );
     }
 
     // ============ Permit-Based Functions ============
 
-    /// @notice Zap USDC into pegged tokens using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit USDC → USDC → fxSAVE → Minter mint pegged
-    /// @param usdcAmount Amount of USDC to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap base asset into pegged tokens using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit base asset → base asset → wrapped collateral → Minter mint pegged
+    /// @param baseAssetAmount Amount of base asset to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param deadline Permit signature deadline
@@ -397,9 +472,9 @@ contract MinterUSDCZap_v3 is
     /// @param r Permit signature r component
     /// @param s Permit signature s component
     /// @return peggedOut Amount of pegged tokens minted
-    function zapUsdcToPeggedWithPermit(
-        uint256 usdcAmount,
-        uint256 minFxSaveOut,
+    function zapBaseAssetToPeggedWithPermit(
+        uint256 baseAssetAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         uint256 deadline,
@@ -407,17 +482,22 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut) {
-        _permitUsdc(usdcAmount, deadline, v, r, s);
-        uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut) = _zapToPegged(USDC, usdcAmount, minFxSaveOut, receiver, minPeggedOut);
+        _requireSupportedAsset(BASE_ASSET);
+        _permitBaseAsset(baseAssetAmount, deadline, v, r, s);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut) = _zapToPegged(
+            BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver, minPeggedOut
+        );
 
-        emit USDCZappedToPegged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut);
+        emit BaseAssetZappedToPegged(
+            _msgSender(), MINTER, receiver, baseAssetAmount, wrappedCollateralAmount, peggedOut
+        );
     }
 
-    /// @notice Zap USDC into leveraged tokens using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit USDC → USDC → fxSAVE → Minter mint leveraged
-    /// @param usdcAmount Amount of USDC to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap base asset into leveraged tokens using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit base asset → base asset → wrapped collateral → Minter mint leveraged
+    /// @param baseAssetAmount Amount of base asset to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @param deadline Permit signature deadline
@@ -425,9 +505,9 @@ contract MinterUSDCZap_v3 is
     /// @param r Permit signature r component
     /// @param s Permit signature s component
     /// @return leveragedOut Amount of leveraged tokens minted
-    function zapUsdcToLeveragedWithPermit(
-        uint256 usdcAmount,
-        uint256 minFxSaveOut,
+    function zapBaseAssetToLeveragedWithPermit(
+        uint256 baseAssetAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minLeveragedOut,
         uint256 deadline,
@@ -435,17 +515,22 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 leveragedOut) {
-        _permitUsdc(usdcAmount, deadline, v, r, s);
-        uint256 fxSaveAmount;
-        (fxSaveAmount, leveragedOut) = _zapToLeveraged(USDC, usdcAmount, minFxSaveOut, receiver, minLeveragedOut);
+        _requireSupportedAsset(BASE_ASSET);
+        _permitBaseAsset(baseAssetAmount, deadline, v, r, s);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, leveragedOut) = _zapToLeveraged(
+            BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver, minLeveragedOut
+        );
 
-        emit USDCZappedToLeveraged(_msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, leveragedOut);
+        emit BaseAssetZappedToLeverage(
+            _msgSender(), MINTER, receiver, baseAssetAmount, wrappedCollateralAmount, leveragedOut
+        );
     }
 
-    /// @notice Zap fxUSD into pegged tokens using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit fxUSD → fxUSD → fxSAVE → Minter mint pegged
-    /// @param fxUsdAmount Amount of fxUSD to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap collateral into pegged tokens using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit collateral → collateral → wrapped collateral → Minter mint pegged
+    /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param deadline Permit signature deadline
@@ -453,9 +538,9 @@ contract MinterUSDCZap_v3 is
     /// @param r Permit signature r component
     /// @param s Permit signature s component
     /// @return peggedOut Amount of pegged tokens minted
-    function zapFxUsdToPeggedWithPermit(
-        uint256 fxUsdAmount,
-        uint256 minFxSaveOut,
+    function zapCollateralToPeggedWithPermit(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         uint256 deadline,
@@ -463,17 +548,22 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut) {
-        _permitFxUsd(fxUsdAmount, deadline, v, r, s);
-        uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut) = _zapToPegged(FXUSD, fxUsdAmount, minFxSaveOut, receiver, minPeggedOut);
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        _permitCollateral(collateralAmount, deadline, v, r, s);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut) = _zapToPegged(
+            COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minPeggedOut
+        );
 
-        emit FXUSDZappedToPegged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut);
+        emit CollateralZappedToPegged(
+            _msgSender(), MINTER, receiver, collateralAmount, wrappedCollateralAmount, peggedOut
+        );
     }
 
-    /// @notice Zap fxUSD into leveraged tokens using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit fxUSD → fxUSD → fxSAVE → Minter mint leveraged
-    /// @param fxUsdAmount Amount of fxUSD to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap collateral into leveraged tokens using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit collateral → collateral → wrapped collateral → Minter mint leveraged
+    /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @param deadline Permit signature deadline
@@ -481,9 +571,9 @@ contract MinterUSDCZap_v3 is
     /// @param r Permit signature r component
     /// @param s Permit signature s component
     /// @return leveragedOut Amount of leveraged tokens minted
-    function zapFxUsdToLeveragedWithPermit(
-        uint256 fxUsdAmount,
-        uint256 minFxSaveOut,
+    function zapCollateralToLeveragedWithPermit(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minLeveragedOut,
         uint256 deadline,
@@ -491,17 +581,22 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 leveragedOut) {
-        _permitFxUsd(fxUsdAmount, deadline, v, r, s);
-        uint256 fxSaveAmount;
-        (fxSaveAmount, leveragedOut) = _zapToLeveraged(FXUSD, fxUsdAmount, minFxSaveOut, receiver, minLeveragedOut);
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        _permitCollateral(collateralAmount, deadline, v, r, s);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, leveragedOut) = _zapToLeveraged(
+            COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minLeveragedOut
+        );
 
-        emit FXUSDZappedToLeveraged(_msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, leveragedOut);
+        emit CollateralZappedToLeveraged(
+            _msgSender(), MINTER, receiver, collateralAmount, wrappedCollateralAmount, leveragedOut
+        );
     }
 
-    /// @notice Zap USDC into StabilityPool using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit USDC → USDC → fxSAVE → Minter mint pegged → StabilityPool deposit
-    /// @param usdcAmount Amount of USDC to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap base asset into StabilityPool using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit base asset → base asset → wrapped collateral → Minter mint pegged → StabilityPool deposit
+    /// @param baseAssetAmount Amount of base asset to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -512,9 +607,9 @@ contract MinterUSDCZap_v3 is
     /// @param s Permit signature s component
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
-    function zapUsdcToStabilityPoolWithPermit(
-        uint256 usdcAmount,
-        uint256 minFxSaveOut,
+    function zapBaseAssetToStabilityPoolWithPermit(
+        uint256 baseAssetAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
@@ -524,21 +619,35 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        _permitUsdc(usdcAmount, deadline, v, r, s);
-        uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            USDC, usdcAmount, minFxSaveOut, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        _requireSupportedAsset(BASE_ASSET);
+        _permitBaseAsset(baseAssetAmount, deadline, v, r, s);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            BASE_ASSET,
+            baseAssetAmount,
+            minWrappedCollateralOut,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
         );
 
-        emit USDCZappedToStabilityPool(
-            _msgSender(), MINTER, receiver, usdcAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
+        emit BaseAssetZappedToStabilityPool(
+            _msgSender(),
+            MINTER,
+            receiver,
+            baseAssetAmount,
+            wrappedCollateralAmount,
+            peggedOut,
+            stabilityPool,
+            deposited
         );
     }
 
-    /// @notice Zap fxUSD into StabilityPool using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit fxUSD → fxUSD → fxSAVE → Minter mint pegged → StabilityPool deposit
-    /// @param fxUsdAmount Amount of fxUSD to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap collateral into StabilityPool using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit collateral → collateral → wrapped collateral → Minter mint pegged → StabilityPool deposit
+    /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -549,9 +658,9 @@ contract MinterUSDCZap_v3 is
     /// @param s Permit signature s component
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
-    function zapFxUsdToStabilityPoolWithPermit(
-        uint256 fxUsdAmount,
-        uint256 minFxSaveOut,
+    function zapCollateralToStabilityPoolWithPermit(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
@@ -561,20 +670,34 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        _permitFxUsd(fxUsdAmount, deadline, v, r, s);
-        uint256 fxSaveAmount;
-        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            FXUSD, fxUsdAmount, minFxSaveOut, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        _permitCollateral(collateralAmount, deadline, v, r, s);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            COLLATERAL_ASSET,
+            collateralAmount,
+            minWrappedCollateralOut,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
         );
 
-        emit FXUSDZappedToStabilityPool(
-            _msgSender(), MINTER, receiver, fxUsdAmount, fxSaveAmount, peggedOut, stabilityPool, deposited
+        emit CollateralZappedToStabilityPool(
+            _msgSender(),
+            MINTER,
+            receiver,
+            collateralAmount,
+            wrappedCollateralAmount,
+            peggedOut,
+            stabilityPool,
+            deposited
         );
     }
 
-    /// @notice Zap fxSAVE into StabilityPool using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit fxSAVE → fxSAVE → Minter mint pegged → StabilityPool deposit
-    /// @param fxSaveAmount Amount of fxSAVE to zap
+    /// @notice Zap wrapped collateral into StabilityPool using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit wrapped collateral → wrapped collateral → Minter mint pegged → StabilityPool deposit
+    /// @param wrappedCollateralAmount Amount of wrapped collateral to zap
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -585,8 +708,8 @@ contract MinterUSDCZap_v3 is
     /// @param s Permit signature s component
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
-    function zapFxSaveToStabilityPoolWithPermit(
-        uint256 fxSaveAmount,
+    function zapWrappedCollateralToStabilityPoolWithPermit(
+        uint256 wrappedCollateralAmount,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
@@ -596,181 +719,211 @@ contract MinterUSDCZap_v3 is
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        _permitFxSave(fxSaveAmount, deadline, v, r, s);
-        (fxSaveAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
-            FXSAVE, fxSaveAmount, 0, receiver, minPeggedOut, stabilityPool, minStabilityPoolOut
+        _permitWrappedCollateral(wrappedCollateralAmount, deadline, v, r, s);
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            WRAPPED_COLLATERAL_ASSET,
+            wrappedCollateralAmount,
+            0,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
         );
 
-        emit FXSAVEZappedToStabilityPool(
-            _msgSender(), MINTER, receiver, fxSaveAmount, peggedOut, stabilityPool, deposited
+        emit WrappedCollateralZappedToStabilityPool(
+            _msgSender(), MINTER, receiver, wrappedCollateralAmount, peggedOut, stabilityPool, deposited
         );
     }
 
     // ============ Internal Helper Functions ============
 
-    /// @notice Helper to handle USDC permit
+    function _requireSupportedAsset(address asset) internal view {
+        if (block.chainid != 1 && asset == address(0)) {
+            revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
+        }
+    }
+
+    /// @notice Helper to handle base asset permit
     /// @param amount Amount to permit
     /// @param deadline Permit deadline
     /// @param v Permit signature v
     /// @param r Permit signature r
     /// @param s Permit signature s
-    function _permitUsdc(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
-        IERC20Permit(USDC).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+    function _permitBaseAsset(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
+        IERC20Permit(BASE_ASSET).permit(_msgSender(), address(this), amount, deadline, v, r, s);
     }
 
-    /// @notice Helper to handle fxUSD permit
+    /// @notice Helper to handle collateral permit
     /// @param amount Amount to permit
     /// @param deadline Permit deadline
     /// @param v Permit signature v
     /// @param r Permit signature r
     /// @param s Permit signature s
-    function _permitFxUsd(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
-        IERC20Permit(FXUSD).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+    function _permitCollateral(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
+        IERC20Permit(COLLATERAL_ASSET).permit(
+            _msgSender(), address(this), amount, deadline, v, r, s
+        );
     }
 
-    /// @notice Helper to handle fxSAVE permit
+    /// @notice Helper to handle wrapped collateral permit
     /// @param amount Amount to permit
     /// @param deadline Permit deadline
     /// @param v Permit signature v
     /// @param r Permit signature r
     /// @param s Permit signature s
-    function _permitFxSave(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
-        IERC20Permit(FXSAVE).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+    function _permitWrappedCollateral(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
+        IERC20Permit(WRAPPED_COLLATERAL_ASSET).permit(
+            _msgSender(), address(this), amount, deadline, v, r, s
+        );
     }
 
-    /// @notice Convert USDC or fxUSD to fxSAVE via diamond contract
-    /// @param tokenIn Token to convert (USDC or fxUSD)
+    /// @notice Convert base asset or collateral to wrapped collateral via diamond contract
+    /// @param tokenIn Token to convert (base asset or collateral)
     /// @param amountIn Amount of tokenIn to convert
-    /// @param minFxSaveOut Minimum fxSAVE to receive
-    /// @return fxSaveAmount Amount of fxSAVE received
-    function _convertToFxSave(address tokenIn, uint256 amountIn, uint256 minFxSaveOut)
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
+    /// @return wrappedCollateralAmount Amount of wrapped collateral received
+    function _convertToWrappedCollateral(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut
+    )
         internal
-        returns (uint256 fxSaveAmount)
+        returns (uint256 wrappedCollateralAmount)
     {
         // Pull token from user
         IERC20(tokenIn).safeTransferFrom(_msgSender(), address(this), amountIn);
 
-        // tokenIn → fxSAVE via diamond contract
+        // tokenIn → wrapped collateral via diamond contract
         IERC20 token = IERC20(tokenIn);
         _safeApprove(token, FXUSD_DIAMOND, amountIn);
 
-        bytes memory swapData =
-            abi.encodeWithSelector(FxSAVEConstants.CONVERT_SELECTOR, tokenIn, amountIn, minFxSaveOut, "");
+        bytes memory swapData = abi.encodeWithSelector(
+            FxSAVEConstants.CONVERT_SELECTOR, tokenIn, amountIn, minWrappedCollateralOut, ""
+        );
 
         IFxUSDDiamondV2.ConvertInParams memory params = IFxUSDDiamondV2.ConvertInParams({
             tokenIn: tokenIn,
             amount: amountIn,
             target: FXUSD_SWAP_ROUTER,
             data: swapData,
-            minOut: minFxSaveOut,
+            minOut: minWrappedCollateralOut,
             signature: ""
         });
 
-        uint256 fxSaveBalanceBefore = IERC20(FXSAVE).balanceOf(address(this));
+        uint256 wrappedCollateralBefore =
+            IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave{value: 0}(params, tokenIn, 0, address(this));
-        uint256 fxSaveBalanceAfter = IERC20(FXSAVE).balanceOf(address(this));
-        fxSaveAmount = fxSaveBalanceAfter - fxSaveBalanceBefore;
-        if (fxSaveAmount == 0) revert IZapErrors.NoFxSaveReceived();
-        if (fxSaveAmount < minFxSaveOut) revert IZapErrors.SlippageExceeded();
+        uint256 wrappedCollateralAfter =
+            IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
+        wrappedCollateralAmount = wrappedCollateralAfter - wrappedCollateralBefore;
+        if (wrappedCollateralAmount == 0) revert IZapErrors.NoWrappedCollateralReceived();
+        if (wrappedCollateralAmount < minWrappedCollateralOut) revert IZapErrors.SlippageExceeded();
     }
 
     /// @notice Zap a token into pegged tokens and reset allowances
-    /// @param tokenIn Token to zap (USDC or fxUSD)
+    /// @param tokenIn Token to zap (base asset or collateral)
     /// @param amountIn Amount of tokenIn to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
     /// @param receiver Address receiving pegged tokens
     /// @param minPeggedOut Minimum pegged tokens to receive
-    /// @return fxSaveAmount Amount of fxSAVE received
+    /// @return wrappedCollateralAmount Amount of wrapped collateral received
     /// @return peggedOut Amount of pegged tokens minted
     function _zapToPegged(
         address tokenIn,
         uint256 amountIn,
-        uint256 minFxSaveOut,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut
-    ) internal returns (uint256 fxSaveAmount, uint256 peggedOut) {
+    ) internal returns (uint256 wrappedCollateralAmount, uint256 peggedOut) {
         if (amountIn == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        fxSaveAmount = _convertToFxSave(tokenIn, amountIn, minFxSaveOut);
-        peggedOut = _mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
+        wrappedCollateralAmount =
+            _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
+        peggedOut = _mintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
         _resetAllowances();
     }
 
     /// @notice Zap a token into leveraged tokens and reset allowances
-    /// @param tokenIn Token to zap (USDC or fxUSD)
+    /// @param tokenIn Token to zap (base asset or collateral)
     /// @param amountIn Amount of tokenIn to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
     /// @param receiver Address receiving leveraged tokens
     /// @param minLeveragedOut Minimum leveraged tokens to receive
-    /// @return fxSaveAmount Amount of fxSAVE received
+    /// @return wrappedCollateralAmount Amount of wrapped collateral received
     /// @return leveragedOut Amount of leveraged tokens minted
     function _zapToLeveraged(
         address tokenIn,
         uint256 amountIn,
-        uint256 minFxSaveOut,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minLeveragedOut
-    ) internal returns (uint256 fxSaveAmount, uint256 leveragedOut) {
+    ) internal returns (uint256 wrappedCollateralAmount, uint256 leveragedOut) {
         if (amountIn == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        fxSaveAmount = _convertToFxSave(tokenIn, amountIn, minFxSaveOut);
-        leveragedOut = _mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
+        wrappedCollateralAmount =
+            _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
+        leveragedOut = _mintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
         _resetAllowances();
     }
 
     /// @notice Zap a token into StabilityPool via minted pegged tokens
-    /// @param tokenIn Token to zap (USDC, fxUSD, or fxSAVE)
+    /// @param tokenIn Token to zap (base asset, collateral, or wrapped collateral)
     /// @param amountIn Amount of tokenIn to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
     /// @param receiver Address receiving StabilityPool deposit
     /// @param minPeggedOut Minimum pegged tokens to receive
     /// @param stabilityPool StabilityPool address
     /// @param minStabilityPoolOut Minimum StabilityPool deposit amount
-    /// @return fxSaveAmount Amount of fxSAVE used to mint pegged tokens
+    /// @return wrappedCollateralAmount Amount of wrapped collateral used to mint pegged tokens
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
     function _zapToStabilityPoolFromToken(
         address tokenIn,
         uint256 amountIn,
-        uint256 minFxSaveOut,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
         uint256 minStabilityPoolOut
-    ) internal returns (uint256 fxSaveAmount, uint256 peggedOut, uint256 deposited) {
+    ) internal returns (uint256 wrappedCollateralAmount, uint256 peggedOut, uint256 deposited) {
         if (amountIn == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
         if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
 
-        if (tokenIn == FXSAVE) {
-            IERC20(FXSAVE).safeTransferFrom(_msgSender(), address(this), amountIn);
-            fxSaveAmount = amountIn;
-            if (fxSaveAmount < minFxSaveOut) revert IZapErrors.SlippageExceeded();
+        if (tokenIn == WRAPPED_COLLATERAL_ASSET) {
+            IERC20(WRAPPED_COLLATERAL_ASSET).safeTransferFrom(
+                _msgSender(), address(this), amountIn
+            );
+            wrappedCollateralAmount = amountIn;
+            if (wrappedCollateralAmount < minWrappedCollateralOut) {
+                revert IZapErrors.SlippageExceeded();
+            }
         } else {
-            fxSaveAmount = _convertToFxSave(tokenIn, amountIn, minFxSaveOut);
+            wrappedCollateralAmount =
+                _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
         }
 
         address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(fxSaveAmount, address(this), minPeggedOut);
+        peggedOut = _mintPeggedToken(wrappedCollateralAmount, address(this), minPeggedOut);
         deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
         _resetAllowances();
     }
 
     /// @notice Mint pegged tokens and validate the result
-    /// @param fxSaveAmount Amount of fxSAVE to use for minting
+    /// @param wrappedCollateralAmount Amount of wrapped collateral to use for minting
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @return peggedOut Amount of pegged tokens minted
-    function _mintPeggedToken(uint256 fxSaveAmount, address receiver, uint256 minPeggedOut)
+    function _mintPeggedToken(uint256 wrappedCollateralAmount, address receiver, uint256 minPeggedOut)
         internal
         returns (uint256 peggedOut)
     {
         address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
         uint256 peggedBalanceBefore = IERC20(peggedToken).balanceOf(receiver);
-        IERC20(FXSAVE).forceApprove(MINTER, fxSaveAmount);
-        peggedOut = IMinter(MINTER).mintPeggedToken(fxSaveAmount, receiver, minPeggedOut);
+        IERC20(WRAPPED_COLLATERAL_ASSET).forceApprove(MINTER, wrappedCollateralAmount);
+        peggedOut = IMinter(MINTER).mintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
 
         // Validate that tokens were actually minted
         uint256 peggedBalanceAfter = IERC20(peggedToken).balanceOf(receiver);
@@ -780,18 +933,22 @@ contract MinterUSDCZap_v3 is
     }
 
     /// @notice Mint leveraged tokens and validate the result
-    /// @param fxSaveAmount Amount of fxSAVE to use for minting
+    /// @param wrappedCollateralAmount Amount of wrapped collateral to use for minting
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @return leveragedOut Amount of leveraged tokens minted
-    function _mintLeveragedToken(uint256 fxSaveAmount, address receiver, uint256 minLeveragedOut)
+    function _mintLeveragedToken(
+        uint256 wrappedCollateralAmount,
+        address receiver,
+        uint256 minLeveragedOut
+    )
         internal
         returns (uint256 leveragedOut)
     {
         address leveragedToken = IMinter(MINTER).LEVERAGED_TOKEN();
         uint256 leveragedBalanceBefore = IERC20(leveragedToken).balanceOf(receiver);
-        IERC20(FXSAVE).forceApprove(MINTER, fxSaveAmount);
-        leveragedOut = IMinter(MINTER).mintLeveragedToken(fxSaveAmount, receiver, minLeveragedOut);
+        IERC20(WRAPPED_COLLATERAL_ASSET).forceApprove(MINTER, wrappedCollateralAmount);
+        leveragedOut = IMinter(MINTER).mintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
 
         // Validate that tokens were actually minted
         uint256 leveragedBalanceAfter = IERC20(leveragedToken).balanceOf(receiver);
@@ -855,9 +1012,9 @@ contract MinterUSDCZap_v3 is
 
     /// @notice Reset token allowances to zero
     function _resetAllowances() internal {
-        IERC20(USDC).forceApprove(FXUSD_DIAMOND, 0);
-        IERC20(FXUSD).forceApprove(FXUSD_DIAMOND, 0);
-        IERC20(FXSAVE).forceApprove(MINTER, 0);
+        IERC20(BASE_ASSET).forceApprove(FXUSD_DIAMOND, 0);
+        IERC20(COLLATERAL_ASSET).forceApprove(FXUSD_DIAMOND, 0);
+        IERC20(WRAPPED_COLLATERAL_ASSET).forceApprove(MINTER, 0);
     }
 
     /// @notice Safely set allowance to a target amount
@@ -877,28 +1034,120 @@ contract MinterUSDCZap_v3 is
 
     // ============ View Functions (Preview) ============
 
-    /// @notice Preview the expected pegged token output from a fxSAVE amount
+    /// @notice Preview wrapped collateral output from a base asset amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewWrappedCollateralFromBase(uint256)
+        external
+        pure
+        returns (uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview wrapped collateral output from a collateral amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewWrappedCollateralFromCollateral(uint256)
+        external
+        pure
+        returns (uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview the expected pegged token output from a base asset amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewPeggedFromBase(uint256)
+        external
+        pure
+        returns (uint256 peggedOut, uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview the expected leveraged token output from a base asset amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewLeveragedFromBase(uint256)
+        external
+        pure
+        returns (uint256 leveragedOut, uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview the expected pegged token output from a collateral amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewPeggedFromCollateral(uint256)
+        external
+        pure
+        returns (uint256 peggedOut, uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview the expected leveraged token output from a collateral amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewLeveragedFromCollateral(uint256)
+        external
+        pure
+        returns (uint256 leveragedOut, uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview the expected StabilityPool deposit from a base asset zap
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewStabilityPoolFromBase(uint256)
+        external
+        pure
+        returns (uint256 peggedOut, uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview the expected StabilityPool deposit from a collateral zap
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewStabilityPoolFromCollateral(uint256)
+        external
+        pure
+        returns (uint256 peggedOut, uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview the expected pegged token output from a wrapped collateral amount
     /// @dev Uses Minter's dry run function to get accurate output accounting for fees/incentives
-    /// @param fxSaveAmount Amount of fxSAVE to use for minting
+    /// @param wrappedCollateralAmount Amount of wrapped collateral to use for minting
     /// @return peggedOut Expected amount of pegged tokens that will be minted
-    function previewPeggedFromFxSave(uint256 fxSaveAmount) external view returns (uint256 peggedOut) {
-        (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(fxSaveAmount);
+    function previewPeggedFromWrappedCollateral(uint256 wrappedCollateralAmount)
+        external
+        view
+        returns (uint256 peggedOut)
+    {
+        (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wrappedCollateralAmount);
     }
 
-    /// @notice Preview the expected leveraged token output from a fxSAVE amount
-    /// @param fxSaveAmount Amount of fxSAVE to use for minting
+    /// @notice Preview the expected leveraged token output from a wrapped collateral amount
+    /// @param wrappedCollateralAmount Amount of wrapped collateral to use for minting
     /// @return leveragedOut Expected amount of leveraged tokens that will be minted
-    function previewLeveragedFromFxSave(uint256 fxSaveAmount) external view returns (uint256 leveragedOut) {
-        (,,,, leveragedOut,,) = IMinter(MINTER).mintLeveragedTokenDryRun(fxSaveAmount);
+    function previewLeveragedFromWrappedCollateral(uint256 wrappedCollateralAmount)
+        external
+        view
+        returns (uint256 leveragedOut)
+    {
+        (,,,, leveragedOut,,) = IMinter(MINTER).mintLeveragedTokenDryRun(wrappedCollateralAmount);
     }
 
-    /// @notice Preview the expected StabilityPool deposit from a fxSAVE amount
+    /// @notice Preview the expected StabilityPool deposit from a wrapped collateral amount
     /// @dev Returns the expected pegged tokens that will be minted and deposited into StabilityPool
     /// @dev Use this to set minStabilityPoolOut with a slippage buffer (0.5-1%)
-    /// @param fxSaveAmount Amount of fxSAVE to use for minting
+    /// @param wrappedCollateralAmount Amount of wrapped collateral to use for minting
     /// @return peggedOut Expected amount of pegged tokens that will be minted (and deposited)
-    function previewStabilityPoolFromFxSave(uint256 fxSaveAmount) external view returns (uint256 peggedOut) {
-        (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(fxSaveAmount);
+    function previewStabilityPoolFromWrappedCollateral(uint256 wrappedCollateralAmount)
+        external
+        view
+        returns (uint256 peggedOut)
+    {
+        (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wrappedCollateralAmount);
     }
 
     /// @notice Human-readable zap name based on the pegged token
@@ -918,12 +1167,15 @@ contract MinterUSDCZap_v3 is
         emit StabilityPoolAllowlistUpdated(stabilityPool, allowed);
     }
 
-    function rescueEth() external onlyOwner {
+    function rescueNativeAsset() external onlyOwner {
         payable(owner()).transfer(address(this).balance);
     }
 
     function rescueToken(address token) external onlyOwner {
-        if (token == USDC || token == FXUSD || token == FXSAVE || token == MINTER) {
+        if (
+            token == BASE_ASSET || token == COLLATERAL_ASSET || token == WRAPPED_COLLATERAL_ASSET
+                || token == MINTER
+        ) {
             revert IZapErrors.CannotRescueProtectedToken(token);
         }
         IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
@@ -932,7 +1184,7 @@ contract MinterUSDCZap_v3 is
     // ============ Safety Functions ============
 
     receive() external payable {
-        // Allow contract to receive ETH for recovery
+        // Allow contract to receive base asset for recovery
     }
 
     fallback() external payable {

@@ -18,9 +18,9 @@ import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
 
 /// @title GenesisUSDCZapV4 - Production Ready
-/// @notice One-click zapper for depositing USDC or fxUSD into Genesis contracts via fxSAVE
-/// @dev Enables users to deposit USDC or fxUSD in a single transaction
-/// @dev Flow: USDC/fxUSD → fxSAVE → Genesis deposit
+/// @notice One-click zapper for depositing base asset or collateral into Genesis via wrapped collateral
+/// @dev Enables users to deposit base asset or collateral in a single transaction
+/// @dev Flow: base asset/collateral → wrapped collateral → Genesis deposit
 /// @dev Uses UUPS proxy, upgradeable
 /// @author Harbor Yield Protocol
 /// @custom:oz-upgrades
@@ -35,16 +35,19 @@ contract GenesisUSDCZap_v4 is
     using SafeERC20 for IERC20;
 
     // ============ Constants ============
-    /// @notice USDC address (mainnet)
+    /// @notice Base asset address (mainnet)
     address public constant USDC = FxSAVEConstants.USDC;
-    /// @notice fxUSD token address (mainnet)
+    /// @notice Collateral token address (mainnet)
     address public constant FXUSD = FxSAVEConstants.FXUSD;
-    /// @notice fxSAVE vault address (mainnet)
+    /// @notice Wrapped collateral vault address (mainnet)
     address public constant FXSAVE = FxSAVEConstants.FXSAVE;
-    /// @notice fxUSD Diamond contract address (handles deposits to fxSAVE)
+    /// @notice fxUSD Diamond contract address (handles deposits to wrapped collateral)
     address public constant FXUSD_DIAMOND = FxSAVEConstants.FXUSD_DIAMOND;
-    /// @notice fxUSD swap router/converter address (for USDC and fxUSD deposits)
+    /// @notice fxUSD swap router/converter address (for base asset and collateral deposits)
     address public constant FXUSD_SWAP_ROUTER = FxSAVEConstants.FXUSD_SWAP_ROUTER;
+    address public constant BASE_ASSET = USDC;
+    address public constant COLLATERAL_ASSET = FXUSD;
+    address public constant WRAPPED_COLLATERAL_ASSET = FXSAVE;
 
     // Selector for IFxProtocolRouter.convert(address,uint256,uint256,bytes)
     bytes4 private constant CONVERT_SELECTOR = FxSAVEConstants.CONVERT_SELECTOR;
@@ -55,42 +58,42 @@ contract GenesisUSDCZap_v4 is
     address public immutable GENESIS;
 
     // ============ Events ============
-    /// @notice Emitted when USDC is zapped into Genesis
+    /// @notice Emitted when base asset is zapped into Genesis
     /// @param user Address that initiated the zap
     /// @param genesis Address of the Genesis contract
     /// @param receiver Address that will receive the Genesis shares
-    /// @param usdcAmount Amount of USDC deposited
-    /// @param fxSaveAmount Amount of fxSAVE received
-    /// @param collateralAmount Amount of collateral deposited to Genesis
-    event USDCZappedToGenesis(
+    /// @param baseAssetIn Amount of base asset deposited
+    /// @param wrappedCollateralOut Amount of wrapped collateral received
+    /// @param sharesOut Amount of shares minted to Genesis
+    event ZappedBaseAsset(
         address indexed user,
         address indexed genesis,
         address indexed receiver,
-        uint256 usdcAmount,
-        uint256 fxSaveAmount,
-        uint256 collateralAmount
+        uint256 baseAssetIn,
+        uint256 wrappedCollateralOut,
+        uint256 sharesOut
     );
 
-    /// @notice Emitted when fxUSD is zapped into Genesis
+    /// @notice Emitted when collateral is zapped into Genesis
     /// @param user Address that initiated the zap
     /// @param genesis Address of the Genesis contract
     /// @param receiver Address that will receive the Genesis shares
-    /// @param fxUsdAmount Amount of fxUSD deposited
-    /// @param fxSaveAmount Amount of fxSAVE received
-    /// @param collateralAmount Amount of collateral deposited to Genesis
-    event FXUSDZappedToGenesis(
+    /// @param collateralIn Amount of collateral deposited
+    /// @param wrappedCollateralOut Amount of wrapped collateral received
+    /// @param sharesOut Amount of shares minted to Genesis
+    event ZappedCollateral(
         address indexed user,
         address indexed genesis,
         address indexed receiver,
-        uint256 fxUsdAmount,
-        uint256 fxSaveAmount,
-        uint256 collateralAmount
+        uint256 collateralIn,
+        uint256 wrappedCollateralOut,
+        uint256 sharesOut
     );
     event Upgraded(address indexed implementation);
 
     // ============ Constructor ============
     /// @notice Constructor sets the Genesis address
-    /// @param genesis_ Address of the Genesis contract (must accept fxSAVE as collateral)
+    /// @param genesis_ Address of the Genesis contract (must accept wrapped collateral)
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address genesis_) {
         _disableInitializers();
@@ -98,7 +101,9 @@ contract GenesisUSDCZap_v4 is
         if (genesis_ == address(0)) revert IZapErrors.ZeroAddress();
 
         address expected = IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN();
-        if (expected != FXSAVE) revert IZapErrors.CollateralMismatch(expected, FXSAVE);
+        if (expected != WRAPPED_COLLATERAL_ASSET) {
+            revert IZapErrors.CollateralMismatch(expected, WRAPPED_COLLATERAL_ASSET);
+        }
 
         GENESIS = genesis_;
     }
@@ -125,108 +130,134 @@ contract GenesisUSDCZap_v4 is
     // MAIN ZAP FUNCTIONS
     // =============================================================
 
-    /// @notice Zap USDC → fxSAVE → Genesis in one tx
-    /// @dev Flow: USDC → fxSAVE → Genesis deposit
-    /// @param usdcAmount Amount of USDC to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap base asset → wrapped collateral → Genesis in one tx
+    /// @dev Flow: base asset → wrapped collateral → Genesis deposit
+    /// @param baseAssetAmount Amount of base asset to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Who gets the Genesis shares
-    /// @return collateralAmount Amount of collateral deposited to Genesis
-    function zapUsdcToGenesis(uint256 usdcAmount, uint256 minFxSaveOut, address receiver)
+    /// @return sharesOut Amount of shares minted to Genesis
+    function zapBaseAsset(uint256 baseAssetAmount, uint256 minWrappedCollateralOut, address receiver)
         external
         nonReentrant
-        returns (uint256 collateralAmount)
+        returns (uint256 sharesOut)
     {
-        uint256 fxSaveReceived = _zapToGenesis(USDC, usdcAmount, minFxSaveOut, receiver);
-        collateralAmount = fxSaveReceived;
-        emit USDCZappedToGenesis(_msgSender(), GENESIS, receiver, usdcAmount, fxSaveReceived, collateralAmount);
+        _requireSupportedAsset(BASE_ASSET);
+        uint256 wrappedCollateralReceived =
+            _zapToGenesis(BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver);
+        sharesOut = wrappedCollateralReceived;
+        emit ZappedBaseAsset(
+            _msgSender(), GENESIS, receiver, baseAssetAmount, wrappedCollateralReceived, sharesOut
+        );
     }
 
-    /// @notice Zap fxUSD → fxSAVE → Genesis in one tx
-    /// @dev Flow: fxUSD → fxSAVE → Genesis deposit
-    /// @param fxUsdAmount Amount of fxUSD to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive
+    /// @notice Zap collateral → wrapped collateral → Genesis in one tx
+    /// @dev Flow: collateral → wrapped collateral → Genesis deposit
+    /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
     /// @param receiver Who gets the Genesis shares
-    /// @return collateralAmount Amount of collateral deposited to Genesis
-    function zapFxUsdToGenesis(uint256 fxUsdAmount, uint256 minFxSaveOut, address receiver)
+    /// @return sharesOut Amount of shares minted to Genesis
+    function zapCollateral(uint256 collateralAmount, uint256 minWrappedCollateralOut, address receiver)
         external
         nonReentrant
-        returns (uint256 collateralAmount)
+        returns (uint256 sharesOut)
     {
-        uint256 fxSaveReceived = _zapToGenesis(FXUSD, fxUsdAmount, minFxSaveOut, receiver);
-        collateralAmount = fxSaveReceived;
-        emit FXUSDZappedToGenesis(_msgSender(), GENESIS, receiver, fxUsdAmount, fxSaveReceived, collateralAmount);
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        uint256 wrappedCollateralReceived =
+            _zapToGenesis(COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver);
+        sharesOut = wrappedCollateralReceived;
+        emit ZappedCollateral(
+            _msgSender(), GENESIS, receiver, collateralAmount, wrappedCollateralReceived, sharesOut
+        );
     }
 
     // =============================================================
     // PERMIT-BASED ZAP FUNCTIONS
     // =============================================================
 
-    /// @notice Zap USDC → fxSAVE → Genesis using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit USDC → USDC → fxSAVE → Genesis deposit
-    /// @param usdcAmount Amount of USDC to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive (slippage protection)
+    /// @notice Zap base asset → wrapped collateral → Genesis using permit (single transaction)
+    /// @dev Flow: Permit base asset → base asset → wrapped collateral → Genesis deposit
+    /// @param baseAssetAmount Amount of base asset to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Who gets the Genesis shares
     /// @param deadline Permit signature deadline
     /// @param v Permit signature v component
     /// @param r Permit signature r component
     /// @param s Permit signature s component
-    /// @return collateralAmount Amount of collateral deposited to Genesis
-    function zapUsdcToGenesisWithPermit(
-        uint256 usdcAmount,
-        uint256 minFxSaveOut,
+    /// @return sharesOut Amount of shares minted to Genesis
+    function zapBaseAssetWithPermit(
+        uint256 baseAssetAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external nonReentrant returns (uint256 collateralAmount) {
+    ) external nonReentrant returns (uint256 sharesOut) {
+        _requireSupportedAsset(BASE_ASSET);
         // Use permit to approve this contract
-        IERC20Permit(USDC).permit(_msgSender(), address(this), usdcAmount, deadline, v, r, s);
+        IERC20Permit(BASE_ASSET).permit(
+            _msgSender(), address(this), baseAssetAmount, deadline, v, r, s
+        );
 
-        uint256 fxSaveReceived = _zapToGenesis(USDC, usdcAmount, minFxSaveOut, receiver);
-        collateralAmount = fxSaveReceived;
-        emit USDCZappedToGenesis(_msgSender(), GENESIS, receiver, usdcAmount, fxSaveReceived, collateralAmount);
+        uint256 wrappedCollateralReceived =
+            _zapToGenesis(BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver);
+        sharesOut = wrappedCollateralReceived;
+        emit ZappedBaseAsset(
+            _msgSender(), GENESIS, receiver, baseAssetAmount, wrappedCollateralReceived, sharesOut
+        );
     }
 
-    /// @notice Zap fxUSD → fxSAVE → Genesis using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit fxUSD → fxUSD → fxSAVE → Genesis deposit
-    /// @param fxUsdAmount Amount of fxUSD to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive
+    /// @notice Zap collateral → wrapped collateral → Genesis using permit (single transaction)
+    /// @dev Flow: Permit collateral → collateral → wrapped collateral → Genesis deposit
+    /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
     /// @param receiver Who gets the Genesis shares
     /// @param deadline Permit signature deadline
     /// @param v Permit signature v component
     /// @param r Permit signature r component
     /// @param s Permit signature s component
-    /// @return collateralAmount Amount of collateral deposited to Genesis
-    function zapFxUsdToGenesisWithPermit(
-        uint256 fxUsdAmount,
-        uint256 minFxSaveOut,
+    /// @return sharesOut Amount of shares minted to Genesis
+    function zapCollateralWithPermit(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external nonReentrant returns (uint256 collateralAmount) {
+    ) external nonReentrant returns (uint256 sharesOut) {
+        _requireSupportedAsset(COLLATERAL_ASSET);
         // Use permit to approve this contract
-        IERC20Permit(FXUSD).permit(_msgSender(), address(this), fxUsdAmount, deadline, v, r, s);
+        IERC20Permit(COLLATERAL_ASSET).permit(
+            _msgSender(), address(this), collateralAmount, deadline, v, r, s
+        );
 
-        uint256 fxSaveReceived = _zapToGenesis(FXUSD, fxUsdAmount, minFxSaveOut, receiver);
-        collateralAmount = fxSaveReceived;
-        emit FXUSDZappedToGenesis(_msgSender(), GENESIS, receiver, fxUsdAmount, fxSaveReceived, collateralAmount);
+        uint256 wrappedCollateralReceived =
+            _zapToGenesis(COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver);
+        sharesOut = wrappedCollateralReceived;
+        emit ZappedCollateral(
+            _msgSender(), GENESIS, receiver, collateralAmount, wrappedCollateralReceived, sharesOut
+        );
     }
 
     // =============================================================
     // INTERNAL HELPERS
     // =============================================================
 
-    /// @notice Convert an input token to fxSAVE via the diamond
-    /// @param tokenIn Token to convert (USDC or fxUSD)
+    function _requireSupportedAsset(address asset) internal view {
+        if (block.chainid != 1 && asset == address(0)) {
+            revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
+        }
+    }
+
+    /// @notice Convert an input token to wrapped collateral via the diamond
+    /// @param tokenIn Token to convert (base asset or collateral)
     /// @param amountIn Amount of tokenIn to convert
-    /// @param minOut Minimum fxSAVE expected (slippage protection)
-    /// @return fxSaveReceived Amount of fxSAVE received
-    function _convertToFxSave(address tokenIn, uint256 amountIn, uint256 minOut)
+    /// @param minOut Minimum wrapped collateral expected (slippage protection)
+    /// @return wrappedCollateralReceived Amount of wrapped collateral received
+    function _convertToWrappedCollateral(address tokenIn, uint256 amountIn, uint256 minOut)
         internal
-        returns (uint256 fxSaveReceived)
+        returns (uint256 wrappedCollateralReceived)
     {
         IERC20 token = IERC20(tokenIn);
 
@@ -240,51 +271,59 @@ contract GenesisUSDCZap_v4 is
             tokenIn: tokenIn, amount: amountIn, target: FXUSD_SWAP_ROUTER, data: data, minOut: minOut, signature: ""
         });
 
-        uint256 balanceBefore = IERC20(FXSAVE).balanceOf(address(this));
+        uint256 balanceBefore = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
         IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave(params, tokenIn, 0, address(this));
-        fxSaveReceived = IERC20(FXSAVE).balanceOf(address(this)) - balanceBefore;
+        wrappedCollateralReceived =
+            IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this)) - balanceBefore;
 
-        if (fxSaveReceived == 0) revert IZapErrors.NoFxSaveReceived();
-        if (fxSaveReceived < minOut) revert IZapErrors.SlippageExceeded();
+        if (wrappedCollateralReceived == 0) revert IZapErrors.NoWrappedCollateralReceived();
+        if (wrappedCollateralReceived < minOut) revert IZapErrors.SlippageExceeded();
     }
 
-    /// @notice Pull token, convert to fxSAVE, and deposit into Genesis
-    /// @param tokenIn Token to zap (USDC or fxUSD)
+    /// @notice Pull token, convert to wrapped collateral, and deposit into Genesis
+    /// @param tokenIn Token to zap (base asset or collateral)
     /// @param amountIn Amount of tokenIn to zap
-    /// @param minFxSaveOut Minimum fxSAVE to receive
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
     /// @param receiver Address receiving Genesis shares
-    /// @return fxSaveReceived Amount of fxSAVE deposited
-    function _zapToGenesis(address tokenIn, uint256 amountIn, uint256 minFxSaveOut, address receiver)
+    /// @return wrappedCollateralReceived Amount of wrapped collateral deposited
+    function _zapToGenesis(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut,
+        address receiver
+    )
         internal
-        returns (uint256 fxSaveReceived)
+        returns (uint256 wrappedCollateralReceived)
     {
         if (amountIn == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         IERC20(tokenIn).safeTransferFrom(_msgSender(), address(this), amountIn);
 
-        fxSaveReceived = _convertToFxSave(tokenIn, amountIn, minFxSaveOut);
-        _depositToGenesis(fxSaveReceived, receiver);
+        wrappedCollateralReceived = _convertToWrappedCollateral(
+            tokenIn, amountIn, minWrappedCollateralOut
+        );
+        _depositToGenesis(wrappedCollateralReceived, receiver);
 
         // Clean approvals
         _safeApprove(IERC20(tokenIn), FXUSD_DIAMOND, 0);
     }
 
-    /// @notice Deposit fxSAVE into Genesis and validate shares
-    /// @param amount Amount of fxSAVE to deposit
+    /// @notice Deposit wrapped collateral into Genesis and validate shares
+    /// @param amount Amount of wrapped collateral to deposit
     /// @param receiver Address receiving Genesis shares
     function _depositToGenesis(uint256 amount, address receiver) internal {
-        uint256 balance = IERC20(FXSAVE).balanceOf(address(this));
+        uint256 balance = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
         if (balance < amount) {
             revert IZapErrors.InsufficientBalance(balance, amount);
         }
         uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 currentAllowance = IERC20(FXSAVE).allowance(address(this), GENESIS);
+        uint256 currentAllowance = IERC20(WRAPPED_COLLATERAL_ASSET).allowance(address(this), GENESIS);
         if (currentAllowance < amount) {
             if (currentAllowance > 0) {
-                IERC20(FXSAVE).approve(GENESIS, 0);
+                IERC20(WRAPPED_COLLATERAL_ASSET).approve(GENESIS, 0);
             }
-            IERC20(FXSAVE).approve(GENESIS, type(uint256).max);
+            IERC20(WRAPPED_COLLATERAL_ASSET).approve(GENESIS, type(uint256).max);
         }
         IGenesis(GENESIS).deposit(amount, receiver);
 
@@ -311,15 +350,84 @@ contract GenesisUSDCZap_v4 is
     }
 
     // =============================================================
+    // VIEW FUNCTIONS (FRONTEND)
+    // =============================================================
+
+    /// @notice Real-time user balance in base asset terms
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    // forge-lint: disable-next-line(mixed-case-function)
+    function balanceOfBaseAsset(address) external pure returns (uint256) {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Real-time user balance in collateral terms
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    // forge-lint: disable-next-line(mixed-case-function)
+    function balanceOfCollateral(address) external pure returns (uint256) {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Total vault value in base asset terms
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    // forge-lint: disable-next-line(mixed-case-function)
+    function totalValueBaseAsset() external pure returns (uint256) {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    // =============================================================
     // PREVIEW FUNCTIONS
     // =============================================================
 
-    /// @notice Preview the expected Genesis shares from a fxSAVE amount
-    /// @dev Genesis uses 1:1 deposits, so fxSAVE amount equals shares
-    /// @param fxSaveAmount Amount of fxSAVE
+    /// @notice Preview wrapped collateral output from a base asset amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewWrappedCollateralFromBase(uint256)
+        external
+        pure
+        returns (uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview wrapped collateral output from a collateral amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewWrappedCollateralFromCollateral(uint256)
+        external
+        pure
+        returns (uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview Genesis shares from a base asset amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewSharesFromBase(uint256)
+        external
+        pure
+        returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview Genesis shares from a collateral amount
+    /// @dev Not supported without a conversion oracle; kept for API parity
+    function previewSharesFromCollateral(uint256)
+        external
+        pure
+        returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
+    {
+        revert IZapErrors.FunctionNotFound();
+    }
+
+    /// @notice Preview the expected Genesis shares from a wrapped collateral amount
+    /// @dev Genesis uses 1:1 deposits, so wrapped collateral amount equals shares
+    /// @param wrappedCollateralAmount Amount of wrapped collateral
     /// @return sharesOut Expected Genesis shares that will be minted
-    function previewGenesisFromFxSave(uint256 fxSaveAmount) external pure returns (uint256 sharesOut) {
-        sharesOut = fxSaveAmount; // 1:1 mapping
+    function previewSharesFromWrappedCollateral(uint256 wrappedCollateralAmount)
+        external
+        pure
+        returns (uint256 sharesOut)
+    {
+        sharesOut = wrappedCollateralAmount; // 1:1 mapping
     }
 
     /// @notice Human-readable zap name based on the pegged token
@@ -332,14 +440,17 @@ contract GenesisUSDCZap_v4 is
     // OWNER FUNCTIONS
     // =============================================================
 
-    // forge-lint: disable-next-line(mixed-case-function)
-    function rescueETH() external onlyOwner {
+    /// @notice Rescue stuck native asset
+    function rescueNativeAsset() external onlyOwner {
         payable(owner()).transfer(address(this).balance);
     }
 
-    /// @notice Rescue any ERC20 (except USDC/fxUSD/fxSAVE/Genesis which should never be stuck)
+    /// @notice Rescue any ERC20 (except base/collateral/wrapped collateral/Genesis)
     function rescueToken(address token) external onlyOwner {
-        if (token == USDC || token == FXUSD || token == FXSAVE || token == GENESIS) {
+        if (
+            token == BASE_ASSET || token == COLLATERAL_ASSET || token == WRAPPED_COLLATERAL_ASSET
+                || token == GENESIS
+        ) {
             revert IZapErrors.CannotRescueProtectedToken(token);
         }
         IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));

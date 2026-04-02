@@ -115,10 +115,11 @@ if [[ "$DEPOSIT_TYPE" == "eth" ]]; then
   
   echo "  Expected wstETH out:  $("$CAST" --to-unit "$PREVIEW_SHARES" ether) wstETH"
   echo "  Min wstETH (1% slippage): $("$CAST" --to-unit "$MIN_WSTETH_OUT" ether) wstETH"
-  echo "  Calling: zapEth($WALLET, $MIN_WSTETH_OUT)"
+  MIN_BASE_ASSET_EQUIV_OUT=$(echo "$DEPOSIT_AMOUNT * 99 / 100" | bc)
+  echo "  Calling: zapBaseAsset($WALLET, $MIN_WSTETH_OUT, $MIN_BASE_ASSET_EQUIV_OUT)"
   echo ""
   
-  ZAP_OUT=$("$CAST" send "$ZAP_CONTRACT" "zapEth(address,uint256)" "$WALLET" "$MIN_WSTETH_OUT" \
+  ZAP_OUT=$("$CAST" send "$ZAP_CONTRACT" "zapBaseAsset(address,uint256,uint256)" "$WALLET" "$MIN_WSTETH_OUT" "$MIN_BASE_ASSET_EQUIV_OUT" \
     --value "$DEPOSIT_AMOUNT" \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" 2>&1)
@@ -151,10 +152,10 @@ elif [[ "$DEPOSIT_TYPE" == "steth" ]]; then
   
   sleep 2
   
-  echo "  Calling: zapStEth($DEPOSIT_AMOUNT, $WALLET, $MIN_WSTETH_OUT)"
+  echo "  Calling: zapCollateral($DEPOSIT_AMOUNT, $WALLET, $MIN_WSTETH_OUT)"
   echo ""
   
-  ZAP_OUT=$("$CAST" send "$ZAP_CONTRACT" "zapStEth(uint256,address,uint256)" "$DEPOSIT_AMOUNT" "$WALLET" "$MIN_WSTETH_OUT" \
+  ZAP_OUT=$("$CAST" send "$ZAP_CONTRACT" "zapCollateral(uint256,address,uint256)" "$DEPOSIT_AMOUNT" "$WALLET" "$MIN_WSTETH_OUT" \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" 2>&1)
   

@@ -90,7 +90,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
     /// @notice Helper to calculate expected wstETH from ETH amount (for slippage protection)
     function _calculateMinWstEthFromEth(uint256 ethAmount) internal view returns (uint256) {
         // Use the preview function from the contract
-        uint256 wstEthAmount = zap.previewWstEthFromEth(ethAmount);
+        uint256 wstEthAmount = zap.previewWrappedCollateralFromBase(ethAmount);
         return wstEthAmount * 99 / 100; // 1% slippage buffer
     }
 
@@ -111,7 +111,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         // Calculate minWstEthOut with 1% slippage buffer
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
 
-        uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut, 0);
+        uint256 sharesOut = zap.zapBaseAsset{value: ethAmount}(receiver, minWstEthOut, 0);
 
         vm.stopPrank();
 
@@ -156,7 +156,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         uint256 genesisBalBefore = IGenesis(genesis).balanceOf(receiver);
         uint256 minWstEthOut = _calculateMinWstEthFromStEth(stEthAmount);
 
-        uint256 sharesOut = zap.zapStEth(stEthAmount, receiver, minWstEthOut);
+        uint256 sharesOut = zap.zapCollateral(stEthAmount, receiver, minWstEthOut);
         vm.stopPrank();
 
         uint256 genesisBalAfter = IGenesis(genesis).balanceOf(receiver);
@@ -169,7 +169,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
     function test_PreviewWstEthFromEth() public view {
         uint256 ethAmount = 1 ether;
-        uint256 previewWstEth = zap.previewWstEthFromEth(ethAmount);
+        uint256 previewWstEth = zap.previewWrappedCollateralFromBase(ethAmount);
 
         assertGt(previewWstEth, 0, "Preview should return > 0");
         console.log("Preview wstETH from ETH:", previewWstEth);
@@ -177,27 +177,27 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
     function test_PreviewWstEthFromStEth() public view {
         uint256 stEthAmount = 1 ether;
-        uint256 previewWstEth = zap.previewWstEthFromStEth(stEthAmount);
+        uint256 previewWstEth = zap.previewWrappedCollateralFromCollateral(stEthAmount);
 
         assertGt(previewWstEth, 0, "Preview should return > 0");
     }
 
     function test_PreviewGenesisFromEth() public view {
         uint256 ethAmount = 1 ether;
-        (uint256 previewShares,) = zap.previewGenesisFromEth(ethAmount);
+        (uint256 previewShares,) = zap.previewSharesFromBase(ethAmount);
 
         assertGt(previewShares, 0, "Preview should return > 0");
-        // Should match previewWstEthFromEth since Genesis uses 1:1 mapping
-        assertEq(previewShares, zap.previewWstEthFromEth(ethAmount), "Should match wstETH preview");
+        // Should match previewWrappedCollateralFromBase since Genesis uses 1:1 mapping
+        assertEq(previewShares, zap.previewWrappedCollateralFromBase(ethAmount), "Should match wstETH preview");
     }
 
     function test_PreviewGenesisFromStEth() public view {
         uint256 stEthAmount = 1 ether;
-        (uint256 previewShares,) = zap.previewGenesisFromStEth(stEthAmount);
+        (uint256 previewShares,) = zap.previewSharesFromCollateral(stEthAmount);
 
         assertGt(previewShares, 0, "Preview should return > 0");
-        // Should match previewWstEthFromStEth since Genesis uses 1:1 mapping
-        assertEq(previewShares, zap.previewWstEthFromStEth(stEthAmount), "Should match wstETH preview");
+        // Should match previewWrappedCollateralFromCollateral since Genesis uses 1:1 mapping
+        assertEq(previewShares, zap.previewWrappedCollateralFromCollateral(stEthAmount), "Should match wstETH preview");
     }
 
     // ============ View Function Tests ============
@@ -207,10 +207,10 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
 
         vm.startPrank(user1);
-        zap.zapEth{value: ethAmount}(receiver, minWstEthOut, 0);
+        zap.zapBaseAsset{value: ethAmount}(receiver, minWstEthOut, 0);
         vm.stopPrank();
 
-        uint256 balanceEth = zap.balanceOfETH(receiver);
+        uint256 balanceEth = zap.balanceOfBaseAsset(receiver);
         assertGt(balanceEth, 0, "Balance should be > 0");
     }
 
@@ -219,10 +219,10 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
 
         vm.startPrank(user1);
-        zap.zapEth{value: ethAmount}(receiver, minWstEthOut, 0);
+        zap.zapBaseAsset{value: ethAmount}(receiver, minWstEthOut, 0);
         vm.stopPrank();
 
-        uint256 balanceStEth = zap.balanceOfStETH(receiver);
+        uint256 balanceStEth = zap.balanceOfCollateral(receiver);
         assertGt(balanceStEth, 0, "Balance should be > 0");
     }
 
@@ -234,11 +234,11 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         uint256 minWstEthOut1 = _calculateMinWstEthFromEth(ethAmount1);
         uint256 minWstEthOut2 = _calculateMinWstEthFromEth(ethAmount2);
 
-        zap.zapEth{value: ethAmount1}(receiver, minWstEthOut1, 0);
-        zap.zapEth{value: ethAmount2}(receiver, minWstEthOut2, 0);
+        zap.zapBaseAsset{value: ethAmount1}(receiver, minWstEthOut1, 0);
+        zap.zapBaseAsset{value: ethAmount2}(receiver, minWstEthOut2, 0);
         vm.stopPrank();
 
-        uint256 totalValue = zap.totalValueETH();
+        uint256 totalValue = zap.totalValueBaseAsset();
 
         assertGt(totalValue, 0, "Total value should be > 0");
         assertGe(totalValue, (ethAmount1 + ethAmount2) * 90 / 100, "Total value should be reasonable");
@@ -261,7 +261,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         uint256 ethAmount = 1 ether;
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
         vm.startPrank(user1);
-        uint256 sharesOut = zap.zapEth{value: ethAmount}(receiver, minWstEthOut, 0);
+        uint256 sharesOut = zap.zapBaseAsset{value: ethAmount}(receiver, minWstEthOut, 0);
         vm.stopPrank();
 
         assertGt(sharesOut, 0, "Should still work after upgrade");
@@ -286,12 +286,12 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         assertEq(zap.referral(), newReferral, "Referral should be updated");
     }
 
-    function test_RescueEth() public {
+    function test_RescueNativeAsset() public {
         vm.deal(address(zap), 1 ether);
 
         uint256 ownerBalanceBefore = zapOwner.balance;
         vm.prank(zapOwner);
-        zap.rescueETH();
+        zap.rescueNativeAsset();
 
         assertEq(zapOwner.balance, ownerBalanceBefore + 1 ether, "ETH should be rescued");
     }

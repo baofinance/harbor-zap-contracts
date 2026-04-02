@@ -85,7 +85,7 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
         uint256 genBalBefore = IGenesis(genesis).balanceOf(receiver);
         uint256 fxBalBefore = IERC20(FXSAVE).balanceOf(genesis);
 
-        uint256 collateralAmount = zap.zapUsdcToGenesis(usdcAmount, 0, receiver);
+        uint256 collateralAmount = zap.zapBaseAsset(usdcAmount, 0, receiver);
 
         vm.stopPrank();
 
@@ -111,7 +111,7 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
         uint256 genBalBefore = IGenesis(genesis).balanceOf(receiver);
-        uint256 collateralAmount = zap.zapFxUsdToGenesis(fxUsdAmount, 0, receiver);
+        uint256 collateralAmount = zap.zapCollateral(fxUsdAmount, 0, receiver);
         vm.stopPrank();
 
         uint256 genBalAfter = IGenesis(genesis).balanceOf(receiver);
@@ -134,14 +134,14 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
 
     function test_PreviewGenesisFromFxSave() public view {
         uint256 fxSaveAmount = 1000 * 1e18;
-        uint256 previewShares = zap.previewGenesisFromFxSave(fxSaveAmount);
+        uint256 previewShares = zap.previewSharesFromWrappedCollateral(fxSaveAmount);
 
         // Genesis uses 1:1 mapping
         assertEq(previewShares, fxSaveAmount, "Preview should return 1:1 shares");
     }
 
     function test_PreviewGenesisFromFxSave_Zero() public view {
-        uint256 previewShares = zap.previewGenesisFromFxSave(0);
+        uint256 previewShares = zap.previewSharesFromWrappedCollateral(0);
         assertEq(previewShares, 0, "Preview should return 0 for zero input");
     }
 
@@ -162,7 +162,7 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
         uint256 usdcAmount = 1000 * 1e6;
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
-        uint256 collateralAmount = zap.zapUsdcToGenesis(usdcAmount, 0, receiver);
+        uint256 collateralAmount = zap.zapBaseAsset(usdcAmount, 0, receiver);
         vm.stopPrank();
 
         assertGt(collateralAmount, 0, "Should still work after upgrade");
@@ -178,12 +178,12 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
 
     // ============ Owner Function Tests ============
 
-    function test_RescueEth() public {
+    function test_RescueNativeAsset() public {
         vm.deal(address(zap), 1 ether);
 
         uint256 ownerBalanceBefore = zapOwner.balance;
         vm.prank(zapOwner);
-        zap.rescueETH();
+        zap.rescueNativeAsset();
 
         assertEq(zapOwner.balance, ownerBalanceBefore + 1 ether, "ETH should be rescued");
     }

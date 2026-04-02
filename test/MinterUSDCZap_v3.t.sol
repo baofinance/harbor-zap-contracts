@@ -85,7 +85,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         uint256 peggedBalBefore = IERC20(peggedToken).balanceOf(receiver);
         uint256 fxBalBefore = IERC20(FXSAVE).balanceOf(minter);
 
-        uint256 peggedOut = zap.zapUsdcToPegged(usdcAmount, 0, receiver, 0);
+        uint256 peggedOut = zap.zapBaseAssetToPegged(usdcAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -112,7 +112,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), type(uint256).max);
 
         vm.expectRevert(IZapErrors.ZeroAmount.selector);
-        zap.zapUsdcToPegged(0, 0, receiver, 0);
+        zap.zapBaseAssetToPegged(0, 0, receiver, 0);
 
         vm.stopPrank();
     }
@@ -124,7 +124,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), usdcAmount);
 
         vm.expectRevert(IZapErrors.ZeroAddress.selector);
-        zap.zapUsdcToPegged(usdcAmount, 0, address(0), 0);
+        zap.zapBaseAssetToPegged(usdcAmount, 0, address(0), 0);
 
         vm.stopPrank();
     }
@@ -138,7 +138,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), usdcAmount);
 
         uint256 leveragedBalBefore = IERC20(leveragedToken).balanceOf(receiver);
-        uint256 leveragedOut = zap.zapUsdcToLeveraged(usdcAmount, 0, receiver, 0);
+        uint256 leveragedOut = zap.zapBaseAssetToLeveraged(usdcAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -158,7 +158,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
         uint256 peggedBalBefore = IERC20(peggedToken).balanceOf(receiver);
-        uint256 peggedOut = zap.zapFxUsdToPegged(fxUsdAmount, 0, receiver, 0);
+        uint256 peggedOut = zap.zapCollateralToPegged(fxUsdAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -178,7 +178,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
         uint256 leveragedBalBefore = IERC20(leveragedToken).balanceOf(receiver);
-        uint256 leveragedOut = zap.zapFxUsdToLeveraged(fxUsdAmount, 0, receiver, 0);
+        uint256 leveragedOut = zap.zapCollateralToLeveraged(fxUsdAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -204,11 +204,11 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), usdcAmount);
 
         uint256 fxSaveAmount = 900 * 1e18; // Approximate
-        uint256 previewPegged = zap.previewPeggedFromFxSave(fxSaveAmount);
+        uint256 previewPegged = zap.previewPeggedFromWrappedCollateral(fxSaveAmount);
         uint256 minPeggedOut = previewPegged * 99 / 100;
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
-        (uint256 peggedOut, uint256 deposited) = zap.zapUsdcToStabilityPool(
+        (uint256 peggedOut, uint256 deposited) = zap.zapBaseAssetToStabilityPool(
             usdcAmount, 0, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
@@ -226,7 +226,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(USDC).approve(address(zap), usdcAmount);
 
         vm.expectRevert(IZapErrors.StabilityPoolNotAllowed.selector);
-        zap.zapUsdcToStabilityPool(usdcAmount, 0, receiver, 0, address(stabilityPool), 0);
+        zap.zapBaseAssetToStabilityPool(usdcAmount, 0, receiver, 0, address(stabilityPool), 0);
 
         vm.stopPrank();
     }
@@ -243,11 +243,11 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
         uint256 fxSaveAmount = 900 * 1e18;
-        uint256 previewPegged = zap.previewPeggedFromFxSave(fxSaveAmount);
+        uint256 previewPegged = zap.previewPeggedFromWrappedCollateral(fxSaveAmount);
         uint256 minPeggedOut = previewPegged * 99 / 100;
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
-        (uint256 peggedOut, uint256 deposited) = zap.zapFxUsdToStabilityPool(
+        (uint256 peggedOut, uint256 deposited) = zap.zapCollateralToStabilityPool(
             fxUsdAmount, 0, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
@@ -268,11 +268,11 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(FXSAVE).approve(address(zap), fxSaveAmount);
 
-        uint256 previewPegged = zap.previewStabilityPoolFromFxSave(fxSaveAmount);
+        uint256 previewPegged = zap.previewStabilityPoolFromWrappedCollateral(fxSaveAmount);
         uint256 minPeggedOut = previewPegged * 99 / 100;
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
-        (uint256 peggedOut, uint256 deposited) = zap.zapFxSaveToStabilityPool(
+        (uint256 peggedOut, uint256 deposited) = zap.zapWrappedCollateralToStabilityPool(
             fxSaveAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
@@ -287,7 +287,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
         vm.startPrank(user1);
         vm.expectRevert(IZapErrors.ZeroAmount.selector);
-        zap.zapFxSaveToStabilityPool(0, receiver, 0, address(stabilityPool), 0);
+        zap.zapWrappedCollateralToStabilityPool(0, receiver, 0, address(stabilityPool), 0);
         vm.stopPrank();
     }
 
@@ -308,12 +308,12 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(FXSAVE).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
 
-        uint256 previewPegged = zap.previewStabilityPoolFromFxSave(fxSaveAmount);
+        uint256 previewPegged = zap.previewStabilityPoolFromWrappedCollateral(fxSaveAmount);
         uint256 minPeggedOut = previewPegged * 99 / 100;
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
         vm.prank(userPermit);
-        (uint256 peggedOut, uint256 deposited) = zap.zapFxSaveToStabilityPoolWithPermit(
+        (uint256 peggedOut, uint256 deposited) = zap.zapWrappedCollateralToStabilityPoolWithPermit(
             fxSaveAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut, deadline, v, r, s
         );
 
@@ -336,14 +336,16 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
         vm.prank(userPermit);
         vm.expectRevert(IZapErrors.ZeroAmount.selector);
-        zap.zapFxSaveToStabilityPoolWithPermit(0, receiver, 0, address(stabilityPool), 0, deadline, v, r, s);
+        zap.zapWrappedCollateralToStabilityPoolWithPermit(
+            0, receiver, 0, address(stabilityPool), 0, deadline, v, r, s
+        );
     }
 
     // ============ Preview Function Tests ============
 
     function test_PreviewPeggedFromFxSave() public view {
         uint256 fxSaveAmount = 1000 * 1e18;
-        uint256 previewPegged = zap.previewPeggedFromFxSave(fxSaveAmount);
+        uint256 previewPegged = zap.previewPeggedFromWrappedCollateral(fxSaveAmount);
 
         assertGt(previewPegged, 0, "Preview should return > 0");
     }
@@ -359,14 +361,14 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
     function test_PreviewLeveragedFromFxSave() public view {
         uint256 fxSaveAmount = 1000 * 1e18;
-        uint256 previewLeveraged = zap.previewLeveragedFromFxSave(fxSaveAmount);
+        uint256 previewLeveraged = zap.previewLeveragedFromWrappedCollateral(fxSaveAmount);
 
         assertGt(previewLeveraged, 0, "Preview should return > 0");
     }
 
     function test_PreviewStabilityPoolFromFxSave() public view {
         uint256 fxSaveAmount = 1000 * 1e18;
-        uint256 previewPegged = zap.previewStabilityPoolFromFxSave(fxSaveAmount);
+        uint256 previewPegged = zap.previewStabilityPoolFromWrappedCollateral(fxSaveAmount);
 
         assertGt(previewPegged, 0, "Preview should return > 0");
     }
@@ -388,7 +390,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         uint256 usdcAmount = 1000 * 1e6;
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
-        uint256 peggedOut = zap.zapUsdcToPegged(usdcAmount, 0, receiver, 0);
+        uint256 peggedOut = zap.zapBaseAssetToPegged(usdcAmount, 0, receiver, 0);
         vm.stopPrank();
 
         assertGt(peggedOut, 0, "Should still work after upgrade");
@@ -426,12 +428,12 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
         zap.setStabilityPoolAllowed(stabilityPool, true);
     }
 
-    function test_RescueEth() public {
+    function test_RescueNativeAsset() public {
         vm.deal(address(zap), 1 ether);
 
         uint256 ownerBalanceBefore = zapOwner.balance;
         vm.prank(zapOwner);
-        zap.rescueEth();
+        zap.rescueNativeAsset();
 
         assertEq(zapOwner.balance, ownerBalanceBefore + 1 ether, "ETH should be rescued");
     }

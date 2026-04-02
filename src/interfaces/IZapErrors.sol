@@ -16,12 +16,17 @@ interface IZapErrors {
     /// @notice Thrown when an operation is unauthorized
     error Unauthorized();
 
-    // ========== Genesis & Zap-Specific Errors ==========
-    /// @notice Thrown when no stETH was received from deposit/submit
-    error NoStETHReceived();
+    /// @notice Thrown when an asset is not supported on the current chain
+    /// @param asset The asset address that is unsupported
+    /// @param chainId The current chain id
+    error AssetNotSupportedOnChain(address asset, uint256 chainId);
 
-    /// @notice Thrown when no fxSAVE was received from conversion
-    error NoFxSaveReceived();
+    // ========== Genesis & Zap-Specific Errors ==========
+    /// @notice Thrown when no collateral was received from a conversion
+    error NoCollateralReceived();
+
+    /// @notice Thrown when no wrapped collateral was received from a conversion
+    error NoWrappedCollateralReceived();
 
     /// @notice Thrown when slippage exceeds the maximum allowed (generic fallback)
     error SlippageTooHigh();
@@ -41,10 +46,10 @@ interface IZapErrors {
     error CollateralMismatch(address expected, address actual);
 
     // ========== Minter-Specific Errors ==========
-    /// @notice Thrown when wstETH address doesn't match Minter wrapped collateral token
-    /// @param expected The expected wstETH address
-    /// @param provided The provided wstETH address
-    error WstETHMismatch(address expected, address provided);
+    /// @notice Thrown when wrapped collateral address doesn't match expected address
+    /// @param expected The expected wrapped collateral address
+    /// @param provided The provided wrapped collateral address
+    error WrappedCollateralMismatch(address expected, address provided);
 
     /// @notice Thrown when a mint operation fails
     error MintFailed();
@@ -67,13 +72,13 @@ interface IZapErrors {
     /// @param token The protected token address that was attempted to rescue
     error CannotRescueProtectedToken(address token);
 
-    /// @notice Thrown when wstETH output is below minimum acceptable amount
-    /// @param received Actual wstETH received
+    /// @notice Thrown when wrapped collateral output is below minimum acceptable amount
+    /// @param received Actual wrapped collateral received
     /// @param minimum Minimum required by user
-    error SlippageTooHighWstETH(uint256 received, uint256 minimum);
+    error SlippageTooHighWrappedCollateral(uint256 received, uint256 minimum);
 
-    /// @notice Thrown when final ETH-equivalent value is below minimum acceptable
-    /// @param received Actual ETH value
-    /// @param minimum Minimum ETH value required by user
-    error SlippageTooHighETHValue(uint256 received, uint256 minimum);
+    /// @notice Thrown when final base asset-equivalent value is below minimum acceptable
+    /// @param received Actual base asset value
+    /// @param minimum Minimum base asset value required by user
+    error SlippageTooHighBaseAssetValue(uint256 received, uint256 minimum);
 }

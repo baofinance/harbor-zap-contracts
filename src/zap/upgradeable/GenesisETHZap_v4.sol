@@ -19,8 +19,8 @@ import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {WstETHConstants} from "src/constants/ethereum/WstETHConstants.sol";
 
 /// @title GenesisETHZap V4
-/// @notice One-click zapper: ETH or stETH → wstETH → Genesis vault
-/// @dev Uses correct share-based conversion (critical for 2025+ stETH ratio)
+/// @notice One-click zapper: base asset or collateral → wrapped collateral → Genesis vault
+/// @dev Uses correct share-based conversion (critical for 2025+ collateral ratio)
 /// @dev Includes slippage protection, accurate previews, and real-time value tracking
 /// @dev Uses UUPS proxy, upgradeable
 /// @author Harbor Finance
@@ -36,39 +36,40 @@ contract GenesisETHZap_v4 is
     using SafeERC20 for IERC20;
 
     // ========== Constants ==========
-    address public constant STETH = WstETHConstants.STETH;
-    address public constant WSTETH = WstETHConstants.WSTETH;
     address public constant DEFAULT_REFERRAL = WstETHConstants.DEFAULT_REFERRAL;
+    address public constant BASE_ASSET = address(0);
+    address public constant COLLATERAL_ASSET = WstETHConstants.STETH;
+    address public constant WRAPPED_COLLATERAL_ASSET = WstETHConstants.WSTETH;
 
     // ========== Immutables ==========
     address public immutable GENESIS;
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
-    IStETH public immutable stETH;
+    IStETH public immutable collateralToken;
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
-    IWstETH public immutable wstETH;
+    IWstETH public immutable wrappedCollateralToken;
 
     // ========== Configurable ==========
     address public referral;
 
     // ========== Events ==========
-    /// @notice Emitted when ETH is successfully zapped into Genesis
-    event ZappedETH(
+    /// @notice Emitted when base asset is successfully zapped into Genesis
+    event ZappedBaseAsset(
         address indexed user,
         address indexed receiver,
-        uint256 ethIn,
+        uint256 baseAssetIn,
         uint256 genesisSharesOut,
-        uint256 ethValueNow,
-        uint256 stEthValueNow
+        uint256 baseAssetValueNow,
+        uint256 collateralValueNow
     );
 
-    /// @notice Emitted when stETH is successfully zapped into Genesis
-    event ZappedStETH(
+    /// @notice Emitted when collateral is successfully zapped into Genesis
+    event ZappedCollateral(
         address indexed user,
         address indexed receiver,
-        uint256 stEthIn,
+        uint256 collateralIn,
         uint256 genesisSharesOut,
-        uint256 ethValueNow,
-        uint256 stEthValueNow
+        uint256 baseAssetValueNow,
+        uint256 collateralValueNow
     );
 
     event ReferralUpdated(address indexed oldReferral, address indexed newReferral);
@@ -76,21 +77,21 @@ contract GenesisETHZap_v4 is
 
     // ========== Constructor ==========
     /// @notice Deploy zapper locked to a specific Genesis vault
-    /// @param genesis_ Genesis vault address (must accept wstETH as collateral)
+    /// @param genesis_ Genesis vault address (must accept wrapped collateral)
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address genesis_) {
         _disableInitializers();
         if (genesis_ == address(0)) revert IZapErrors.ZeroAddress();
 
-        // Verify that wstETH matches the Genesis wrapped collateral token
+        // Verify that wrapped collateral matches the Genesis wrapped collateral token
         address expectedCollateral = IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN();
-        if (WSTETH != expectedCollateral) {
-            revert IZapErrors.CollateralMismatch(expectedCollateral, WSTETH);
+        if (WRAPPED_COLLATERAL_ASSET != expectedCollateral) {
+            revert IZapErrors.CollateralMismatch(expectedCollateral, WRAPPED_COLLATERAL_ASSET);
         }
 
         GENESIS = genesis_;
-        stETH = IStETH(STETH);
-        wstETH = IWstETH(WSTETH);
+        collateralToken = IStETH(COLLATERAL_ASSET);
+        wrappedCollateralToken = IWstETH(WRAPPED_COLLATERAL_ASSET);
     }
 
     // ========== Initialization ==========
@@ -120,158 +121,181 @@ contract GenesisETHZap_v4 is
     // ====================== USER FACING ZAPS =========================
     // =================================================================
 
-    /// @notice Zap ETH → stETH → wstETH → Genesis in one transaction
+    /// @notice Zap base asset → collateral → wrapped collateral → Genesis in one transaction
     /// @dev Includes slippage protection against front-running/MEV
     /// @param receiver Address receiving Genesis vault shares
-    /// @param minWstEthOut Minimum acceptable wstETH (use preview for 0.1-0.5% buffer)
-    /// @param minEthEquivalentOut Minimum acceptable ETH value (slippage protection)
+    /// @param minWrappedCollateralOut Minimum acceptable wrapped collateral (use preview for 0.1-0.5% buffer)
+    /// @param minBaseAssetEquivalentOut Minimum acceptable base asset value (slippage protection)
     /// @return sharesOut Exact amount of Genesis shares minted
-    function zapEth(address receiver, uint256 minWstEthOut, uint256 minEthEquivalentOut)
+    function zapBaseAsset(
+        address receiver,
+        uint256 minWrappedCollateralOut,
+        uint256 minBaseAssetEquivalentOut
+    )
         external
         payable
         nonReentrant
         returns (uint256 sharesOut)
     {
+        _requireSupportedAsset(BASE_ASSET);
         if (msg.value == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        uint256 ethIn = msg.value;
+        uint256 baseAssetIn = msg.value;
 
-        // 1. ETH → stETH via Lido
-        uint256 stEthReceived = _convertEthToStEth(ethIn);
-        // 2. stETH → wstETH
-        sharesOut = _convertStEthToWstEth(stEthReceived);
+        // 1. Base asset → collateral via Lido
+        uint256 collateralReceived = _convertBaseAssetToCollateral(baseAssetIn);
+        // 2. collateral → wrapped collateral
+        sharesOut = _convertCollateralToWrappedCollateral(collateralReceived);
         // 3. Slippage protection
-        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHighWstETH(sharesOut, minWstEthOut);
+        if (sharesOut < minWrappedCollateralOut) {
+            revert IZapErrors.SlippageTooHighWrappedCollateral(sharesOut, minWrappedCollateralOut);
+        }
         // 4. Value protection
-        (uint256 ethValueNow,) = _getCurrentValues(sharesOut);
-        if (ethValueNow < minEthEquivalentOut) {
-            revert IZapErrors.SlippageTooHighETHValue(ethValueNow, minEthEquivalentOut);
+        (uint256 baseAssetValueNow,) = _getCurrentValuesBaseCollateral(sharesOut);
+        if (baseAssetValueNow < minBaseAssetEquivalentOut) {
+            revert IZapErrors.SlippageTooHighBaseAssetValue(baseAssetValueNow, minBaseAssetEquivalentOut);
         }
         // 5. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
         // 6. Emit real-time values for indexers/frontends
-        (uint256 ethNow, uint256 stEthNow) = _getCurrentValues(sharesOut);
-        emit ZappedETH(_msgSender(), receiver, ethIn, sharesOut, ethNow, stEthNow);
+        (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
+        emit ZappedBaseAsset(_msgSender(), receiver, baseAssetIn, sharesOut, baseAssetNow, collateralNow);
     }
 
-    /// @notice Zap existing stETH → wstETH → Genesis
-    /// @param stEthAmount Amount of stETH to zap
+    /// @notice Zap existing collateral → wrapped collateral → Genesis
+    /// @param collateralAmount Amount of collateral to zap
     /// @param receiver Address receiving Genesis vault shares
-    /// @param minWstEthOut Minimum acceptable wstETH out
+    /// @param minWrappedCollateralOut Minimum acceptable wrapped collateral out
     /// @return sharesOut Exact amount of Genesis shares minted
-    function zapStEth(uint256 stEthAmount, address receiver, uint256 minWstEthOut)
+    function zapCollateral(uint256 collateralAmount, address receiver, uint256 minWrappedCollateralOut)
         external
         nonReentrant
         returns (uint256 sharesOut)
     {
-        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        if (collateralAmount == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        // 1. Transfer stETH from user
-        IERC20(STETH).safeTransferFrom(_msgSender(), address(this), stEthAmount);
-        // 2. stETH → wstETH
-        sharesOut = _convertStEthToWstEth(stEthAmount);
+        // 1. Transfer collateral from user
+        IERC20(COLLATERAL_ASSET).safeTransferFrom(_msgSender(), address(this), collateralAmount);
+        // 2. collateral → wrapped collateral
+        sharesOut = _convertCollateralToWrappedCollateral(collateralAmount);
         // 3. Slippage protection
-        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHighWstETH(sharesOut, minWstEthOut);
+        if (sharesOut < minWrappedCollateralOut) {
+            revert IZapErrors.SlippageTooHighWrappedCollateral(sharesOut, minWrappedCollateralOut);
+        }
         // 4. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
         // 5. Emit real-time values for indexers/frontends
-        (uint256 ethNow, uint256 stEthNow) = _getCurrentValues(sharesOut);
-        emit ZappedStETH(_msgSender(), receiver, stEthAmount, sharesOut, ethNow, stEthNow);
+        (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
+        emit ZappedCollateral(_msgSender(), receiver, collateralAmount, sharesOut, baseAssetNow, collateralNow);
     }
 
-    /// @notice Zap stETH → wstETH → Genesis using permit (single transaction, no approval needed)
-    /// @dev Flow: Permit stETH → stETH → wstETH → Genesis deposit
-    /// @param stEthAmount Amount of stETH to zap
+    /// @notice Zap collateral → wrapped collateral → Genesis using permit (single transaction, no approval needed)
+    /// @dev Flow: Permit collateral → collateral → wrapped collateral → Genesis deposit
+    /// @param collateralAmount Amount of collateral to zap
     /// @param receiver Address that will receive the Genesis shares
-    /// @param minWstEthOut Minimum wstETH to receive (slippage protection)
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param deadline Permit signature deadline
     /// @param v Permit signature v component
     /// @param r Permit signature r component
     /// @param s Permit signature s component
     /// @return sharesOut Amount of Genesis shares minted
-    function zapStEthWithPermit(
-        uint256 stEthAmount,
+    function zapCollateralWithPermit(
+        uint256 collateralAmount,
         address receiver,
-        uint256 minWstEthOut,
+        uint256 minWrappedCollateralOut,
         uint256 deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 sharesOut) {
-        if (stEthAmount == 0) revert IZapErrors.ZeroAmount();
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        if (collateralAmount == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        _permitStEth(stEthAmount, deadline, v, r, s);
+        _permitCollateral(collateralAmount, deadline, v, r, s);
 
-        // 1. Transfer stETH from user
-        IERC20(STETH).safeTransferFrom(_msgSender(), address(this), stEthAmount);
-        // 2. stETH → wstETH
-        sharesOut = _convertStEthToWstEth(stEthAmount);
+        // 1. Transfer collateral from user
+        IERC20(COLLATERAL_ASSET).safeTransferFrom(_msgSender(), address(this), collateralAmount);
+        // 2. collateral → wrapped collateral
+        sharesOut = _convertCollateralToWrappedCollateral(collateralAmount);
         // 3. Slippage protection
-        if (sharesOut < minWstEthOut) revert IZapErrors.SlippageTooHighWstETH(sharesOut, minWstEthOut);
+        if (sharesOut < minWrappedCollateralOut) {
+            revert IZapErrors.SlippageTooHighWrappedCollateral(sharesOut, minWrappedCollateralOut);
+        }
         // 4. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
         // 5. Emit real-time values for indexers/frontends
-        (uint256 ethNow, uint256 stEthNow) = _getCurrentValues(sharesOut);
-        emit ZappedStETH(_msgSender(), receiver, stEthAmount, sharesOut, ethNow, stEthNow);
+        (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
+        emit ZappedCollateral(_msgSender(), receiver, collateralAmount, sharesOut, baseAssetNow, collateralNow);
+    }
+
+    function _requireSupportedAsset(address asset) internal view {
+        if (block.chainid != 1 && asset == address(0)) {
+            revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
+        }
     }
 
     // =================================================================
     // ====================== INTERNAL HELPERS =========================
     // =================================================================
 
-    /// @notice Convert ETH to stETH via Lido
-    /// @param ethAmount Amount of ETH to convert
-    /// @return stEthReceived Amount of stETH received (using balance checks, never trust return value)
-    function _convertEthToStEth(uint256 ethAmount) internal returns (uint256 stEthReceived) {
-        uint256 stEthBefore = IERC20(STETH).balanceOf(address(this));
-        ISTETHV2(STETH).submit{value: ethAmount}(referral);
-        stEthReceived = IERC20(STETH).balanceOf(address(this)) - stEthBefore;
-        if (stEthReceived == 0) revert IZapErrors.NoStETHReceived();
+    /// @notice Convert base asset to collateral via Lido
+    /// @param baseAssetAmount Amount of base asset to convert
+    /// @return collateralReceived Amount of collateral received (using balance checks, never trust return value)
+    function _convertBaseAssetToCollateral(uint256 baseAssetAmount) internal returns (uint256 collateralReceived) {
+        uint256 collateralBefore = IERC20(COLLATERAL_ASSET).balanceOf(address(this));
+        ISTETHV2(COLLATERAL_ASSET).submit{value: baseAssetAmount}(referral);
+        collateralReceived = IERC20(COLLATERAL_ASSET).balanceOf(address(this)) - collateralBefore;
+        if (collateralReceived == 0) revert IZapErrors.NoCollateralReceived();
     }
 
-    /// @notice Convert stETH to wstETH
-    /// @param stEthAmount Amount of stETH to convert
-    /// @return wstEthReceived Amount of wstETH received (using balance checks, never trust return value)
-    function _convertStEthToWstEth(uint256 stEthAmount) internal returns (uint256 wstEthReceived) {
-        IERC20(STETH).forceApprove(WSTETH, stEthAmount);
-        uint256 wstEthBefore = IERC20(WSTETH).balanceOf(address(this));
-        IWstETHWrapV2(WSTETH).wrap(stEthAmount);
-        wstEthReceived = IERC20(WSTETH).balanceOf(address(this)) - wstEthBefore;
-        if (wstEthReceived == 0) revert IZapErrors.NoStETHReceived();
+    /// @notice Convert collateral to wrapped collateral
+    /// @param collateralAmount Amount of collateral to convert
+    /// @return wrappedCollateralReceived Amount of wrapped collateral received (using balance checks, never trust return value)
+    function _convertCollateralToWrappedCollateral(uint256 collateralAmount)
+        internal
+        returns (uint256 wrappedCollateralReceived)
+    {
+        IERC20(COLLATERAL_ASSET).forceApprove(WRAPPED_COLLATERAL_ASSET, collateralAmount);
+        uint256 wrappedCollateralBefore = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
+        IWstETHWrapV2(WRAPPED_COLLATERAL_ASSET).wrap(collateralAmount);
+        wrappedCollateralReceived = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this))
+            - wrappedCollateralBefore;
+        if (wrappedCollateralReceived == 0) revert IZapErrors.NoWrappedCollateralReceived();
     }
 
-    /// @notice Helper to handle stETH permit
+    /// @notice Helper to handle collateral permit
     /// @param amount Amount to permit
     /// @param deadline Permit deadline
     /// @param v Permit signature v
     /// @param r Permit signature r
     /// @param s Permit signature s
-    function _permitStEth(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
-        IERC20Permit(STETH).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+    function _permitCollateral(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
+        IERC20Permit(COLLATERAL_ASSET).permit(_msgSender(), address(this), amount, deadline, v, r, s);
     }
 
-    /// @notice Deposit wstETH into Genesis and validate shares
-    /// @param amount Amount of wstETH to deposit
+    /// @notice Deposit wrapped collateral into Genesis and validate shares
+    /// @param amount Amount of wrapped collateral to deposit
     /// @param receiver Address receiving Genesis shares
     function _depositToGenesis(uint256 amount, address receiver) internal {
         if (amount == 0) revert IZapErrors.ZeroAmount();
 
-        uint256 balance = IERC20(WSTETH).balanceOf(address(this));
+        uint256 balance = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
         if (balance < amount) revert IZapErrors.InsufficientBalance(balance, amount);
 
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
 
-        uint256 currentAllowance = IERC20(WSTETH).allowance(address(this), GENESIS);
+        uint256 currentAllowance = IERC20(WRAPPED_COLLATERAL_ASSET).allowance(address(this), GENESIS);
         if (currentAllowance < amount) {
             if (currentAllowance > 0) {
-                IERC20(WSTETH).approve(GENESIS, 0);
+                IERC20(WRAPPED_COLLATERAL_ASSET).approve(GENESIS, 0);
             }
-            IERC20(WSTETH).approve(GENESIS, type(uint256).max);
+            IERC20(WRAPPED_COLLATERAL_ASSET).approve(GENESIS, type(uint256).max);
         }
 
         IGenesis(GENESIS).deposit(amount, receiver);
@@ -281,86 +305,104 @@ contract GenesisETHZap_v4 is
         if (sharesReceived != amount) revert IZapErrors.MintMismatchExpected(amount, sharesReceived);
     }
 
-    /// @notice Returns real-time redeemable values for any wstETH amount
-    /// @param wstEthAmount Amount of wstETH
-    /// @return ethValue Equivalent ETH value
-    /// @return stEthValue Equivalent stETH value
-    function _getCurrentValues(uint256 wstEthAmount) internal view returns (uint256 ethValue, uint256 stEthValue) {
-        stEthValue = wstETH.getStETHByWstETH(wstEthAmount);
-        ethValue = stETH.getPooledEthByShares(stEthValue);
+    /// @notice Returns real-time redeemable values for any wrapped collateral amount
+    /// @param wrappedCollateralAmount Amount of wrapped collateral
+    /// @return baseAssetValue Equivalent base asset value
+    /// @return collateralValue Equivalent collateral value
+    function _getCurrentValuesBaseCollateral(uint256 wrappedCollateralAmount)
+        internal
+        view
+        returns (uint256 baseAssetValue, uint256 collateralValue)
+    {
+        collateralValue = wrappedCollateralToken.getStETHByWstETH(wrappedCollateralAmount);
+        baseAssetValue = collateralToken.getPooledEthByShares(collateralValue);
     }
 
     // =================================================================
     // ====================== VIEW FUNCTIONS (FRONTEND) ===============
     // =================================================================
 
-    /// @notice Real-time user balance in growing ETH terms (primary display value)
+    /// @notice Real-time user balance in growing base asset terms (primary display value)
     // forge-lint: disable-next-line(mixed-case-function)
-    function balanceOfETH(address user) external view returns (uint256) {
+    function balanceOfBaseAsset(address user) external view returns (uint256) {
         uint256 shares = IERC20(GENESIS).balanceOf(user);
         if (shares == 0) return 0;
-        (uint256 eth,) = _getCurrentValues(shares);
-        return eth;
+        (uint256 baseAssetValue,) = _getCurrentValuesBaseCollateral(shares);
+        return baseAssetValue;
     }
 
-    /// @notice Real-time user balance in stETH terms
+    /// @notice Real-time user balance in collateral terms
     // forge-lint: disable-next-line(mixed-case-function)
-    function balanceOfStETH(address user) external view returns (uint256) {
+    function balanceOfCollateral(address user) external view returns (uint256) {
         uint256 shares = IERC20(GENESIS).balanceOf(user);
-        return shares == 0 ? 0 : wstETH.getStETHByWstETH(shares);
+        return shares == 0 ? 0 : wrappedCollateralToken.getStETHByWstETH(shares);
     }
 
-    /// @notice Total vault value in real ETH (grows daily)
+    /// @notice Total vault value in real base asset (grows daily)
     // forge-lint: disable-next-line(mixed-case-function)
-    function totalValueETH() external view returns (uint256) {
-        uint256 totalWstEth = IERC20(WSTETH).balanceOf(GENESIS);
-        if (totalWstEth == 0) return 0;
-        (uint256 eth,) = _getCurrentValues(totalWstEth);
-        return eth;
+    function totalValueBaseAsset() external view returns (uint256) {
+        uint256 totalWrappedCollateral = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(GENESIS);
+        if (totalWrappedCollateral == 0) return 0;
+        (uint256 baseAssetValue,) = _getCurrentValuesBaseCollateral(totalWrappedCollateral);
+        return baseAssetValue;
     }
 
     // =================================================================
     // ====================== PREVIEW FUNCTIONS =======================
     // =================================================================
 
-    /// @notice Preview the expected wstETH output from an ETH amount
-    /// @param ethAmount Amount of ETH
-    /// @return wstEthAmount Expected wstETH amount (which equals Genesis shares)
-    function previewWstEthFromEth(uint256 ethAmount) external view returns (uint256 wstEthAmount) {
-        uint256 stEthShares = IStETH(STETH).getSharesByPooledEth(ethAmount);
-        uint256 stEthAmount = IStETH(STETH).getPooledEthByShares(stEthShares);
-        wstEthAmount = IWstETH(WSTETH).getWstETHByStETH(stEthAmount);
-    }
-
-    /// @notice Preview the expected wstETH output from a stETH amount
-    /// @param stEthAmount Amount of stETH
-    /// @return wstEthAmount Expected wstETH amount (which equals Genesis shares)
-    function previewWstEthFromStEth(uint256 stEthAmount) external view returns (uint256 wstEthAmount) {
-        wstEthAmount = IWstETH(WSTETH).getWstETHByStETH(stEthAmount);
-    }
-
-    /// @notice Preview the expected Genesis shares from an ETH amount
-    /// @dev Genesis uses 1:1 deposits, so wstETH amount equals shares
-    /// @param ethAmount Amount of ETH
-    /// @return sharesOut Expected Genesis shares that will be minted
-    /// @return wstEthAmount Expected wstETH amount
-    function previewGenesisFromEth(uint256 ethAmount) external view returns (uint256 sharesOut, uint256 wstEthAmount) {
-        wstEthAmount = this.previewWstEthFromEth(ethAmount);
-        sharesOut = wstEthAmount; // 1:1 mapping
-    }
-
-    /// @notice Preview the expected Genesis shares from a stETH amount
-    /// @dev Genesis uses 1:1 deposits, so wstETH amount equals shares
-    /// @param stEthAmount Amount of stETH
-    /// @return sharesOut Expected Genesis shares that will be minted
-    /// @return wstEthAmount Expected wstETH amount
-    function previewGenesisFromStEth(uint256 stEthAmount)
+    /// @notice Preview the expected wrapped collateral output from a base asset amount
+    /// @param baseAssetAmount Amount of base asset
+    /// @return wrappedCollateralAmount Expected wrapped collateral amount (which equals Genesis shares)
+    function previewWrappedCollateralFromBase(uint256 baseAssetAmount)
         external
         view
-        returns (uint256 sharesOut, uint256 wstEthAmount)
+        returns (uint256 wrappedCollateralAmount)
     {
-        wstEthAmount = this.previewWstEthFromStEth(stEthAmount);
-        sharesOut = wstEthAmount; // 1:1 mapping
+        _requireSupportedAsset(BASE_ASSET);
+        uint256 collateralShares = IStETH(COLLATERAL_ASSET).getSharesByPooledEth(baseAssetAmount);
+        uint256 collateralAmount = IStETH(COLLATERAL_ASSET).getPooledEthByShares(collateralShares);
+        wrappedCollateralAmount = IWstETH(WRAPPED_COLLATERAL_ASSET).getWstETHByStETH(collateralAmount);
+    }
+
+    /// @notice Preview the expected wrapped collateral output from a collateral amount
+    /// @param collateralAmount Amount of collateral
+    /// @return wrappedCollateralAmount Expected wrapped collateral amount (which equals Genesis shares)
+    function previewWrappedCollateralFromCollateral(uint256 collateralAmount)
+        external
+        view
+        returns (uint256 wrappedCollateralAmount)
+    {
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        wrappedCollateralAmount = IWstETH(WRAPPED_COLLATERAL_ASSET).getWstETHByStETH(collateralAmount);
+    }
+
+    /// @notice Preview the expected Genesis shares from a base asset amount
+    /// @dev Genesis uses 1:1 deposits, so wrapped collateral amount equals shares
+    /// @param baseAssetAmount Amount of base asset
+    /// @return sharesOut Expected Genesis shares that will be minted
+    /// @return wrappedCollateralAmount Expected wrapped collateral amount
+    function previewSharesFromBase(uint256 baseAssetAmount)
+        external
+        view
+        returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
+    {
+        wrappedCollateralAmount = this.previewWrappedCollateralFromBase(baseAssetAmount);
+        sharesOut = wrappedCollateralAmount; // 1:1 mapping
+    }
+
+    /// @notice Preview the expected Genesis shares from a collateral amount
+    /// @dev Genesis uses 1:1 deposits, so wrapped collateral amount equals shares
+    /// @param collateralAmount Amount of collateral
+    /// @return sharesOut Expected Genesis shares that will be minted
+    /// @return wrappedCollateralAmount Expected wrapped collateral amount
+    function previewSharesFromCollateral(uint256 collateralAmount)
+        external
+        view
+        returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
+    {
+        wrappedCollateralAmount = this.previewWrappedCollateralFromCollateral(collateralAmount);
+        sharesOut = wrappedCollateralAmount; // 1:1 mapping
     }
 
     /// @notice Human-readable zap name based on the pegged token
@@ -379,15 +421,14 @@ contract GenesisETHZap_v4 is
         referral = newReferral;
     }
 
-    /// @notice Rescue stuck ETH
-    // forge-lint: disable-next-line(mixed-case-function)
-    function rescueETH() external onlyOwner {
+    /// @notice Rescue stuck base asset
+    function rescueNativeAsset() external onlyOwner {
         payable(owner()).transfer(address(this).balance);
     }
 
-    /// @notice Rescue any ERC20 (except stETH/wstETH/Genesis which should never be stuck)
+    /// @notice Rescue any ERC20 (except collateral/wrapped collateral/Genesis which should never be stuck)
     function rescueToken(address token) external onlyOwner {
-        if (token == STETH || token == WSTETH || token == GENESIS) {
+        if (token == COLLATERAL_ASSET || token == WRAPPED_COLLATERAL_ASSET || token == GENESIS) {
             revert IZapErrors.CannotRescueProtectedToken(token);
         }
         IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
