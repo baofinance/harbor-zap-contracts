@@ -7,11 +7,11 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "src/utils/upgradeable/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {
     ReentrancyGuardTransientUpgradeable
-} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
+} from "src/utils/upgradeable/ReentrancyGuardTransientUpgradeable.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 import {IFxUSDDiamondV2} from "src/interfaces/IFxUSD.sol";
