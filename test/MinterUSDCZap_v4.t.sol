@@ -7,7 +7,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {MinterUSDCZap_v3} from "src/zap/upgradeable/MinterUSDCZap_v3.sol";
+import {MinterUSDCZap_v4} from "src/zap/upgradeable/MinterUSDCZap_v4.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
@@ -15,10 +15,10 @@ import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "test/mock/MockERC20.sol";
 import {MockStabilityPool} from "test/mock/MockStabilityPool.sol";
 
-contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
+contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
     bytes32 private constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
-    MinterUSDCZap_v3 zap;
+    MinterUSDCZap_v4 zap;
     address zapImpl;
     address zapProxy;
     address user1;
@@ -58,12 +58,12 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
-        zapImpl = address(new MinterUSDCZap_v3(minter));
+        zapImpl = address(new MinterUSDCZap_v4(minter));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(MinterUSDCZap_v3.initialize, (address(this), zapOwner))
+            zapImpl, abi.encodeCall(MinterUSDCZap_v4.initialize, (address(this), zapOwner))
         );
-        zap = MinterUSDCZap_v3(payable(zapProxy));
-        vm.label(address(zap), "MinterUSDCZapV3");
+        zap = MinterUSDCZap_v4(payable(zapProxy));
+        vm.label(address(zap), "MinterUSDCZapV4");
 
         // Complete ownership transfer from deployer to zapOwner
         zap.transferOwnership(zapOwner);
@@ -377,7 +377,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
 
     function test_Upgrade() public {
         // Deploy new implementation
-        address newImpl = address(new MinterUSDCZap_v3(minter));
+        address newImpl = address(new MinterUSDCZap_v4(minter));
 
         // Upgrade proxy
         vm.prank(zapOwner);
@@ -397,7 +397,7 @@ contract MinterUSDCZapV3ForkTest is TestMinterSetUp {
     }
 
     function test_Upgrade_OnlyOwner() public {
-        address newImpl = address(new MinterUSDCZap_v3(minter));
+        address newImpl = address(new MinterUSDCZap_v4(minter));
 
         vm.prank(user1);
         vm.expectRevert();

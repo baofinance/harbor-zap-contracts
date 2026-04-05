@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {GenesisUSDCZap_v4} from "src/zap/upgradeable/GenesisUSDCZap_v4.sol";
+import {GenesisUSDCZap_v5} from "src/zap/upgradeable/GenesisUSDCZap_v5.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {Genesis_v1} from "src/minter/Genesis_v1.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
@@ -15,8 +15,8 @@ import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "test/mock/MockERC20.sol";
 
-contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
-    GenesisUSDCZap_v4 zap;
+contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
+    GenesisUSDCZap_v5 zap;
     address zapImpl;
     address zapProxy;
     address genesis;
@@ -60,12 +60,12 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
 
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
-        zapImpl = address(new GenesisUSDCZap_v4(genesis));
+        zapImpl = address(new GenesisUSDCZap_v5(genesis));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(GenesisUSDCZap_v4.initialize, (address(this), zapOwner))
+            zapImpl, abi.encodeCall(GenesisUSDCZap_v5.initialize, (address(this), zapOwner))
         );
-        zap = GenesisUSDCZap_v4(payable(zapProxy));
-        vm.label(address(zap), "GenesisUSDCZapV4");
+        zap = GenesisUSDCZap_v5(payable(zapProxy));
+        vm.label(address(zap), "GenesisUSDCZapV5");
 
         // Complete ownership transfer from deployer to zapOwner
         zap.transferOwnership(zapOwner);
@@ -149,7 +149,7 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
 
     function test_Upgrade() public {
         // Deploy new implementation
-        address newImpl = address(new GenesisUSDCZap_v4(genesis));
+        address newImpl = address(new GenesisUSDCZap_v5(genesis));
 
         // Upgrade proxy
         vm.prank(zapOwner);
@@ -169,7 +169,7 @@ contract GenesisUSDCZapV4ForkTest is TestMinterSetUp {
     }
 
     function test_Upgrade_OnlyOwner() public {
-        address newImpl = address(new GenesisUSDCZap_v4(genesis));
+        address newImpl = address(new GenesisUSDCZap_v5(genesis));
 
         vm.prank(user1);
         vm.expectRevert();

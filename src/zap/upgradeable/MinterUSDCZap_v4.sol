@@ -9,17 +9,17 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "src/utils/upgradeable/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {
-    ReentrancyGuardTransientUpgradeable
-} from "src/utils/upgradeable/ReentrancyGuardTransientUpgradeable.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 import {IFxUSDDiamondV2} from "src/interfaces/IFxUSD.sol";
 import {IStabilityPool} from "src/interfaces/IStabilityPool.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
+import {IMinterZapV4BaseErc20} from "src/interfaces/IMinterZapV4BaseErc20.sol";
+import {IMinterZapV4Common} from "src/interfaces/IMinterZapV4Common.sol";
 import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
 
-/// @title MinterUSDCZapV3
+/// @title MinterUSDCZapV4
 /// @notice One-click zapper for minting pegged or leveraged tokens with base asset or collateral via wrapped collateral
 /// @dev Enables users to mint pegged or leveraged tokens in a single transaction
 /// @dev Flow: base asset/collateral → wrapped collateral → Minter mint
@@ -27,12 +27,14 @@ import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
 /// @author Harbor Yield Protocol
 /// @custom:oz-upgrades
 // solhint-disable-next-line contract-name-camelcase
-contract MinterUSDCZap_v3 is
+contract MinterUSDCZap_v4 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
-    ReentrancyGuardTransientUpgradeable,
-    BaoOwnable
+    ReentrancyGuardTransient,
+    BaoOwnable,
+    IMinterZapV4Common,
+    IMinterZapV4BaseErc20
 {
     using SafeERC20 for IERC20;
 
@@ -92,7 +94,7 @@ contract MinterUSDCZap_v3 is
     /// @param baseAssetAmount Amount of base asset deposited
     /// @param wrappedCollateralAmount Amount of wrapped collateral received
     /// @param leveragedOut Amount of leveraged tokens minted
-    event BaseAssetZappedToLeverage(
+    event BaseAssetZappedToLeveraged(
         address indexed user,
         address indexed minter,
         address indexed receiver,
@@ -206,7 +208,7 @@ contract MinterUSDCZap_v3 is
         // Verify that wrapped collateral matches the Minter wrapped collateral token
         address expectedCollateral = IMinter(minter_).WRAPPED_COLLATERAL_TOKEN();
         if (WRAPPED_COLLATERAL_ASSET != expectedCollateral) {
-            revert IZapErrors.CollateralMismatch(expectedCollateral, WRAPPED_COLLATERAL_ASSET);
+            revert IZapErrors.WrappedCollateralMismatch(expectedCollateral, WRAPPED_COLLATERAL_ASSET);
         }
 
         MINTER = minter_;
@@ -221,7 +223,6 @@ contract MinterUSDCZap_v3 is
         _initializeOwner(deployerOwner, pendingOwner);
         __UUPSUpgradeable_init();
         __Context_init();
-        __ReentrancyGuardTransient_init();
     }
 
     /// @notice The check that allows this contract to be upgraded
@@ -282,7 +283,7 @@ contract MinterUSDCZap_v3 is
         (wrappedCollateralAmount, leveragedOut) =
             _zapToLeveraged(BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver, minLeveragedOut);
 
-        emit BaseAssetZappedToLeverage(
+        emit BaseAssetZappedToLeveraged(
             _msgSender(), MINTER, receiver, baseAssetAmount, wrappedCollateralAmount, leveragedOut
         );
     }
@@ -522,7 +523,7 @@ contract MinterUSDCZap_v3 is
             BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver, minLeveragedOut
         );
 
-        emit BaseAssetZappedToLeverage(
+        emit BaseAssetZappedToLeveraged(
             _msgSender(), MINTER, receiver, baseAssetAmount, wrappedCollateralAmount, leveragedOut
         );
     }
@@ -817,7 +818,9 @@ contract MinterUSDCZap_v3 is
             IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
         wrappedCollateralAmount = wrappedCollateralAfter - wrappedCollateralBefore;
         if (wrappedCollateralAmount == 0) revert IZapErrors.NoWrappedCollateralReceived();
-        if (wrappedCollateralAmount < minWrappedCollateralOut) revert IZapErrors.SlippageExceeded();
+        if (wrappedCollateralAmount < minWrappedCollateralOut) {
+            revert IZapErrors.SlippageTooHighWrappedCollateral(wrappedCollateralAmount, minWrappedCollateralOut);
+        }
     }
 
     /// @notice Zap a token into pegged tokens and reset allowances
@@ -898,7 +901,9 @@ contract MinterUSDCZap_v3 is
             );
             wrappedCollateralAmount = amountIn;
             if (wrappedCollateralAmount < minWrappedCollateralOut) {
-                revert IZapErrors.SlippageExceeded();
+                revert IZapErrors.SlippageTooHighWrappedCollateral(
+                    wrappedCollateralAmount, minWrappedCollateralOut
+                );
             }
         } else {
             wrappedCollateralAmount =

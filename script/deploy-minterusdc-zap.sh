@@ -60,8 +60,17 @@ if [[ -z "${MAINNET_RPC_URL:-}" ]]; then
   exit 1
 fi
 
-if [[ -z "${PRIVATE_KEY:-}" ]]; then
-  echo "❌ ERROR: PRIVATE_KEY is not set"
+# Sign txs with a Foundry keystore account (see: cast wallet import --help) or a raw private key.
+declare -a SIGNER_FLAGS
+if [[ -n "${DEPLOYER_ACCOUNT:-}" ]]; then
+  SIGNER_FLAGS=(--account "$DEPLOYER_ACCOUNT")
+  if [[ -n "${DEPLOYER_ACCOUNT_PASSWORD:-}" ]]; then
+    SIGNER_FLAGS+=(--password "$DEPLOYER_ACCOUNT_PASSWORD")
+  fi
+elif [[ -n "${PRIVATE_KEY:-}" ]]; then
+  SIGNER_FLAGS=(--private-key "$PRIVATE_KEY")
+else
+  echo "❌ ERROR: Set DEPLOYER_ACCOUNT (keystore name, e.g. deployer) or PRIVATE_KEY"
   exit 1
 fi
 
@@ -96,6 +105,11 @@ if [[ "$CHAIN_ID" != "0x1" ]] && [[ "$CHAIN_ID" != "1" ]]; then
   echo "   Press Ctrl+C to cancel, or wait 10 seconds to continue..."
   sleep 10
 fi
+if [[ -n "${DEPLOYER_ACCOUNT:-}" ]]; then
+  echo "Signer: Foundry keystore account \"$DEPLOYER_ACCOUNT\""
+else
+  echo "Signer: PRIVATE_KEY"
+fi
 echo ""
 
 DEPLOYMENT_DATE=$(date -u +%Y-%m-%d)
@@ -117,7 +131,7 @@ deploy_contract() {
   if [[ "$VERIFY" == "true" ]]; then
     deploy_out=$("$FORGE" create "$contract_path" \
       --rpc-url "$MAINNET_RPC_URL" \
-      --private-key "$PRIVATE_KEY" \
+      "${SIGNER_FLAGS[@]}" \
       --broadcast \
       --verify \
       --etherscan-api-key "$ETHERSCAN_API_KEY" \
@@ -125,7 +139,7 @@ deploy_contract() {
   else
     deploy_out=$("$FORGE" create "$contract_path" \
       --rpc-url "$MAINNET_RPC_URL" \
-      --private-key "$PRIVATE_KEY" \
+      "${SIGNER_FLAGS[@]}" \
       --broadcast \
       --constructor-args "${constructor_args[@]}" 2>&1)
   fi
@@ -183,10 +197,10 @@ verify_contract() {
   fi
 }
 
-echo "=== Deploying MinterUSDCZap_v3 (UUPS) ==="
+echo "=== Deploying MinterUSDCZap_v4 (UUPS) ==="
 echo ""
 
-IMPLEMENTATION_PATH="src/zap/upgradeable/MinterUSDCZap_v3.sol:MinterUSDCZap_v3"
+IMPLEMENTATION_PATH="src/zap/upgradeable/MinterUSDCZap_v4.sol:MinterUSDCZap_v4"
 PROXY_PATH="lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy"
 
 echo "Deploying implementation..."
@@ -201,7 +215,11 @@ fi
 
 echo "✅ Implementation deployed: $impl_address"
 
-DEPLOYER=$("$CAST" wallet address --private-key "$PRIVATE_KEY")
+if [[ -n "${DEPLOYER_ACCOUNT:-}" ]]; then
+  DEPLOYER=$("$CAST" wallet address --account "$DEPLOYER_ACCOUNT")
+else
+  DEPLOYER=$("$CAST" wallet address --private-key "$PRIVATE_KEY")
+fi
 init_data=$("$CAST" calldata "initialize(address,address)" "$DEPLOYER" "$FINAL_OWNER")
 impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$MINTER_USDC")
 
@@ -218,7 +236,7 @@ fi
 echo "✅ Proxy deployed: $proxy_address"
 echo ""
 
-if ! verify_contract "$impl_address" "$IMPLEMENTATION_PATH" "$impl_ctor_args" "MinterUSDCZap_v3 implementation"; then
+if ! verify_contract "$impl_address" "$IMPLEMENTATION_PATH" "$impl_ctor_args" "MinterUSDCZap_v4 implementation"; then
   exit 1
 fi
 proxy_ctor_args=$("$CAST" abi-encode "constructor(address,bytes)" "$impl_address" "$init_data")
@@ -230,14 +248,18 @@ if [[ -z "$MARKET" ]]; then
   echo "❌ ERROR: MARKET is required to load stability pools when MINTER_USDC is not set"
   exit 1
 fi
-mapfile -t stability_pools < <(load_list ".markets[\"$MARKET\"].stabilityPools[]?")
+# Bash 3.2 (macOS default) has no mapfile
+stability_pools=()
+while IFS= read -r pool || [[ -n "$pool" ]]; do
+  [[ -n "$pool" ]] && stability_pools+=("$pool")
+done < <(load_list ".markets[\"$MARKET\"].stabilityPools[]?")
 if (( ${#stability_pools[@]} > 0 )); then
   echo "Setting allowed stability pools..."
   for pool in "${stability_pools[@]}"; do
     if [[ -n "$pool" ]]; then
       "$CAST" send "$proxy_address" "setStabilityPoolAllowed(address,bool)" "$pool" "true" \
         --rpc-url "$MAINNET_RPC_URL" \
-        --private-key "$PRIVATE_KEY"
+        "${SIGNER_FLAGS[@]}"
     fi
   done
 fi
@@ -256,7 +278,7 @@ cat > "$DEPLOYMENT_FILE" <<EOF
   "chainId": 1,
   "chainName": "Mainnet",
 ${NOTE_JSON}  "deploymentTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "contract": "MinterUSDCZap_v3",
+  "contract": "MinterUSDCZap_v4",
   "implementation": "$impl_address",
   "proxy": "$proxy_address",
   "constructorArgs": {
@@ -278,7 +300,7 @@ if [[ "$(echo "$FINAL_OWNER" | tr '[:upper:]' '[:lower:]')" != "$(echo "$DEPLOYE
   echo "Transferring ownership to $FINAL_OWNER..."
   "$CAST" send "$proxy_address" "transferOwnership(address)" "$FINAL_OWNER" \
     --rpc-url "$MAINNET_RPC_URL" \
-    --private-key "$PRIVATE_KEY"
+    "${SIGNER_FLAGS[@]}"
 fi
 
 echo "📄 Deployment file saved: $DEPLOYMENT_FILE"

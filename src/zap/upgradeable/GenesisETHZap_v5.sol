@@ -8,30 +8,32 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "src/utils/upgradeable/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {
-    ReentrancyGuardTransientUpgradeable
-} from "src/utils/upgradeable/ReentrancyGuardTransientUpgradeable.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
 import {ISTETHV2, IStETH} from "src/interfaces/IStETH.sol";
 import {IWstETHWrapV2, IWstETH} from "src/interfaces/IWstETH.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
+import {IGenesisZapV5BaseNative} from "src/interfaces/IGenesisZapV5BaseNative.sol";
+import {IGenesisZapV5Common} from "src/interfaces/IGenesisZapV5Common.sol";
 import {WstETHConstants} from "src/constants/ethereum/WstETHConstants.sol";
 
-/// @title GenesisETHZap V4
+/// @title GenesisETHZap V5
 /// @notice One-click zapper: base asset or collateral → wrapped collateral → Genesis vault
 /// @dev Uses correct share-based conversion (critical for 2025+ collateral ratio)
 /// @dev Includes slippage protection, accurate previews, and real-time value tracking
 /// @dev Uses UUPS proxy, upgradeable
-/// @author Harbor Finance
+/// @author Harbor Yield Protocol
 /// @custom:oz-upgrades
 // solhint-disable-next-line contract-name-camelcase
-contract GenesisETHZap_v4 is
+contract GenesisETHZap_v5 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
-    ReentrancyGuardTransientUpgradeable,
-    BaoOwnable
+    ReentrancyGuardTransient,
+    BaoOwnable,
+    IGenesisZapV5Common,
+    IGenesisZapV5BaseNative
 {
     using SafeERC20 for IERC20;
 
@@ -86,7 +88,7 @@ contract GenesisETHZap_v4 is
         // Verify that wrapped collateral matches the Genesis wrapped collateral token
         address expectedCollateral = IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN();
         if (WRAPPED_COLLATERAL_ASSET != expectedCollateral) {
-            revert IZapErrors.CollateralMismatch(expectedCollateral, WRAPPED_COLLATERAL_ASSET);
+            revert IZapErrors.WrappedCollateralMismatch(expectedCollateral, WRAPPED_COLLATERAL_ASSET);
         }
 
         GENESIS = genesis_;
@@ -103,7 +105,6 @@ contract GenesisETHZap_v4 is
         _initializeOwner(deployerOwner, pendingOwner);
         __UUPSUpgradeable_init();
         __Context_init();
-        __ReentrancyGuardTransient_init();
 
         address initialReferral = referral_ == address(0) ? DEFAULT_REFERRAL : referral_;
         referral = initialReferral;
@@ -115,7 +116,7 @@ contract GenesisETHZap_v4 is
     /// @dev Only owners can upgrade this contract
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
         emit Upgraded(newImplementation);
-    }
+    } // solhint-disable-line no-empty-blocks
 
     // =================================================================
     // ====================== USER FACING ZAPS =========================
@@ -165,10 +166,10 @@ contract GenesisETHZap_v4 is
 
     /// @notice Zap existing collateral → wrapped collateral → Genesis
     /// @param collateralAmount Amount of collateral to zap
-    /// @param receiver Address receiving Genesis vault shares
     /// @param minWrappedCollateralOut Minimum acceptable wrapped collateral out
+    /// @param receiver Address receiving Genesis vault shares
     /// @return sharesOut Exact amount of Genesis shares minted
-    function zapCollateral(uint256 collateralAmount, address receiver, uint256 minWrappedCollateralOut)
+    function zapCollateral(uint256 collateralAmount, uint256 minWrappedCollateralOut, address receiver)
         external
         nonReentrant
         returns (uint256 sharesOut)
@@ -195,8 +196,8 @@ contract GenesisETHZap_v4 is
     /// @notice Zap collateral → wrapped collateral → Genesis using permit (single transaction, no approval needed)
     /// @dev Flow: Permit collateral → collateral → wrapped collateral → Genesis deposit
     /// @param collateralAmount Amount of collateral to zap
-    /// @param receiver Address that will receive the Genesis shares
     /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
+    /// @param receiver Address that will receive the Genesis shares
     /// @param deadline Permit signature deadline
     /// @param v Permit signature v component
     /// @param r Permit signature r component
@@ -204,8 +205,8 @@ contract GenesisETHZap_v4 is
     /// @return sharesOut Amount of Genesis shares minted
     function zapCollateralWithPermit(
         uint256 collateralAmount,
-        address receiver,
         uint256 minWrappedCollateralOut,
+        address receiver,
         uint256 deadline,
         uint8 v,
         bytes32 r,
@@ -265,6 +266,7 @@ contract GenesisETHZap_v4 is
         wrappedCollateralReceived = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this))
             - wrappedCollateralBefore;
         if (wrappedCollateralReceived == 0) revert IZapErrors.NoWrappedCollateralReceived();
+        IERC20(COLLATERAL_ASSET).forceApprove(WRAPPED_COLLATERAL_ASSET, 0);
     }
 
     /// @notice Helper to handle collateral permit
@@ -278,15 +280,15 @@ contract GenesisETHZap_v4 is
     }
 
     /// @notice Deposit wrapped collateral into Genesis and validate shares
+    /// @dev Confirms mint via receiver share balance delta; reverts with `MintFailed` if mismatch (Minter-style).
     /// @param amount Amount of wrapped collateral to deposit
     /// @param receiver Address receiving Genesis shares
     function _depositToGenesis(uint256 amount, address receiver) internal {
         if (amount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         uint256 balance = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
         if (balance < amount) revert IZapErrors.InsufficientBalance(balance, amount);
-
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
 
@@ -302,7 +304,9 @@ contract GenesisETHZap_v4 is
 
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
-        if (sharesReceived != amount) revert IZapErrors.MintMismatchExpected(amount, sharesReceived);
+        if (sharesReceived != amount) {
+            revert IZapErrors.MintFailed();
+        }
     }
 
     /// @notice Returns real-time redeemable values for any wrapped collateral amount
@@ -403,6 +407,16 @@ contract GenesisETHZap_v4 is
     {
         wrappedCollateralAmount = this.previewWrappedCollateralFromCollateral(collateralAmount);
         sharesOut = wrappedCollateralAmount; // 1:1 mapping
+    }
+
+    /// @notice Preview the expected Genesis shares from a wrapped collateral amount
+    /// @dev Genesis uses 1:1 deposits, so wrapped collateral amount equals shares
+    function previewSharesFromWrappedCollateral(uint256 wrappedCollateralAmount)
+        external
+        pure
+        returns (uint256 sharesOut)
+    {
+        sharesOut = wrappedCollateralAmount;
     }
 
     /// @notice Human-readable zap name based on the pegged token

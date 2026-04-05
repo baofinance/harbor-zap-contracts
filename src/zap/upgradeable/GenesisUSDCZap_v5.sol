@@ -8,16 +8,16 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "src/utils/upgradeable/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {
-    ReentrancyGuardTransientUpgradeable
-} from "src/utils/upgradeable/ReentrancyGuardTransientUpgradeable.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
 import {IFxUSDDiamondV2} from "src/interfaces/IFxUSD.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
+import {IGenesisZapV5BaseErc20} from "src/interfaces/IGenesisZapV5BaseErc20.sol";
+import {IGenesisZapV5Common} from "src/interfaces/IGenesisZapV5Common.sol";
 import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
 
-/// @title GenesisUSDCZapV4 - Production Ready
+/// @title GenesisUSDCZapV5 - Production Ready
 /// @notice One-click zapper for depositing base asset or collateral into Genesis via wrapped collateral
 /// @dev Enables users to deposit base asset or collateral in a single transaction
 /// @dev Flow: base asset/collateral → wrapped collateral → Genesis deposit
@@ -25,12 +25,14 @@ import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
 /// @author Harbor Yield Protocol
 /// @custom:oz-upgrades
 // solhint-disable-next-line contract-name-camelcase
-contract GenesisUSDCZap_v4 is
+contract GenesisUSDCZap_v5 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
-    ReentrancyGuardTransientUpgradeable,
-    BaoOwnable
+    ReentrancyGuardTransient,
+    BaoOwnable,
+    IGenesisZapV5Common,
+    IGenesisZapV5BaseErc20
 {
     using SafeERC20 for IERC20;
 
@@ -102,7 +104,7 @@ contract GenesisUSDCZap_v4 is
 
         address expected = IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN();
         if (expected != WRAPPED_COLLATERAL_ASSET) {
-            revert IZapErrors.CollateralMismatch(expected, WRAPPED_COLLATERAL_ASSET);
+            revert IZapErrors.WrappedCollateralMismatch(expected, WRAPPED_COLLATERAL_ASSET);
         }
 
         GENESIS = genesis_;
@@ -116,7 +118,6 @@ contract GenesisUSDCZap_v4 is
         _initializeOwner(deployerOwner, pendingOwner);
         __UUPSUpgradeable_init();
         __Context_init();
-        __ReentrancyGuardTransient_init();
     }
 
     /// @notice The check that allows this contract to be upgraded
@@ -194,10 +195,7 @@ contract GenesisUSDCZap_v4 is
         bytes32 s
     ) external nonReentrant returns (uint256 sharesOut) {
         _requireSupportedAsset(BASE_ASSET);
-        // Use permit to approve this contract
-        IERC20Permit(BASE_ASSET).permit(
-            _msgSender(), address(this), baseAssetAmount, deadline, v, r, s
-        );
+        _permitBaseAsset(baseAssetAmount, deadline, v, r, s);
 
         uint256 wrappedCollateralReceived =
             _zapToGenesis(BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver);
@@ -227,10 +225,7 @@ contract GenesisUSDCZap_v4 is
         bytes32 s
     ) external nonReentrant returns (uint256 sharesOut) {
         _requireSupportedAsset(COLLATERAL_ASSET);
-        // Use permit to approve this contract
-        IERC20Permit(COLLATERAL_ASSET).permit(
-            _msgSender(), address(this), collateralAmount, deadline, v, r, s
-        );
+        _permitCollateral(collateralAmount, deadline, v, r, s);
 
         uint256 wrappedCollateralReceived =
             _zapToGenesis(COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver);
@@ -248,6 +243,20 @@ contract GenesisUSDCZap_v4 is
         if (block.chainid != 1 && asset == address(0)) {
             revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
         }
+    }
+
+    function _permitBaseAsset(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
+        IERC20Permit(BASE_ASSET).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+    }
+
+    /// @notice Helper to handle collateral permit
+    /// @param amount Amount to permit
+    /// @param deadline Permit deadline
+    /// @param v Permit signature v
+    /// @param r Permit signature r
+    /// @param s Permit signature s
+    function _permitCollateral(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
+        IERC20Permit(COLLATERAL_ASSET).permit(_msgSender(), address(this), amount, deadline, v, r, s);
     }
 
     /// @notice Convert an input token to wrapped collateral via the diamond
@@ -277,7 +286,9 @@ contract GenesisUSDCZap_v4 is
             IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this)) - balanceBefore;
 
         if (wrappedCollateralReceived == 0) revert IZapErrors.NoWrappedCollateralReceived();
-        if (wrappedCollateralReceived < minOut) revert IZapErrors.SlippageExceeded();
+        if (wrappedCollateralReceived < minOut) {
+            revert IZapErrors.SlippageTooHighWrappedCollateral(wrappedCollateralReceived, minOut);
+        }
     }
 
     /// @notice Pull token, convert to wrapped collateral, and deposit into Genesis
@@ -297,6 +308,9 @@ contract GenesisUSDCZap_v4 is
     {
         if (amountIn == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+        if (tokenIn != BASE_ASSET && tokenIn != COLLATERAL_ASSET) {
+            revert IZapErrors.ZapTokenInNotSupported(tokenIn);
+        }
 
         IERC20(tokenIn).safeTransferFrom(_msgSender(), address(this), amountIn);
 
@@ -310,9 +324,13 @@ contract GenesisUSDCZap_v4 is
     }
 
     /// @notice Deposit wrapped collateral into Genesis and validate shares
+    /// @dev Confirms mint via receiver share balance delta; reverts with `MintFailed` if mismatch (Minter-style).
     /// @param amount Amount of wrapped collateral to deposit
     /// @param receiver Address receiving Genesis shares
     function _depositToGenesis(uint256 amount, address receiver) internal {
+        if (amount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+
         uint256 balance = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
         if (balance < amount) {
             revert IZapErrors.InsufficientBalance(balance, amount);
@@ -330,7 +348,7 @@ contract GenesisUSDCZap_v4 is
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
         if (sharesReceived != amount) {
-            revert IZapErrors.MintMismatchExpected(amount, sharesReceived);
+            revert IZapErrors.MintFailed();
         }
     }
 

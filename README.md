@@ -29,13 +29,13 @@ This repository contains zap contracts that enable users to deposit collateral i
 
 ### ETH/wstETH Zap Contracts
 
-- `GenesisETHZap_v4`: Zap ETH or stETH into Genesis contracts (upgradeable)
-- `MinterETHZap_v3`: Zap ETH or stETH to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
+- `GenesisETHZap_v5`: Zap ETH or stETH into Genesis contracts (upgradeable)
+- `MinterETHZap_v4`: Zap ETH or stETH to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
 
 ### USDC/fxSAVE Zap Contracts
 
-- `GenesisUSDCZap_v4`: Zap USDC or fxUSD into Genesis contracts (upgradeable)
-- `MinterUSDCZap_v3`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
+- `GenesisUSDCZap_v5`: Zap USDC or fxUSD into Genesis contracts (upgradeable)
+- `MinterUSDCZap_v4`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
 
 ## Prerequisites
 
@@ -146,12 +146,12 @@ cast send <ZAP_ADDRESS> "setReferral(address)" <NEW_REFERRAL> \
 ### Mainnet (when deployed)
 
 ETH/wstETH Zaps:
-- GenesisETHZap_v4: TBD (upgradeable)
-- MinterETHZap_v3: TBD (upgradeable)
+- GenesisETHZap_v5: TBD (upgradeable)
+- MinterETHZap_v4: TBD (upgradeable)
 
 USDC/fxSAVE Zaps:
-- GenesisUSDCZap_v4: TBD (upgradeable)
-- MinterUSDCZap_v3: TBD (upgradeable)
+- GenesisUSDCZap_v5: TBD (upgradeable)
+- MinterUSDCZap_v4: TBD (upgradeable)
 
 ## Security Considerations
 
@@ -185,7 +185,7 @@ harbor-zap-contracts/
 
 ## Use Cases
 
-### GenesisETHZap_v4: ETH and stETH Deposits
+### GenesisETHZap_v5: ETH and stETH Deposits
 
 #### Bob deposits 10 ETH using `zapBaseAsset`
 
@@ -194,7 +194,7 @@ harbor-zap-contracts/
 // First, use the preview function to calculate minWstEthOut
 // Apply a small slippage buffer (e.g., 0.5-1%) to protect against MEV/front-running
 uint256 ethAmount = 10 ether;
-uint256 expectedWstEth = GenesisETHZap_v4(genesisZapAddress).previewWrappedCollateralFromBase(ethAmount);
+uint256 expectedWstEth = GenesisETHZap_v5(genesisZapAddress).previewWrappedCollateralFromBase(ethAmount);
 uint256 minWrappedCollateralOut = (expectedWstEth * 99) / 100; // 1% slippage tolerance
 ```
 
@@ -206,7 +206,7 @@ uint256 minWrappedCollateralOut = (expectedWstEth * 99) / 100; // 1% slippage to
 // 3. Deposit the 8.1 wstETH into Genesis for Bob
 // Bob receives Genesis shares equal to the wstETH amount (1:1 ratio)
 
-GenesisETHZap_v4(genesisZapAddress).zapBaseAsset{value: 10 ether}(
+GenesisETHZap_v5(genesisZapAddress).zapBaseAsset{value: 10 ether}(
     bobAddress,                 // Receiver address (Bob)
     minWrappedCollateralOut,    // Minimum wrapped collateral expected (with slippage buffer)
     0                           // Optional base asset value floor (set 0 for no floor)
@@ -225,7 +225,7 @@ GenesisETHZap_v4(genesisZapAddress).zapBaseAsset{value: 10 ether}(
 **Step 1: Preview the expected output**
 ```solidity
 uint256 stEthAmount = 5 ether;
-uint256 expectedWstEth = GenesisETHZap_v4(genesisZapAddress).previewWrappedCollateralFromCollateral(stEthAmount);
+uint256 expectedWstEth = GenesisETHZap_v5(genesisZapAddress).previewWrappedCollateralFromCollateral(stEthAmount);
 uint256 minWstEthOut = (expectedWstEth * 995) / 1000; // 0.5% slippage tolerance
 ```
 
@@ -240,10 +240,10 @@ IERC20(STETH).approve(genesisZapAddress, 5 ether);
 // - Convert 5 stETH into ~4.05 wstETH
 // - Deposit the wstETH into Genesis for Alice
 
-GenesisETHZap_v4(genesisZapAddress).zapCollateral(
+GenesisETHZap_v5(genesisZapAddress).zapCollateral(
     5 ether,         // Amount of stETH to zap
-    aliceAddress,    // Receiver address (Alice)
-    minWstEthOut     // Minimum wstETH expected
+    minWstEthOut,    // Minimum wstETH expected
+    aliceAddress     // Receiver address (Alice)
 );
 ```
 
@@ -258,7 +258,7 @@ GenesisETHZap_v4(genesisZapAddress).zapCollateral(
 **Step 1: Preview the expected output**
 ```solidity
 uint256 stEthAmount = 5 ether;
-uint256 expectedWstEth = GenesisETHZap_v4(genesisZapAddress).previewWrappedCollateralFromCollateral(stEthAmount);
+uint256 expectedWstEth = GenesisETHZap_v5(genesisZapAddress).previewWrappedCollateralFromCollateral(stEthAmount);
 uint256 minWstEthOut = (expectedWstEth * 995) / 1000; // 0.5% slippage tolerance
 ```
 
@@ -278,10 +278,10 @@ bytes32 permitHash = _buildPermitHash(
 
 // On-chain: Single transaction combines permit approval + zap execution
 // No separate approve() transaction needed - saves gas!
-GenesisETHZap_v4(genesisZapAddress).zapCollateralWithPermit(
+GenesisETHZap_v5(genesisZapAddress).zapCollateralWithPermit(
     5 ether,         // Amount of stETH to zap
-    aliceAddress,    // Receiver address (Alice)
     minWstEthOut,    // Minimum wstETH expected
+    aliceAddress,    // Receiver address (Alice)
     deadline,        // Permit signature deadline
     v, r, s          // Permit signature components
 );
@@ -298,7 +298,7 @@ GenesisETHZap_v4(genesisZapAddress).zapCollateralWithPermit(
 - **Step 2**: ~4.05 wstETH → 4.05 Genesis shares
 - **Output**: Alice receives 4.05 Genesis shares
 
-### GenesisUSDCZap_v4: USDC and fxUSD Deposits
+### GenesisUSDCZap_v5: USDC and fxUSD Deposits
 
 #### Bob deposits 10,000 USDC using `zapBaseAsset`
 
@@ -326,7 +326,7 @@ IERC20(USDC).approve(genesisZapAddress, 10_000 * 1e6);
 // - Deposit the fxSAVE into Genesis for Bob
 // Bob receives Genesis shares equal to the fxSAVE amount (1:1 ratio)
 
-GenesisUSDCZap_v4(genesisZapAddress).zapBaseAsset(
+GenesisUSDCZap_v5(genesisZapAddress).zapBaseAsset(
     10_000 * 1e6,    // Amount of USDC (6 decimals)
     minWrappedCollateralOut, // Minimum wrapped collateral (fxSAVE) expected
     bobAddress       // Receiver address (Bob)
@@ -365,7 +365,7 @@ bytes32 permitHash = _buildPermitHash(
 
 // On-chain: Single transaction combines permit approval + zap execution
 // No separate approve() transaction needed - saves gas!
-GenesisUSDCZap_v4(genesisZapAddress).zapBaseAssetWithPermit(
+GenesisUSDCZap_v5(genesisZapAddress).zapBaseAssetWithPermit(
     10_000 * 1e6,    // Amount of USDC
     minWrappedCollateralOut, // Minimum wrapped collateral (fxSAVE) expected
     bobAddress,      // Receiver address (Bob)
@@ -410,7 +410,7 @@ IERC20(FXUSD).approve(genesisZapAddress, 10_000 * 1e18);
 // - Convert 10,000 fxUSD → ~9,345.79 fxSAVE via fxUSD Diamond (fxSAVE ≈ 1.07 USDC)
 // - Deposit the fxSAVE into Genesis for Alice
 
-GenesisUSDCZap_v4(genesisZapAddress).zapCollateral(
+GenesisUSDCZap_v5(genesisZapAddress).zapCollateral(
     10_000 * 1e18,   // Amount of fxUSD (18 decimals)
     minWrappedCollateralOut, // Minimum wrapped collateral (fxSAVE) expected
     aliceAddress     // Receiver address (Alice)
@@ -447,7 +447,7 @@ bytes32 permitHash = _buildPermitHash(
 (uint8 v, bytes32 r, bytes32 s) = _signPermit(alicePrivateKey, permitHash);
 
 // On-chain: Single transaction combines permit approval + zap execution
-GenesisUSDCZap_v4(genesisZapAddress).zapCollateralWithPermit(
+GenesisUSDCZap_v5(genesisZapAddress).zapCollateralWithPermit(
     10_000 * 1e18,   // Amount of fxUSD
     minWrappedCollateralOut, // Minimum wrapped collateral (fxSAVE) expected
     aliceAddress,    // Receiver address (Alice)
@@ -467,7 +467,7 @@ GenesisUSDCZap_v4(genesisZapAddress).zapCollateralWithPermit(
 - **Step 2**: ~9,345.79 fxSAVE → 9,345.79 Genesis shares
 - **Output**: Alice receives ~9,345.79 Genesis shares
 
-### MinterETHZap_v3: Mint Pegged and Leveraged Tokens
+### MinterETHZap_v4: Mint Pegged and Leveraged Tokens
 
 #### Bob deposits 10 ETH to mint pegged tokens using `zapBaseAssetToPegged`
 
@@ -481,7 +481,7 @@ GenesisUSDCZap_v4(genesisZapAddress).zapCollateralWithPermit(
 // Apply a small slippage buffer (e.g., 0.5-1%) for minPeggedOut
 
 uint256 minPeggedOut = 8_000 * 1e18; // Minimum pegged tokens expected (adjust based on rates)
-MinterETHZap_v3(minterZapAddress).zapBaseAssetToPegged{value: 10 ether}(
+MinterETHZap_v4(minterZapAddress).zapBaseAssetToPegged{value: 10 ether}(
     bobAddress,      // Receiver address (Bob)
     minPeggedOut     // Minimum pegged tokens expected
 );
@@ -500,7 +500,7 @@ MinterETHZap_v3(minterZapAddress).zapBaseAssetToPegged{value: 10 ether}(
 ```solidity
 // Similar flow but minting leveraged tokens instead
 uint256 minLeveragedOut = 15_000 * 1e18; // Minimum leveraged tokens expected (leverage > 1)
-MinterETHZap_v3(minterZapAddress).zapBaseAssetToLeveraged{value: 10 ether}(
+MinterETHZap_v4(minterZapAddress).zapBaseAssetToLeveraged{value: 10 ether}(
     bobAddress,        // Receiver address (Bob)
     minLeveragedOut    // Minimum leveraged tokens expected
 );
@@ -521,8 +521,9 @@ IERC20(STETH).approve(minterZapAddress, 5 ether);
 
 // 2. Execute the zap
 uint256 minPeggedOut = 4_000 * 1e18; // Minimum pegged tokens expected
-MinterETHZap_v3(minterZapAddress).zapCollateralToPegged(
+MinterETHZap_v4(minterZapAddress).zapCollateralToPegged(
     5 ether,          // Amount of stETH
+    0,                // minWrappedCollateralOut (wstETH slippage floor; 0 to skip)
     aliceAddress,     // Receiver address (Alice)
     minPeggedOut      // Minimum pegged tokens expected
 );
@@ -540,8 +541,9 @@ MinterETHZap_v3(minterZapAddress).zapCollateralToPegged(
 ```solidity
 IERC20(STETH).approve(minterZapAddress, 5 ether);
 uint256 minLeveragedOut = 7_500 * 1e18; // Minimum leveraged tokens expected
-MinterETHZap_v3(minterZapAddress).zapCollateralToLeveraged(
+MinterETHZap_v4(minterZapAddress).zapCollateralToLeveraged(
     5 ether,
+    0, // minWrappedCollateralOut (0 to skip)
     aliceAddress,
     minLeveragedOut
 );
@@ -570,8 +572,9 @@ bytes32 permitHash = _buildPermitHash(
 
 // On-chain: Single transaction combines permit + zap execution
 uint256 minPeggedOut = 4_000 * 1e18;
-MinterETHZap_v3(minterZapAddress).zapCollateralToPeggedWithPermit(
+MinterETHZap_v4(minterZapAddress).zapCollateralToPeggedWithPermit(
     5 ether,
+    0, // minWrappedCollateralOut (0 to skip)
     aliceAddress,
     minPeggedOut,
     deadline,
@@ -595,7 +598,7 @@ uint256 minPeggedOut = 8_000 * 1e18; // Minimum pegged tokens from minting (acco
 // Add only a small slippage buffer (0.1-0.5%) for rounding protection
 uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buffer
 
-MinterETHZap_v3(minterZapAddress).zapBaseAssetToStabilityPool{value: 10 ether}(
+MinterETHZap_v4(minterZapAddress).zapBaseAssetToStabilityPool{value: 10 ether}(
     bobAddress,           // Receiver address (Bob)
     minPeggedOut,         // Minimum pegged tokens expected (accounts for mint fees)
     stabilityPool,        // Stability pool address
@@ -623,8 +626,9 @@ uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buff
 // Off-chain permit signing (similar to above)
 // ...
 
-MinterETHZap_v3(minterZapAddress).zapCollateralToStabilityPoolWithPermit(
+MinterETHZap_v4(minterZapAddress).zapCollateralToStabilityPoolWithPermit(
     5 ether,
+    0, // minWrappedCollateralOut (0 to skip)
     aliceAddress,
     minPeggedOut,         // Minimum pegged tokens expected (accounts for mint fees)
     stabilityPool,
@@ -638,11 +642,11 @@ MinterETHZap_v3(minterZapAddress).zapCollateralToStabilityPoolWithPermit(
 
 ```solidity
 uint256 wstEthAmount = 5 ether;
-uint256 minPeggedOut = MinterETHZap_v3(minterZapAddress).previewStabilityPoolFromWrappedCollateral(wstEthAmount);
+uint256 minPeggedOut = MinterETHZap_v4(minterZapAddress).previewStabilityPoolFromWrappedCollateral(wstEthAmount);
 uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000;
 
 IERC20(WSTETH).approve(minterZapAddress, wstEthAmount);
-MinterETHZap_v3(minterZapAddress).zapWrappedCollateralToStabilityPool(
+MinterETHZap_v4(minterZapAddress).zapWrappedCollateralToStabilityPool(
     wstEthAmount,
     aliceAddress,
     minPeggedOut,
@@ -655,11 +659,11 @@ MinterETHZap_v3(minterZapAddress).zapWrappedCollateralToStabilityPool(
 
 ```solidity
 uint256 wstEthAmount = 5 ether;
-uint256 minPeggedOut = MinterETHZap_v3(minterZapAddress).previewStabilityPoolFromWrappedCollateral(wstEthAmount);
+uint256 minPeggedOut = MinterETHZap_v4(minterZapAddress).previewStabilityPoolFromWrappedCollateral(wstEthAmount);
 uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000;
 
 // Permit signature created off-chain for WSTETH
-MinterETHZap_v3(minterZapAddress).zapWrappedCollateralToStabilityPoolWithPermit(
+MinterETHZap_v4(minterZapAddress).zapWrappedCollateralToStabilityPoolWithPermit(
     wstEthAmount,
     aliceAddress,
     minPeggedOut,
@@ -676,7 +680,7 @@ MinterETHZap_v3(minterZapAddress).zapWrappedCollateralToStabilityPoolWithPermit(
 - **Step 2**: Pegged tokens → Deposited into Stability Pool (no fees on deposit)
 - **Output**: Alice receives Stability Pool deposit (full pegged amount minus mint fees only)
 
-### MinterUSDCZap_v3: Mint Pegged and Leveraged Tokens
+### MinterUSDCZap_v4: Mint Pegged and Leveraged Tokens
 
 #### Bob deposits 10,000 USDC to mint pegged tokens using `zapBaseAssetToPegged`
 
@@ -693,7 +697,7 @@ IERC20(USDC).approve(minterZapAddress, 10_000 * 1e6);
 
 uint256 minWrappedCollateralOut = 9_300 * 1e18; // Minimum wrapped collateral (fxSAVE) expected
 uint256 minPeggedOut = 9_000 * 1e18; // Minimum pegged tokens expected
-MinterUSDCZap_v3(minterZapAddress).zapBaseAssetToPegged(
+MinterUSDCZap_v4(minterZapAddress).zapBaseAssetToPegged(
     10_000 * 1e6,     // Amount of USDC (6 decimals)
     minWrappedCollateralOut, // Minimum wrapped collateral (fxSAVE) expected
     bobAddress,       // Receiver address (Bob)
@@ -725,7 +729,7 @@ bytes32 permitHash = _buildPermitHash(
 // On-chain: Single transaction
 uint256 minWrappedCollateralOut = 9_300 * 1e18;
 uint256 minPeggedOut = 9_000 * 1e18;
-MinterUSDCZap_v3(minterZapAddress).zapBaseAssetToPeggedWithPermit(
+MinterUSDCZap_v4(minterZapAddress).zapBaseAssetToPeggedWithPermit(
     10_000 * 1e6,
     minWrappedCollateralOut,
     bobAddress,
@@ -748,7 +752,7 @@ MinterUSDCZap_v3(minterZapAddress).zapBaseAssetToPeggedWithPermit(
 IERC20(USDC).approve(minterZapAddress, 10_000 * 1e6);
 uint256 minWrappedCollateralOut = 9_300 * 1e18;
 uint256 minLeveragedOut = 18_000 * 1e18; // Minimum leveraged tokens expected (leverage > 1)
-MinterUSDCZap_v3(minterZapAddress).zapBaseAssetToLeveraged(
+MinterUSDCZap_v4(minterZapAddress).zapBaseAssetToLeveraged(
     10_000 * 1e6,
     minWrappedCollateralOut,
     bobAddress,
@@ -769,7 +773,7 @@ MinterUSDCZap_v3(minterZapAddress).zapBaseAssetToLeveraged(
 IERC20(FXUSD).approve(minterZapAddress, 10_000 * 1e18);
 uint256 minWrappedCollateralOut = 9_300 * 1e18;
 uint256 minPeggedOut = 9_000 * 1e18;
-MinterUSDCZap_v3(minterZapAddress).zapCollateralToPegged(
+MinterUSDCZap_v4(minterZapAddress).zapCollateralToPegged(
     10_000 * 1e18,    // Amount of fxUSD (18 decimals)
     minWrappedCollateralOut, // Minimum wrapped collateral (fxSAVE) expected
     aliceAddress,     // Receiver address (Alice)
@@ -790,7 +794,7 @@ MinterUSDCZap_v3(minterZapAddress).zapCollateralToPegged(
 // Off-chain permit signing
 // ...
 
-MinterUSDCZap_v3(minterZapAddress).zapCollateralToPeggedWithPermit(
+MinterUSDCZap_v4(minterZapAddress).zapCollateralToPeggedWithPermit(
     10_000 * 1e18,
     minWrappedCollateralOut,
     aliceAddress,
@@ -820,7 +824,7 @@ uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buff
 // Off-chain permit signing
 // ...
 
-MinterUSDCZap_v3(minterZapAddress).zapBaseAssetToStabilityPoolWithPermit(
+MinterUSDCZap_v4(minterZapAddress).zapBaseAssetToStabilityPoolWithPermit(
     10_000 * 1e6,
     minWrappedCollateralOut,
     bobAddress,
@@ -853,7 +857,7 @@ uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buff
 // Off-chain permit signing
 // ...
 
-MinterUSDCZap_v3(minterZapAddress).zapCollateralToStabilityPoolWithPermit(
+MinterUSDCZap_v4(minterZapAddress).zapCollateralToStabilityPoolWithPermit(
     10_000 * 1e18,
     minWrappedCollateralOut,
     aliceAddress,
@@ -870,11 +874,11 @@ MinterUSDCZap_v3(minterZapAddress).zapCollateralToStabilityPoolWithPermit(
 ```solidity
 uint256 fxSaveAmount = 10_000 * 1e18;
 uint256 minPeggedOut =
-    MinterUSDCZap_v3(minterZapAddress).previewStabilityPoolFromWrappedCollateral(fxSaveAmount);
+    MinterUSDCZap_v4(minterZapAddress).previewStabilityPoolFromWrappedCollateral(fxSaveAmount);
 uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000;
 
 IERC20(FXSAVE).approve(minterZapAddress, fxSaveAmount);
-MinterUSDCZap_v3(minterZapAddress).zapWrappedCollateralToStabilityPool(
+MinterUSDCZap_v4(minterZapAddress).zapWrappedCollateralToStabilityPool(
     fxSaveAmount,
     aliceAddress,
     minPeggedOut,
@@ -887,7 +891,7 @@ Permit variant available: `zapWrappedCollateralToStabilityPoolWithPermit`.
 
 ```solidity
 // Permit signature created off-chain for FXSAVE
-MinterUSDCZap_v3(minterZapAddress).zapWrappedCollateralToStabilityPoolWithPermit(
+MinterUSDCZap_v4(minterZapAddress).zapWrappedCollateralToStabilityPoolWithPermit(
     fxSaveAmount,
     aliceAddress,
     minPeggedOut,

@@ -16,6 +16,10 @@ interface IZapErrors {
     /// @notice Thrown when an operation is unauthorized
     error Unauthorized();
 
+    /// @notice Thrown when a zap internal conversion is called with an unsupported `tokenIn`
+    /// @param tokenIn The token address that is not handled by this conversion path
+    error ZapTokenInNotSupported(address tokenIn);
+
     /// @notice Thrown when an asset is not supported on the current chain
     /// @param asset The asset address that is unsupported
     /// @param chainId The current chain id
@@ -45,10 +49,10 @@ interface IZapErrors {
     /// @param actual The actual collateral address
     error CollateralMismatch(address expected, address actual);
 
-    // ========== Minter-Specific Errors ==========
-    /// @notice Thrown when wrapped collateral address doesn't match expected address
-    /// @param expected The expected wrapped collateral address
-    /// @param provided The provided wrapped collateral address
+    // ========== Minter / Genesis Zap Errors ==========
+    /// @notice Thrown when the zapper's wrapped collateral token doesn't match the vault or minter
+    /// @param expected The wrapped collateral token required by Minter or Genesis
+    /// @param provided The wrapped collateral token compiled into the zapper
     error WrappedCollateralMismatch(address expected, address provided);
 
     /// @notice Thrown when a mint operation fails
@@ -75,10 +79,14 @@ interface IZapErrors {
     /// @notice Thrown when wrapped collateral output is below minimum acceptable amount
     /// @param received Actual wrapped collateral received
     /// @param minimum Minimum required by user
+    /// @dev Single slippage bound for fx/USDC paths (no separate `SlippageTooHighCollateral`: input-token
+    ///      slippage is enforced only via this wrapped min-out).
     error SlippageTooHighWrappedCollateral(uint256 received, uint256 minimum);
 
     /// @notice Thrown when final base asset-equivalent value is below minimum acceptable
     /// @param received Actual base asset value
     /// @param minimum Minimum base asset value required by user
+    /// @dev Used by native-ETH Genesis zaps that can value the wrapped position in ETH; not used on USDC/fx
+    ///      zaps without an on-chain base/collateral valuation oracle.
     error SlippageTooHighBaseAssetValue(uint256 received, uint256 minimum);
 }

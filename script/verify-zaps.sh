@@ -130,22 +130,29 @@ for file in "${DEPLOYMENT_FILES[@]}"; do
   fi
 
   case "$contract" in
-    GenesisETHZap_v4)
-      impl_path="src/zap/upgradeable/GenesisETHZap_v4.sol:GenesisETHZap_v4"
+    GenesisETHZap_v4|GenesisUSDCZap_v4|MinterETHZap_v3|MinterUSDCZap_v3)
+      echo "❌ Deployment JSON uses a pre-rename contract label ($contract). This tree only ships"
+      echo "   GenesisETHZap_v5 / GenesisUSDCZap_v5 / MinterETHZap_v4 / MinterUSDCZap_v4."
+      echo "   Either verify from an older git revision, update the JSON after re-deploying, or use the matching sources."
+      failed=$((failed + 1))
+      continue
+      ;;
+    GenesisETHZap_v5)
+      impl_path="src/zap/upgradeable/GenesisETHZap_v5.sol:GenesisETHZap_v5"
       impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$(jq -r '.constructorArgs.genesis' "$file")")
       ;;
-    GenesisUSDCZap_v4)
-      impl_path="src/zap/upgradeable/GenesisUSDCZap_v4.sol:GenesisUSDCZap_v4"
+    GenesisUSDCZap_v5)
+      impl_path="src/zap/upgradeable/GenesisUSDCZap_v5.sol:GenesisUSDCZap_v5"
       impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$(jq -r '.constructorArgs.genesis' "$file")")
       ;;
-    MinterETHZap_v3)
-      impl_path="src/zap/upgradeable/MinterETHZap_v3.sol:MinterETHZap_v3"
+    MinterETHZap_v4)
+      impl_path="src/zap/upgradeable/MinterETHZap_v4.sol:MinterETHZap_v4"
       impl_ctor_args=$("$CAST" abi-encode "constructor(address,address)" \
         "$(jq -r '.constructorArgs.minter' "$file")" \
         "$(jq -r '.constructorArgs.referral' "$file")")
       ;;
-    MinterUSDCZap_v3)
-      impl_path="src/zap/upgradeable/MinterUSDCZap_v3.sol:MinterUSDCZap_v3"
+    MinterUSDCZap_v4)
+      impl_path="src/zap/upgradeable/MinterUSDCZap_v4.sol:MinterUSDCZap_v4"
       impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$(jq -r '.constructorArgs.minter' "$file")")
       ;;
     *)

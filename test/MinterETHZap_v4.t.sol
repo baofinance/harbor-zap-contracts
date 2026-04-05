@@ -7,7 +7,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {MinterETHZap_v3} from "src/zap/upgradeable/MinterETHZap_v3.sol";
+import {MinterETHZap_v4} from "src/zap/upgradeable/MinterETHZap_v4.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
@@ -24,10 +24,10 @@ interface IWstETHWrapV2 {
     function wrap(uint256 stEthAmount) external returns (uint256);
 }
 
-contract MinterETHZapV3ForkTest is TestMinterSetUp {
+contract MinterETHZapV4ForkTest is TestMinterSetUp {
     bytes32 private constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
-    MinterETHZap_v3 zap;
+    MinterETHZap_v4 zap;
     address zapImpl;
     address zapProxy;
     address user1;
@@ -66,12 +66,12 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
-        zapImpl = address(new MinterETHZap_v3(minter, address(0)));
+        zapImpl = address(new MinterETHZap_v4(minter, address(0)));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(MinterETHZap_v3.initialize, (address(this), zapOwner, address(0)))
+            zapImpl, abi.encodeCall(MinterETHZap_v4.initialize, (address(this), zapOwner, address(0)))
         );
-        zap = MinterETHZap_v3(payable(zapProxy));
-        vm.label(address(zap), "MinterETHZapV3");
+        zap = MinterETHZap_v4(payable(zapProxy));
+        vm.label(address(zap), "MinterETHZapV4");
 
         // Complete ownership transfer from deployer to zapOwner
         // During proxy initialization, msg.sender (deployer) becomes owner, and zapOwner is set as pending owner
@@ -167,7 +167,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         IERC20(STETH).approve(address(zap), stEthAmount);
 
         uint256 peggedBalBefore = IERC20(peggedToken).balanceOf(receiver);
-        uint256 peggedOut = zap.zapCollateralToPegged(stEthAmount, receiver, 0);
+        uint256 peggedOut = zap.zapCollateralToPegged(stEthAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -191,7 +191,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         IERC20(STETH).approve(address(zap), stEthAmount);
 
         uint256 leveragedBalBefore = IERC20(leveragedToken).balanceOf(receiver);
-        uint256 leveragedOut = zap.zapCollateralToLeveraged(stEthAmount, receiver, 0);
+        uint256 leveragedOut = zap.zapCollateralToLeveraged(stEthAmount, 0, receiver, 0);
 
         vm.stopPrank();
 
@@ -274,7 +274,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
 
         (uint256 peggedOut, uint256 deposited) = zap.zapCollateralToStabilityPool(
-            stEthAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+            stEthAmount, 0, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -498,7 +498,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
 
     function test_Upgrade() public {
         // Deploy new implementation
-        address newImpl = address(new MinterETHZap_v3(minter, address(0)));
+        address newImpl = address(new MinterETHZap_v4(minter, address(0)));
 
         // Upgrade proxy
         vm.prank(zapOwner);
@@ -517,7 +517,7 @@ contract MinterETHZapV3ForkTest is TestMinterSetUp {
     }
 
     function test_Upgrade_OnlyOwner() public {
-        address newImpl = address(new MinterETHZap_v3(minter, address(0)));
+        address newImpl = address(new MinterETHZap_v4(minter, address(0)));
 
         vm.prank(user1);
         vm.expectRevert();

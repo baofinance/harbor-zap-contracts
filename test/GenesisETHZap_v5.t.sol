@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {GenesisETHZap_v4} from "src/zap/upgradeable/GenesisETHZap_v4.sol";
+import {GenesisETHZap_v5} from "src/zap/upgradeable/GenesisETHZap_v5.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {Genesis_v1} from "src/minter/Genesis_v1.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
@@ -27,8 +27,8 @@ interface IWstETHV2 {
     function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
 }
 
-contract GenesisETHZapV4ForkTest is TestMinterSetUp {
-    GenesisETHZap_v4 zap;
+contract GenesisETHZapV5ForkTest is TestMinterSetUp {
+    GenesisETHZap_v5 zap;
     address zapImpl;
     address zapProxy;
     address genesis;
@@ -71,12 +71,12 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
-        zapImpl = address(new GenesisETHZap_v4(genesis));
+        zapImpl = address(new GenesisETHZap_v5(genesis));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(GenesisETHZap_v4.initialize, (address(this), zapOwner, address(0)))
+            zapImpl, abi.encodeCall(GenesisETHZap_v5.initialize, (address(this), zapOwner, address(0)))
         );
-        zap = GenesisETHZap_v4(payable(zapProxy));
-        vm.label(address(zap), "GenesisETHZapV4");
+        zap = GenesisETHZap_v5(payable(zapProxy));
+        vm.label(address(zap), "GenesisETHZapV5");
 
         // Complete ownership transfer from deployer to zapOwner
         zap.transferOwnership(zapOwner);
@@ -156,7 +156,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
         uint256 genesisBalBefore = IGenesis(genesis).balanceOf(receiver);
         uint256 minWstEthOut = _calculateMinWstEthFromStEth(stEthAmount);
 
-        uint256 sharesOut = zap.zapCollateral(stEthAmount, receiver, minWstEthOut);
+        uint256 sharesOut = zap.zapCollateral(stEthAmount, minWstEthOut, receiver);
         vm.stopPrank();
 
         uint256 genesisBalAfter = IGenesis(genesis).balanceOf(receiver);
@@ -248,7 +248,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
 
     function test_Upgrade() public {
         // Deploy new implementation
-        address newImpl = address(new GenesisETHZap_v4(genesis));
+        address newImpl = address(new GenesisETHZap_v5(genesis));
 
         // Upgrade proxy
         vm.prank(zapOwner);
@@ -268,7 +268,7 @@ contract GenesisETHZapV4ForkTest is TestMinterSetUp {
     }
 
     function test_Upgrade_OnlyOwner() public {
-        address newImpl = address(new GenesisETHZap_v4(genesis));
+        address newImpl = address(new GenesisETHZap_v5(genesis));
 
         vm.prank(user1);
         vm.expectRevert();

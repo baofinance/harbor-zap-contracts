@@ -152,10 +152,10 @@ elif [[ "$DEPOSIT_TYPE" == "steth" ]]; then
   
   sleep 2
   
-  echo "  Calling: zapCollateral($DEPOSIT_AMOUNT, $WALLET, $MIN_WSTETH_OUT)"
+  echo "  Calling: zapCollateral($DEPOSIT_AMOUNT, $MIN_WSTETH_OUT, $WALLET)"
   echo ""
   
-  ZAP_OUT=$("$CAST" send "$ZAP_CONTRACT" "zapCollateral(uint256,address,uint256)" "$DEPOSIT_AMOUNT" "$WALLET" "$MIN_WSTETH_OUT" \
+  ZAP_OUT=$("$CAST" send "$ZAP_CONTRACT" "zapCollateral(uint256,uint256,address)" "$DEPOSIT_AMOUNT" "$MIN_WSTETH_OUT" "$WALLET" \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" 2>&1)
   

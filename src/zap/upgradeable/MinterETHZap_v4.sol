@@ -9,18 +9,18 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "src/utils/upgradeable/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {
-    ReentrancyGuardTransientUpgradeable
-} from "src/utils/upgradeable/ReentrancyGuardTransientUpgradeable.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 import {ISTETHV2, IStETHView} from "src/interfaces/IStETH.sol";
 import {IWstETHWrapV2, IWstETHView} from "src/interfaces/IWstETH.sol";
 import {IStabilityPool} from "src/interfaces/IStabilityPool.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
+import {IMinterZapV4BaseNative} from "src/interfaces/IMinterZapV4BaseNative.sol";
+import {IMinterZapV4Common} from "src/interfaces/IMinterZapV4Common.sol";
 import {WstETHConstants} from "src/constants/ethereum/WstETHConstants.sol";
 
-/// @title MinterETHZapV3
+/// @title MinterETHZapV4
 /// @notice One-click zapper for minting pegged or leveraged tokens with base asset or collateral via wrapped collateral
 /// @dev Enables users to mint pegged or leveraged tokens in a single transaction
 /// @dev Flow: base asset → collateral → wrapped collateral → Minter mint
@@ -29,12 +29,14 @@ import {WstETHConstants} from "src/constants/ethereum/WstETHConstants.sol";
 /// @author Harbor Yield Protocol
 /// @custom:oz-upgrades
 // solhint-disable-next-line contract-name-camelcase
-contract MinterETHZap_v3 is
+contract MinterETHZap_v4 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
-    ReentrancyGuardTransientUpgradeable,
-    BaoOwnable
+    ReentrancyGuardTransient,
+    BaoOwnable,
+    IMinterZapV4Common,
+    IMinterZapV4BaseNative
 {
     using SafeERC20 for IERC20;
 
@@ -84,7 +86,7 @@ contract MinterETHZap_v3 is
     /// @param baseAssetAmount Amount of base asset deposited
     /// @param wrappedCollateralAmount Amount of wrapped collateral received
     /// @param leveragedOut Amount of leveraged tokens minted
-event BaseAssetZappedToLeverage(
+    event BaseAssetZappedToLeveraged(
         address indexed user,
         address indexed minter,
         address indexed receiver,
@@ -219,7 +221,6 @@ event BaseAssetZappedToLeverage(
         _initializeOwner(deployerOwner, pendingOwner);
         __UUPSUpgradeable_init();
         __Context_init();
-        __ReentrancyGuardTransient_init();
 
         // Set referral if provided, otherwise keep constructor value
         if (referral_ != address(0)) {
@@ -250,17 +251,15 @@ event BaseAssetZappedToLeverage(
         returns (uint256 peggedOut)
     {
         _requireSupportedAsset(BASE_ASSET);
-        if (msg.value == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
         uint256 baseAssetAmount = msg.value;
-        uint256 wrappedCollateralAmount = _convertBaseAssetToWrappedCollateral(baseAssetAmount);
-        peggedOut = _mintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut) = _zapToPegged(
+            BASE_ASSET, baseAssetAmount, 0, receiver, minPeggedOut
+        );
 
         emit BaseAssetZappedToPegged(
             _msgSender(), MINTER, receiver, baseAssetAmount, wrappedCollateralAmount, peggedOut
         );
-        _resetAllowances();
     }
 
     /// @notice Zap base asset into leveraged tokens in one transaction
@@ -276,67 +275,73 @@ event BaseAssetZappedToLeverage(
         returns (uint256 leveragedOut)
     {
         _requireSupportedAsset(BASE_ASSET);
-        if (msg.value == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
         uint256 baseAssetAmount = msg.value;
-        uint256 wrappedCollateralAmount = _convertBaseAssetToWrappedCollateral(baseAssetAmount);
-        leveragedOut = _mintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, leveragedOut) = _zapToLeveraged(
+            BASE_ASSET, baseAssetAmount, 0, receiver, minLeveragedOut
+        );
 
-        emit BaseAssetZappedToLeverage(
+        emit BaseAssetZappedToLeveraged(
             _msgSender(), MINTER, receiver, baseAssetAmount, wrappedCollateralAmount, leveragedOut
         );
-        _resetAllowances();
     }
 
     /// @notice Zap collateral into pegged tokens in one transaction
     /// @dev Flow: collateral → wrapped collateral → Minter mint pegged
     /// @dev Use previewPeggedFromCollateral() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @return peggedOut Amount of pegged tokens minted
-    function zapCollateralToPegged(uint256 collateralAmount, address receiver, uint256 minPeggedOut)
+    function zapCollateralToPegged(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minPeggedOut
+    )
         external
         nonReentrant
         returns (uint256 peggedOut)
     {
         _requireSupportedAsset(COLLATERAL_ASSET);
-        if (collateralAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 wrappedCollateralAmount = _convertCollateralToWrappedCollateral(collateralAmount);
-        peggedOut = _mintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut) = _zapToPegged(
+            COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minPeggedOut
+        );
 
         emit CollateralZappedToPegged(
             _msgSender(), MINTER, receiver, collateralAmount, wrappedCollateralAmount, peggedOut
         );
-        _resetAllowances();
     }
 
     /// @notice Zap collateral into leveraged tokens in one transaction
     /// @dev Flow: collateral → wrapped collateral → Minter mint leveraged
     /// @dev Use previewLeveragedFromCollateral() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @return leveragedOut Amount of leveraged tokens minted
-    function zapCollateralToLeveraged(uint256 collateralAmount, address receiver, uint256 minLeveragedOut)
+    function zapCollateralToLeveraged(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minLeveragedOut
+    )
         external
         nonReentrant
         returns (uint256 leveragedOut)
     {
         _requireSupportedAsset(COLLATERAL_ASSET);
-        if (collateralAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 wrappedCollateralAmount = _convertCollateralToWrappedCollateral(collateralAmount);
-        leveragedOut = _mintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, leveragedOut) = _zapToLeveraged(
+            COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minLeveragedOut
+        );
 
         emit CollateralZappedToLeveraged(
             _msgSender(), MINTER, receiver, collateralAmount, wrappedCollateralAmount, leveragedOut
         );
-        _resetAllowances();
     }
 
     /// @notice Zap base asset into StabilityPool in one transaction
@@ -383,6 +388,7 @@ event BaseAssetZappedToLeverage(
     /// @dev Flow: collateral → wrapped collateral → Minter mint pegged → StabilityPool deposit
     /// @dev Use previewStabilityPoolFromCollateral() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromCollateral with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -391,21 +397,23 @@ event BaseAssetZappedToLeverage(
     /// @return deposited Amount deposited into StabilityPool
     function zapCollateralToStabilityPool(
         uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
         _requireSupportedAsset(COLLATERAL_ASSET);
-        if (collateralAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 wrappedCollateralAmount = _convertCollateralToWrappedCollateral(collateralAmount);
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(wrappedCollateralAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            COLLATERAL_ASSET,
+            collateralAmount,
+            minWrappedCollateralOut,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
+        );
 
         emit CollateralZappedToStabilityPool(
             _msgSender(),
@@ -417,7 +425,6 @@ event BaseAssetZappedToLeverage(
             stabilityPool,
             deposited
         );
-        _resetAllowances();
     }
 
     /// @notice Zap wrapped collateral into StabilityPool in one transaction
@@ -437,22 +444,19 @@ event BaseAssetZappedToLeverage(
         address stabilityPool,
         uint256 minStabilityPoolOut
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (wrappedCollateralAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
-        IERC20(WRAPPED_COLLATERAL_ASSET).safeTransferFrom(
-            _msgSender(), address(this), wrappedCollateralAmount
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            WRAPPED_COLLATERAL_ASSET,
+            wrappedCollateralAmount,
+            0,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
         );
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(wrappedCollateralAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
 
         emit WrappedCollateralZappedToStabilityPool(
             _msgSender(), MINTER, receiver, wrappedCollateralAmount, peggedOut, stabilityPool, deposited
         );
-        _resetAllowances();
     }
 
     // ============ Permit-Based Functions ============
@@ -460,6 +464,7 @@ event BaseAssetZappedToLeverage(
     /// @notice Zap collateral into pegged tokens using permit (single transaction, no approval needed)
     /// @dev Flow: Permit collateral → collateral → wrapped collateral → Minter mint pegged
     /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param deadline Permit signature deadline
@@ -469,6 +474,7 @@ event BaseAssetZappedToLeverage(
     /// @return peggedOut Amount of pegged tokens minted
     function zapCollateralToPeggedWithPermit(
         uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         uint256 deadline,
@@ -481,18 +487,20 @@ event BaseAssetZappedToLeverage(
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         _permitCollateral(collateralAmount, deadline, v, r, s);
-        uint256 wrappedCollateralAmount = _convertCollateralToWrappedCollateral(collateralAmount);
-        peggedOut = _mintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut) = _zapToPegged(
+            COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minPeggedOut
+        );
 
         emit CollateralZappedToPegged(
             _msgSender(), MINTER, receiver, collateralAmount, wrappedCollateralAmount, peggedOut
         );
-        _resetAllowances();
     }
 
     /// @notice Zap collateral into leveraged tokens using permit (single transaction, no approval needed)
     /// @dev Flow: Permit collateral → collateral → wrapped collateral → Minter mint leveraged
     /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @param deadline Permit signature deadline
@@ -502,6 +510,7 @@ event BaseAssetZappedToLeverage(
     /// @return leveragedOut Amount of leveraged tokens minted
     function zapCollateralToLeveragedWithPermit(
         uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minLeveragedOut,
         uint256 deadline,
@@ -514,18 +523,20 @@ event BaseAssetZappedToLeverage(
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
         _permitCollateral(collateralAmount, deadline, v, r, s);
-        uint256 wrappedCollateralAmount = _convertCollateralToWrappedCollateral(collateralAmount);
-        leveragedOut = _mintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, leveragedOut) = _zapToLeveraged(
+            COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minLeveragedOut
+        );
 
         emit CollateralZappedToLeveraged(
             _msgSender(), MINTER, receiver, collateralAmount, wrappedCollateralAmount, leveragedOut
         );
-        _resetAllowances();
     }
 
     /// @notice Zap collateral into StabilityPool using permit (single transaction, no approval needed)
     /// @dev Flow: Permit collateral → collateral → wrapped collateral → Minter mint pegged → StabilityPool deposit
     /// @param collateralAmount Amount of collateral to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -538,6 +549,7 @@ event BaseAssetZappedToLeverage(
     /// @return deposited Amount deposited into StabilityPool
     function zapCollateralToStabilityPoolWithPermit(
         uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
@@ -553,11 +565,16 @@ event BaseAssetZappedToLeverage(
         if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
 
         _permitCollateral(collateralAmount, deadline, v, r, s);
-        uint256 wrappedCollateralAmount = _convertCollateralToWrappedCollateral(collateralAmount);
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(wrappedCollateralAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        uint256 wrappedCollateralAmount;
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            COLLATERAL_ASSET,
+            collateralAmount,
+            minWrappedCollateralOut,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
+        );
 
         emit CollateralZappedToStabilityPool(
             _msgSender(),
@@ -569,7 +586,6 @@ event BaseAssetZappedToLeverage(
             stabilityPool,
             deposited
         );
-        _resetAllowances();
     }
 
     /// @notice Zap wrapped collateral into StabilityPool using permit (single transaction, no approval needed)
@@ -596,23 +612,20 @@ event BaseAssetZappedToLeverage(
         bytes32 r,
         bytes32 s
     ) external nonReentrant returns (uint256 peggedOut, uint256 deposited) {
-        if (wrappedCollateralAmount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
         _permitWrappedCollateral(wrappedCollateralAmount, deadline, v, r, s);
-        IERC20(WRAPPED_COLLATERAL_ASSET).safeTransferFrom(
-            _msgSender(), address(this), wrappedCollateralAmount
+        (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
+            WRAPPED_COLLATERAL_ASSET,
+            wrappedCollateralAmount,
+            0,
+            receiver,
+            minPeggedOut,
+            stabilityPool,
+            minStabilityPoolOut
         );
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(wrappedCollateralAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
 
         emit WrappedCollateralZappedToStabilityPool(
             _msgSender(), MINTER, receiver, wrappedCollateralAmount, peggedOut, stabilityPool, deposited
         );
-        _resetAllowances();
     }
 
     // ============ Internal Helper Functions ============
@@ -692,6 +705,124 @@ event BaseAssetZappedToLeverage(
             IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
         wrappedCollateralAmount = wrappedCollateralAfter - wrappedCollateralBefore;
         if (wrappedCollateralAmount == 0) revert IZapErrors.NoWrappedCollateralReceived();
+    }
+
+    /// @notice Convert an input token to wrapped collateral (native ETH when `tokenIn == BASE_ASSET`)
+    /// @param tokenIn `BASE_ASSET` or `COLLATERAL_ASSET`
+    /// @param amountIn Amount of `tokenIn` (ETH already credited to this contract when `tokenIn == BASE_ASSET`)
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage; 0 skips the check)
+    /// @return wrappedCollateralAmount Amount of wrapped collateral received
+    function _convertToWrappedCollateral(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut
+    )
+        internal
+        returns (uint256 wrappedCollateralAmount)
+    {
+        if (tokenIn == BASE_ASSET) {
+            wrappedCollateralAmount = _convertBaseAssetToWrappedCollateral(amountIn);
+        } else if (tokenIn == COLLATERAL_ASSET) {
+            wrappedCollateralAmount = _convertCollateralToWrappedCollateral(amountIn);
+        } else {
+            revert IZapErrors.ZapTokenInNotSupported(tokenIn);
+        }
+        if (wrappedCollateralAmount < minWrappedCollateralOut) {
+            revert IZapErrors.SlippageTooHighWrappedCollateral(wrappedCollateralAmount, minWrappedCollateralOut);
+        }
+    }
+
+    /// @notice Zap a token into pegged tokens and reset allowances
+    /// @param tokenIn Token to zap (`BASE_ASSET` or `COLLATERAL_ASSET`)
+    /// @param amountIn Amount of tokenIn to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
+    /// @param receiver Address receiving pegged tokens
+    /// @param minPeggedOut Minimum pegged tokens to receive
+    /// @return wrappedCollateralAmount Amount of wrapped collateral received
+    /// @return peggedOut Amount of pegged tokens minted
+    function _zapToPegged(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minPeggedOut
+    ) internal returns (uint256 wrappedCollateralAmount, uint256 peggedOut) {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+
+        wrappedCollateralAmount =
+            _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
+        peggedOut = _mintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
+        _resetAllowances();
+    }
+
+    /// @notice Zap a token into leveraged tokens and reset allowances
+    /// @param tokenIn Token to zap (`BASE_ASSET` or `COLLATERAL_ASSET`)
+    /// @param amountIn Amount of tokenIn to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
+    /// @param receiver Address receiving leveraged tokens
+    /// @param minLeveragedOut Minimum leveraged tokens to receive
+    /// @return wrappedCollateralAmount Amount of wrapped collateral received
+    /// @return leveragedOut Amount of leveraged tokens minted
+    function _zapToLeveraged(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minLeveragedOut
+    ) internal returns (uint256 wrappedCollateralAmount, uint256 leveragedOut) {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+
+        wrappedCollateralAmount =
+            _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
+        leveragedOut = _mintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
+        _resetAllowances();
+    }
+
+    /// @notice Zap a token into StabilityPool via minted pegged tokens
+    /// @param tokenIn Token to zap (base asset, collateral, or wrapped collateral)
+    /// @param amountIn Amount of tokenIn to zap
+    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
+    /// @param receiver Address receiving StabilityPool deposit
+    /// @param minPeggedOut Minimum pegged tokens to receive
+    /// @param stabilityPool StabilityPool address
+    /// @param minStabilityPoolOut Minimum StabilityPool deposit amount
+    /// @return wrappedCollateralAmount Amount of wrapped collateral used to mint pegged tokens
+    /// @return peggedOut Amount of pegged tokens minted
+    /// @return deposited Amount deposited into StabilityPool
+    function _zapToStabilityPoolFromToken(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut
+    ) internal returns (uint256 wrappedCollateralAmount, uint256 peggedOut, uint256 deposited) {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
+
+        if (tokenIn == WRAPPED_COLLATERAL_ASSET) {
+            IERC20(WRAPPED_COLLATERAL_ASSET).safeTransferFrom(
+                _msgSender(), address(this), amountIn
+            );
+            wrappedCollateralAmount = amountIn;
+            if (wrappedCollateralAmount < minWrappedCollateralOut) {
+                revert IZapErrors.SlippageTooHighWrappedCollateral(
+                    wrappedCollateralAmount, minWrappedCollateralOut
+                );
+            }
+        } else {
+            wrappedCollateralAmount =
+                _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
+        }
+
+        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(wrappedCollateralAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        _resetAllowances();
     }
 
     /// @notice Mint pegged tokens and validate the result
@@ -936,6 +1067,29 @@ event BaseAssetZappedToLeverage(
         wrappedCollateralAmount =
             IWstETHView(WRAPPED_COLLATERAL_ASSET).getWstETHByStETH(collateralAmount);
         (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wrappedCollateralAmount);
+    }
+
+    /// @notice Preview the expected pegged token output from a wrapped collateral amount
+    /// @dev Uses Minter's dry run function to get accurate output accounting for fees/incentives
+    /// @param wrappedCollateralAmount Amount of wrapped collateral to use for minting
+    /// @return peggedOut Expected amount of pegged tokens that will be minted
+    function previewPeggedFromWrappedCollateral(uint256 wrappedCollateralAmount)
+        external
+        view
+        returns (uint256 peggedOut)
+    {
+        (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wrappedCollateralAmount);
+    }
+
+    /// @notice Preview the expected leveraged token output from a wrapped collateral amount
+    /// @param wrappedCollateralAmount Amount of wrapped collateral to use for minting
+    /// @return leveragedOut Expected amount of leveraged tokens that will be minted
+    function previewLeveragedFromWrappedCollateral(uint256 wrappedCollateralAmount)
+        external
+        view
+        returns (uint256 leveragedOut)
+    {
+        (,,,, leveragedOut,,) = IMinter(MINTER).mintLeveragedTokenDryRun(wrappedCollateralAmount);
     }
 
     /// @notice Preview the expected StabilityPool deposit from a wrapped collateral zap

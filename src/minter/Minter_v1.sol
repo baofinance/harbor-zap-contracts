@@ -8,9 +8,6 @@ import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Cont
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {
-    ReentrancyGuardTransientUpgradeable
-} from "src/utils/upgradeable/ReentrancyGuardTransientUpgradeable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {Token} from "@bao/Token.sol";
@@ -104,7 +101,6 @@ contract Minter_v1 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
-    ReentrancyGuardTransientUpgradeable,
     BaoOwnableRoles,
     TokenHolder,
     IMinter
@@ -201,7 +197,6 @@ contract Minter_v1 is
         _initializeOwner(owner_);
         __UUPSUpgradeable_init();
         __Context_init();
-        __ReentrancyGuardTransient_init();
         MinterStorage storage $ = _getMinterStorage();
         $.peggedTokenBalance = 0;
         $.underlyingCollateral = 0;
