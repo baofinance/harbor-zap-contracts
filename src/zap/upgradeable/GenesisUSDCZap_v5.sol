@@ -67,13 +67,17 @@ contract GenesisUSDCZap_v5 is
     /// @param baseAssetIn Amount of base asset deposited
     /// @param wrappedCollateralOut Amount of wrapped collateral received
     /// @param sharesOut Amount of shares minted to Genesis
+    /// @param baseAssetValueNow USDC zap: always 0 (no oracle); ETH zap: valuation field
+    /// @param collateralValueNow USDC zap: always 0 (no oracle); ETH zap: valuation field
     event ZappedBaseAsset(
         address indexed user,
         address indexed genesis,
         address indexed receiver,
         uint256 baseAssetIn,
         uint256 wrappedCollateralOut,
-        uint256 sharesOut
+        uint256 sharesOut,
+        uint256 baseAssetValueNow,
+        uint256 collateralValueNow
     );
 
     /// @notice Emitted when collateral is zapped into Genesis
@@ -83,13 +87,17 @@ contract GenesisUSDCZap_v5 is
     /// @param collateralIn Amount of collateral deposited
     /// @param wrappedCollateralOut Amount of wrapped collateral received
     /// @param sharesOut Amount of shares minted to Genesis
+    /// @param baseAssetValueNow USDC zap: always 0
+    /// @param collateralValueNow USDC zap: always 0
     event ZappedCollateral(
         address indexed user,
         address indexed genesis,
         address indexed receiver,
         uint256 collateralIn,
         uint256 wrappedCollateralOut,
-        uint256 sharesOut
+        uint256 sharesOut,
+        uint256 baseAssetValueNow,
+        uint256 collateralValueNow
     );
     event Upgraded(address indexed implementation);
 
@@ -147,7 +155,7 @@ contract GenesisUSDCZap_v5 is
             _zapToGenesis(BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver);
         sharesOut = wrappedCollateralReceived;
         emit ZappedBaseAsset(
-            _msgSender(), GENESIS, receiver, baseAssetAmount, wrappedCollateralReceived, sharesOut
+            _msgSender(), GENESIS, receiver, baseAssetAmount, wrappedCollateralReceived, sharesOut, 0, 0
         );
     }
 
@@ -167,7 +175,7 @@ contract GenesisUSDCZap_v5 is
             _zapToGenesis(COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver);
         sharesOut = wrappedCollateralReceived;
         emit ZappedCollateral(
-            _msgSender(), GENESIS, receiver, collateralAmount, wrappedCollateralReceived, sharesOut
+            _msgSender(), GENESIS, receiver, collateralAmount, wrappedCollateralReceived, sharesOut, 0, 0
         );
     }
 
@@ -201,7 +209,7 @@ contract GenesisUSDCZap_v5 is
             _zapToGenesis(BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver);
         sharesOut = wrappedCollateralReceived;
         emit ZappedBaseAsset(
-            _msgSender(), GENESIS, receiver, baseAssetAmount, wrappedCollateralReceived, sharesOut
+            _msgSender(), GENESIS, receiver, baseAssetAmount, wrappedCollateralReceived, sharesOut, 0, 0
         );
     }
 
@@ -231,7 +239,7 @@ contract GenesisUSDCZap_v5 is
             _zapToGenesis(COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver);
         sharesOut = wrappedCollateralReceived;
         emit ZappedCollateral(
-            _msgSender(), GENESIS, receiver, collateralAmount, wrappedCollateralReceived, sharesOut
+            _msgSender(), GENESIS, receiver, collateralAmount, wrappedCollateralReceived, sharesOut, 0, 0
         );
     }
 
@@ -324,7 +332,7 @@ contract GenesisUSDCZap_v5 is
     }
 
     /// @notice Deposit wrapped collateral into Genesis and validate shares
-    /// @dev Confirms mint via receiver share balance delta; reverts with `MintFailed` if mismatch (Minter-style).
+    /// @dev Confirms mint via receiver share balance delta; reverts `MintMismatchExpected` if mismatch.
     /// @param amount Amount of wrapped collateral to deposit
     /// @param receiver Address receiving Genesis shares
     function _depositToGenesis(uint256 amount, address receiver) internal {
@@ -348,7 +356,7 @@ contract GenesisUSDCZap_v5 is
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
         if (sharesReceived != amount) {
-            revert IZapErrors.MintFailed();
+            revert IZapErrors.MintMismatchExpected(amount, sharesReceived);
         }
     }
 
@@ -375,21 +383,21 @@ contract GenesisUSDCZap_v5 is
     /// @dev Not supported without a conversion oracle; kept for API parity
     // forge-lint: disable-next-line(mixed-case-function)
     function balanceOfBaseAsset(address) external pure returns (uint256) {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Real-time user balance in collateral terms
     /// @dev Not supported without a conversion oracle; kept for API parity
     // forge-lint: disable-next-line(mixed-case-function)
     function balanceOfCollateral(address) external pure returns (uint256) {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Total vault value in base asset terms
     /// @dev Not supported without a conversion oracle; kept for API parity
     // forge-lint: disable-next-line(mixed-case-function)
     function totalValueBaseAsset() external pure returns (uint256) {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     // =============================================================
@@ -403,7 +411,7 @@ contract GenesisUSDCZap_v5 is
         pure
         returns (uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview wrapped collateral output from a collateral amount
@@ -413,7 +421,7 @@ contract GenesisUSDCZap_v5 is
         pure
         returns (uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview Genesis shares from a base asset amount
@@ -423,7 +431,7 @@ contract GenesisUSDCZap_v5 is
         pure
         returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview Genesis shares from a collateral amount
@@ -433,7 +441,7 @@ contract GenesisUSDCZap_v5 is
         pure
         returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview the expected Genesis shares from a wrapped collateral amount

@@ -10,14 +10,21 @@ interface IMinterZapV4BaseNative {
 
     function setReferral(address newReferral) external;
 
-    function zapBaseAssetToPegged(address receiver, uint256 minPeggedOut) external payable returns (uint256 peggedOut);
+    /// @param minWrappedCollateralOut Minimum wstETH (or zap wrapped token) from ETH→wrap leg; 0 skips check
+    function zapBaseAssetToPegged(
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minPeggedOut
+    ) external payable returns (uint256 peggedOut);
 
-    function zapBaseAssetToLeveraged(address receiver, uint256 minLeveragedOut)
-        external
-        payable
-        returns (uint256 leveragedOut);
+    function zapBaseAssetToLeveraged(
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minLeveragedOut
+    ) external payable returns (uint256 leveragedOut);
 
     function zapBaseAssetToStabilityPool(
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,

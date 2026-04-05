@@ -13,6 +13,9 @@ interface IZapErrors {
     /// @notice Thrown when a function is not found during a low-level call
     error FunctionNotFound();
 
+    /// @notice Thrown when a view/preview path is intentionally unsupported (e.g. USDC zap without oracle)
+    error PreviewNotSupported();
+
     /// @notice Thrown when an operation is unauthorized
     error Unauthorized();
 
@@ -41,7 +44,7 @@ interface IZapErrors {
     /// @notice Thrown when the Genesis contract collateral token is invalid
     error InvalidGenesisCollateral();
 
-    /// @notice Thrown when a deposit operation fails or mint mismatch occurs
+    /// @notice Thrown when a deposit operation fails validation (not share/mint amount mismatch; see `MintMismatchExpected`)
     error DepositFailed();
 
     /// @notice Thrown when collateral address doesn't match expected address
@@ -55,9 +58,6 @@ interface IZapErrors {
     /// @param provided The wrapped collateral token compiled into the zapper
     error WrappedCollateralMismatch(address expected, address provided);
 
-    /// @notice Thrown when a mint operation fails
-    error MintFailed();
-
     /// @notice Thrown when a stability pool is not allowed/allowed
     error StabilityPoolNotAllowed();
 
@@ -67,9 +67,9 @@ interface IZapErrors {
     /// @param wanted Required balance
     error InsufficientBalance(uint256 have, uint256 wanted);
 
-    /// @notice Thrown when Genesis minted a different amount than expected
-    /// @param expected Expected shares amount
-    /// @param received Actual shares received
+    /// @notice Thrown when minted amount does not match expectation (Genesis: shares vs deposit; Minter: return value vs balance delta)
+    /// @param expected Expected amount (deposited wrapped / minter-reported mint)
+    /// @param received Actual amount (share balance delta / balance delta)
     error MintMismatchExpected(uint256 expected, uint256 received);
 
     /// @notice Thrown when trying to rescue protected/critical tokens

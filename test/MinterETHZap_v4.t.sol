@@ -93,7 +93,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         uint256 peggedBalBefore = IERC20(peggedToken).balanceOf(receiver);
         uint256 wstEthBalBefore = IERC20(WSTETH).balanceOf(minter);
 
-        uint256 peggedOut = zap.zapBaseAssetToPegged{value: ethAmount}(receiver, 0);
+        uint256 peggedOut = zap.zapBaseAssetToPegged{value: ethAmount}(0, receiver, 0);
 
         vm.stopPrank();
 
@@ -115,7 +115,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(IZapErrors.ZeroAmount.selector);
-        zap.zapBaseAssetToPegged{value: 0}(receiver, 0);
+        zap.zapBaseAssetToPegged{value: 0}(0, receiver, 0);
 
         vm.stopPrank();
     }
@@ -126,7 +126,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(IZapErrors.ZeroAddress.selector);
-        zap.zapBaseAssetToPegged{value: ethAmount}(address(0), 0);
+        zap.zapBaseAssetToPegged{value: ethAmount}(0, address(0), 0);
 
         vm.stopPrank();
     }
@@ -139,7 +139,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         uint256 leveragedBalBefore = IERC20(leveragedToken).balanceOf(receiver);
-        uint256 leveragedOut = zap.zapBaseAssetToLeveraged{value: ethAmount}(receiver, 0);
+        uint256 leveragedOut = zap.zapBaseAssetToLeveraged{value: ethAmount}(0, receiver, 0);
 
         vm.stopPrank();
 
@@ -218,13 +218,14 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
 
         uint256 stabilityPoolBalBefore = stabilityPool.balanceOf(receiver);
 
-        // Get preview for minPeggedOut
+        // Get preview for minPeggedOut and wrapped slippage floor
+        uint256 minWrappedOut = zap.previewWrappedCollateralFromBase(ethAmount) * 99 / 100;
         (uint256 previewPegged,) = zap.previewStabilityPoolFromBase(ethAmount);
         uint256 minPeggedOut = previewPegged * 99 / 100; // 1% slippage
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100; // 1% slippage
 
         (uint256 peggedOut, uint256 deposited) = zap.zapBaseAssetToStabilityPool{value: ethAmount}(
-            receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+            minWrappedOut, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -249,7 +250,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(IZapErrors.StabilityPoolNotAllowed.selector);
-        zap.zapBaseAssetToStabilityPool{value: ethAmount}(receiver, 0, address(stabilityPool), 0);
+        zap.zapBaseAssetToStabilityPool{value: ethAmount}(0, receiver, 0, address(stabilityPool), 0);
 
         vm.stopPrank();
     }
@@ -510,7 +511,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         // Verify functionality still works
         uint256 ethAmount = 1 ether;
         vm.startPrank(user1);
-        uint256 peggedOut = zap.zapBaseAssetToPegged{value: ethAmount}(receiver, 0);
+        uint256 peggedOut = zap.zapBaseAssetToPegged{value: ethAmount}(0, receiver, 0);
         vm.stopPrank();
 
         assertGt(peggedOut, 0, "Should still work after upgrade");

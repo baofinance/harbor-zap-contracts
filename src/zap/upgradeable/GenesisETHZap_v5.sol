@@ -54,22 +54,30 @@ contract GenesisETHZap_v5 is
     address public referral;
 
     // ========== Events ==========
-    /// @notice Emitted when base asset is successfully zapped into Genesis
+    /// @notice Emitted when base asset is successfully zapped into Genesis (same shape as `GenesisUSDCZap_v5` for indexers)
+    /// @param wrappedCollateralOut wstETH deposited (1:1 Genesis shares for this vault)
+    /// @param sharesOut Genesis shares minted to receiver
+    /// @param baseAssetValueNow ETH-equivalent value of position (0 on USDC zap)
+    /// @param collateralValueNow stETH-equivalent (0 on USDC zap)
     event ZappedBaseAsset(
         address indexed user,
+        address indexed genesis,
         address indexed receiver,
         uint256 baseAssetIn,
-        uint256 genesisSharesOut,
+        uint256 wrappedCollateralOut,
+        uint256 sharesOut,
         uint256 baseAssetValueNow,
         uint256 collateralValueNow
     );
 
-    /// @notice Emitted when collateral is successfully zapped into Genesis
+    /// @notice Emitted when collateral is successfully zapped into Genesis (same shape as `GenesisUSDCZap_v5`)
     event ZappedCollateral(
         address indexed user,
+        address indexed genesis,
         address indexed receiver,
         uint256 collateralIn,
-        uint256 genesisSharesOut,
+        uint256 wrappedCollateralOut,
+        uint256 sharesOut,
         uint256 baseAssetValueNow,
         uint256 collateralValueNow
     );
@@ -161,7 +169,9 @@ contract GenesisETHZap_v5 is
         _depositToGenesis(sharesOut, receiver);
         // 6. Emit real-time values for indexers/frontends
         (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
-        emit ZappedBaseAsset(_msgSender(), receiver, baseAssetIn, sharesOut, baseAssetNow, collateralNow);
+        emit ZappedBaseAsset(
+            _msgSender(), GENESIS, receiver, baseAssetIn, sharesOut, sharesOut, baseAssetNow, collateralNow
+        );
     }
 
     /// @notice Zap existing collateral → wrapped collateral → Genesis
@@ -190,7 +200,9 @@ contract GenesisETHZap_v5 is
         _depositToGenesis(sharesOut, receiver);
         // 5. Emit real-time values for indexers/frontends
         (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
-        emit ZappedCollateral(_msgSender(), receiver, collateralAmount, sharesOut, baseAssetNow, collateralNow);
+        emit ZappedCollateral(
+            _msgSender(), GENESIS, receiver, collateralAmount, sharesOut, sharesOut, baseAssetNow, collateralNow
+        );
     }
 
     /// @notice Zap collateral → wrapped collateral → Genesis using permit (single transaction, no approval needed)
@@ -230,7 +242,9 @@ contract GenesisETHZap_v5 is
         _depositToGenesis(sharesOut, receiver);
         // 5. Emit real-time values for indexers/frontends
         (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
-        emit ZappedCollateral(_msgSender(), receiver, collateralAmount, sharesOut, baseAssetNow, collateralNow);
+        emit ZappedCollateral(
+            _msgSender(), GENESIS, receiver, collateralAmount, sharesOut, sharesOut, baseAssetNow, collateralNow
+        );
     }
 
     function _requireSupportedAsset(address asset) internal view {
@@ -280,7 +294,7 @@ contract GenesisETHZap_v5 is
     }
 
     /// @notice Deposit wrapped collateral into Genesis and validate shares
-    /// @dev Confirms mint via receiver share balance delta; reverts with `MintFailed` if mismatch (Minter-style).
+    /// @dev Confirms mint via receiver share balance delta; reverts `MintMismatchExpected` if mismatch.
     /// @param amount Amount of wrapped collateral to deposit
     /// @param receiver Address receiving Genesis shares
     function _depositToGenesis(uint256 amount, address receiver) internal {
@@ -305,7 +319,7 @@ contract GenesisETHZap_v5 is
         uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;
         if (sharesReceived != amount) {
-            revert IZapErrors.MintFailed();
+            revert IZapErrors.MintMismatchExpected(amount, sharesReceived);
         }
     }
 

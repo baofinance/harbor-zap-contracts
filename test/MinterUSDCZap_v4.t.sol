@@ -15,6 +15,11 @@ import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "test/mock/MockERC20.sol";
 import {MockStabilityPool} from "test/mock/MockStabilityPool.sol";
 
+/// @dev Calls a selector with no implementation so the zap's `fallback` runs (revert propagates to test)
+interface ITriggerZapFallback {
+    function __zapFallbackProbe() external;
+}
+
 contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
     bytes32 private constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
@@ -371,6 +376,23 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         uint256 previewPegged = zap.previewStabilityPoolFromWrappedCollateral(fxSaveAmount);
 
         assertGt(previewPegged, 0, "Preview should return > 0");
+    }
+
+    /// @dev Base/collateral oracle previews are intentionally unsupported on USDC zap
+    function test_PreviewNotSupported_OnStubPreviews() public {
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.previewWrappedCollateralFromBase(1e6);
+
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.previewPeggedFromBase(1e6);
+
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.previewStabilityPoolFromCollateral(1e18);
+    }
+
+    function test_Fallback_FunctionNotFound() public {
+        vm.expectRevert(IZapErrors.FunctionNotFound.selector);
+        ITriggerZapFallback(address(zap)).__zapFallbackProbe();
     }
 
     // ============ Upgrade Tests ============

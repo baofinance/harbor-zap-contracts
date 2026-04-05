@@ -932,8 +932,9 @@ contract MinterUSDCZap_v4 is
 
         // Validate that tokens were actually minted
         uint256 peggedBalanceAfter = IERC20(peggedToken).balanceOf(receiver);
-        if (peggedBalanceAfter - peggedBalanceBefore != peggedOut || peggedOut == 0) {
-            revert IZapErrors.MintFailed();
+        uint256 received = peggedBalanceAfter - peggedBalanceBefore;
+        if (received != peggedOut || peggedOut == 0) {
+            revert IZapErrors.MintMismatchExpected(peggedOut, received);
         }
     }
 
@@ -957,8 +958,9 @@ contract MinterUSDCZap_v4 is
 
         // Validate that tokens were actually minted
         uint256 leveragedBalanceAfter = IERC20(leveragedToken).balanceOf(receiver);
-        if (leveragedBalanceAfter - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
-            revert IZapErrors.MintFailed();
+        uint256 received = leveragedBalanceAfter - leveragedBalanceBefore;
+        if (received != leveragedOut || leveragedOut == 0) {
+            revert IZapErrors.MintMismatchExpected(leveragedOut, received);
         }
     }
 
@@ -1046,7 +1048,7 @@ contract MinterUSDCZap_v4 is
         pure
         returns (uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview wrapped collateral output from a collateral amount
@@ -1056,7 +1058,7 @@ contract MinterUSDCZap_v4 is
         pure
         returns (uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview the expected pegged token output from a base asset amount
@@ -1066,7 +1068,7 @@ contract MinterUSDCZap_v4 is
         pure
         returns (uint256 peggedOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview the expected leveraged token output from a base asset amount
@@ -1076,7 +1078,7 @@ contract MinterUSDCZap_v4 is
         pure
         returns (uint256 leveragedOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview the expected pegged token output from a collateral amount
@@ -1086,7 +1088,7 @@ contract MinterUSDCZap_v4 is
         pure
         returns (uint256 peggedOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview the expected leveraged token output from a collateral amount
@@ -1096,7 +1098,7 @@ contract MinterUSDCZap_v4 is
         pure
         returns (uint256 leveragedOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview the expected StabilityPool deposit from a base asset zap
@@ -1106,7 +1108,7 @@ contract MinterUSDCZap_v4 is
         pure
         returns (uint256 peggedOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview the expected StabilityPool deposit from a collateral zap
@@ -1116,7 +1118,7 @@ contract MinterUSDCZap_v4 is
         pure
         returns (uint256 peggedOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.FunctionNotFound();
+        revert IZapErrors.PreviewNotSupported();
     }
 
     /// @notice Preview the expected pegged token output from a wrapped collateral amount

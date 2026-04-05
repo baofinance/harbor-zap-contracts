@@ -15,6 +15,11 @@ import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "test/mock/MockERC20.sol";
 
+/// @dev Calls a selector with no implementation so the zap's `fallback` runs (revert propagates to test)
+interface ITriggerZapFallback {
+    function __zapFallbackProbe() external;
+}
+
 contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
     GenesisUSDCZap_v5 zap;
     address zapImpl;
@@ -143,6 +148,24 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
     function test_PreviewGenesisFromFxSave_Zero() public view {
         uint256 previewShares = zap.previewSharesFromWrappedCollateral(0);
         assertEq(previewShares, 0, "Preview should return 0 for zero input");
+    }
+
+    /// @dev Oracle-less paths intentionally revert with a dedicated error (not `FunctionNotFound`)
+    function test_PreviewNotSupported_OnStubViews() public {
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.previewWrappedCollateralFromBase(1e6);
+
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.balanceOfBaseAsset(user1);
+
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.totalValueBaseAsset();
+    }
+
+    /// @dev Unknown selectors use `FunctionNotFound`, distinct from unsupported previews
+    function test_Fallback_FunctionNotFound() public {
+        vm.expectRevert(IZapErrors.FunctionNotFound.selector);
+        ITriggerZapFallback(address(zap)).__zapFallbackProbe();
     }
 
     // ============ Upgrade Tests ============

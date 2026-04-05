@@ -241,10 +241,11 @@ contract MinterETHZap_v4 is
     /// @notice Zap base asset into pegged tokens in one transaction
     /// @dev Flow: base asset → collateral → wrapped collateral → Minter mint pegged
     /// @dev Use previewPeggedFromBase() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param minWrappedCollateralOut Minimum wrapped collateral from ETH→stETH→wrap; 0 skips slippage check on wrap leg
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @return peggedOut Amount of pegged tokens minted
-    function zapBaseAssetToPegged(address receiver, uint256 minPeggedOut)
+    function zapBaseAssetToPegged(uint256 minWrappedCollateralOut, address receiver, uint256 minPeggedOut)
         external
         payable
         nonReentrant
@@ -254,7 +255,7 @@ contract MinterETHZap_v4 is
         uint256 baseAssetAmount = msg.value;
         uint256 wrappedCollateralAmount;
         (wrappedCollateralAmount, peggedOut) = _zapToPegged(
-            BASE_ASSET, baseAssetAmount, 0, receiver, minPeggedOut
+            BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver, minPeggedOut
         );
 
         emit BaseAssetZappedToPegged(
@@ -265,10 +266,11 @@ contract MinterETHZap_v4 is
     /// @notice Zap base asset into leveraged tokens in one transaction
     /// @dev Flow: base asset → collateral → wrapped collateral → Minter mint leveraged
     /// @dev Use previewLeveragedFromBase() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param minWrappedCollateralOut Minimum wrapped collateral from ETH→stETH→wrap; 0 skips slippage check on wrap leg
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @return leveragedOut Amount of leveraged tokens minted
-    function zapBaseAssetToLeveraged(address receiver, uint256 minLeveragedOut)
+    function zapBaseAssetToLeveraged(uint256 minWrappedCollateralOut, address receiver, uint256 minLeveragedOut)
         external
         payable
         nonReentrant
@@ -278,7 +280,7 @@ contract MinterETHZap_v4 is
         uint256 baseAssetAmount = msg.value;
         uint256 wrappedCollateralAmount;
         (wrappedCollateralAmount, leveragedOut) = _zapToLeveraged(
-            BASE_ASSET, baseAssetAmount, 0, receiver, minLeveragedOut
+            BASE_ASSET, baseAssetAmount, minWrappedCollateralOut, receiver, minLeveragedOut
         );
 
         emit BaseAssetZappedToLeveraged(
@@ -347,6 +349,7 @@ contract MinterETHZap_v4 is
     /// @notice Zap base asset into StabilityPool in one transaction
     /// @dev Flow: base asset → collateral → wrapped collateral → Minter mint pegged → StabilityPool deposit
     /// @dev Use previewStabilityPoolFromBase() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param minWrappedCollateralOut Minimum wrapped collateral from ETH→stETH→wrap; 0 skips slippage check on wrap leg
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromBase with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
@@ -354,6 +357,7 @@ contract MinterETHZap_v4 is
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
     function zapBaseAssetToStabilityPool(
+        uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
         address stabilityPool,
@@ -366,6 +370,11 @@ contract MinterETHZap_v4 is
 
         uint256 baseAssetAmount = msg.value;
         uint256 wrappedCollateralAmount = _convertBaseAssetToWrappedCollateral(baseAssetAmount);
+        if (wrappedCollateralAmount < minWrappedCollateralOut) {
+            revert IZapErrors.SlippageTooHighWrappedCollateral(
+                wrappedCollateralAmount, minWrappedCollateralOut
+            );
+        }
 
         address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
         peggedOut = _mintPeggedToken(wrappedCollateralAmount, address(this), minPeggedOut);
@@ -841,8 +850,9 @@ contract MinterETHZap_v4 is
 
         // Validate that tokens were actually minted
         uint256 peggedBalanceAfter = IERC20(peggedToken).balanceOf(receiver);
-        if (peggedBalanceAfter - peggedBalanceBefore != peggedOut || peggedOut == 0) {
-            revert IZapErrors.MintFailed();
+        uint256 received = peggedBalanceAfter - peggedBalanceBefore;
+        if (received != peggedOut || peggedOut == 0) {
+            revert IZapErrors.MintMismatchExpected(peggedOut, received);
         }
     }
 
@@ -866,8 +876,9 @@ contract MinterETHZap_v4 is
 
         // Validate that tokens were actually minted
         uint256 leveragedBalanceAfter = IERC20(leveragedToken).balanceOf(receiver);
-        if (leveragedBalanceAfter - leveragedBalanceBefore != leveragedOut || leveragedOut == 0) {
-            revert IZapErrors.MintFailed();
+        uint256 received = leveragedBalanceAfter - leveragedBalanceBefore;
+        if (received != leveragedOut || leveragedOut == 0) {
+            revert IZapErrors.MintMismatchExpected(leveragedOut, received);
         }
     }
 

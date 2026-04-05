@@ -478,10 +478,12 @@ GenesisUSDCZap_v5(genesisZapAddress).zapCollateralWithPermit(
 // - Convert 10 ETH → ~10 stETH via Lido
 // - Convert ~10 stETH → ~8.1 wstETH (wstETH/stETH ratio < 1)
 // - Mint pegged tokens using the Minter contract
-// Apply a small slippage buffer (e.g., 0.5-1%) for minPeggedOut
-
+// Apply slippage buffers: minWrappedCollateralOut (wstETH leg) and minPeggedOut (mint leg)
+uint256 expectedWstEth = MinterETHZap_v4(minterZapAddress).previewWrappedCollateralFromBase(10 ether);
+uint256 minWrappedOut = (expectedWstEth * 995) / 1000; // e.g. 0.5% on wrap
 uint256 minPeggedOut = 8_000 * 1e18; // Minimum pegged tokens expected (adjust based on rates)
 MinterETHZap_v4(minterZapAddress).zapBaseAssetToPegged{value: 10 ether}(
+    minWrappedOut,   // Minimum wstETH from ETH→stETH→wrap (use 0 to skip wrap slippage check)
     bobAddress,      // Receiver address (Bob)
     minPeggedOut     // Minimum pegged tokens expected
 );
@@ -499,8 +501,11 @@ MinterETHZap_v4(minterZapAddress).zapBaseAssetToPegged{value: 10 ether}(
 **Step 1: Execute the zap**
 ```solidity
 // Similar flow but minting leveraged tokens instead
+uint256 expectedWstEth = MinterETHZap_v4(minterZapAddress).previewWrappedCollateralFromBase(10 ether);
+uint256 minWrappedOut = (expectedWstEth * 995) / 1000;
 uint256 minLeveragedOut = 15_000 * 1e18; // Minimum leveraged tokens expected (leverage > 1)
 MinterETHZap_v4(minterZapAddress).zapBaseAssetToLeveraged{value: 10 ether}(
+    minWrappedOut,
     bobAddress,        // Receiver address (Bob)
     minLeveragedOut    // Minimum leveraged tokens expected
 );
@@ -593,12 +598,15 @@ MinterETHZap_v4(minterZapAddress).zapCollateralToPeggedWithPermit(
 **Step 1: Execute the zap**
 ```solidity
 address stabilityPool = 0x...; // Stability pool address
+uint256 expectedWstEth = MinterETHZap_v4(minterZapAddress).previewWrappedCollateralFromBase(10 ether);
+uint256 minWrappedOut = (expectedWstEth * 995) / 1000; // wstETH leg slippage (use 0 to skip)
 uint256 minPeggedOut = 8_000 * 1e18; // Minimum pegged tokens from minting (accounts for mint fees)
 // Note: Stability pool deposits don't incur fees, so minStabilityPoolOut should equal minPeggedOut
 // Add only a small slippage buffer (0.1-0.5%) for rounding protection
 uint256 minStabilityPoolOut = (minPeggedOut * 999) / 1000; // 0.1% slippage buffer
 
 MinterETHZap_v4(minterZapAddress).zapBaseAssetToStabilityPool{value: 10 ether}(
+    minWrappedOut,        // Minimum wstETH from ETH→wrap
     bobAddress,           // Receiver address (Bob)
     minPeggedOut,         // Minimum pegged tokens expected (accounts for mint fees)
     stabilityPool,        // Stability pool address
