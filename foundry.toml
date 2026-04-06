@@ -3,6 +3,8 @@ src = "src"
 out = "out"
 libs = ["lib"]
 evm_version = "cancun"
+# Emit storage layout JSON under `out/` for upgrade diffing (`forge inspect <Contract> storageLayout`).
+extra_output = ["storageLayout"]
 
 auto_detect_remappings = false # remappings seem to cause problems
 optimizer = true

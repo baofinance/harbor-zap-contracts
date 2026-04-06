@@ -37,6 +37,19 @@ This repository contains zap contracts that enable users to deposit collateral i
 - `GenesisUSDCZap_v5`: Zap USDC or fxUSD into Genesis contracts (upgradeable)
 - `MinterUSDCZap_v4`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
 
+## Zap contracts: review verdict and possible optimizations
+
+**Verdict (current `GenesisETHZap_v5`, `GenesisUSDCZap_v5`, `MinterETHZap_v4`, `MinterUSDCZap_v4`):** The four upgradeable zaps are in good shape to keep as-is for production. They prioritize safety (balance-delta checks, slippage minima, reentrancy protection, stability pool allowlisting, mint/share validation) over micro-gas tuning. User-visible cost is dominated by external calls (Lido, fx routes, Minter mint, Stability Pool), not small internal refactors.
+
+**Possible optimizations (optional; for a later pass or lead review):**
+
+1. **Genesis ETH previews** — `previewSharesFromBase` / `previewSharesFromCollateral` call `this.previewWrappedCollateralFromBase` / `this.previewWrappedCollateralFromCollateral` (external self-calls). Replacing those with shared **internal** helpers would save a modest amount of gas and bytecode; behavior stays the same.
+2. **Genesis ETH `zapBaseAsset`** — `_getCurrentValuesBaseCollateral` may be used twice in the same transaction (slippage check and event). **Reusing one in-memory tuple** would avoid duplicate oracle-style view work; impact is minor on L1.
+3. **Cross-zap deduplication** — `MinterETHZap_v4` and `MinterUSDCZap_v4` share parallel patterns (`_mintPeggedToken`, `_depositToStabilityPool`, parts of `_zapToPegged`, etc.). A **library or shared base** could reduce drift and audit surface; treat as a **maintainability** refactor with full storage-layout and upgrade checks, not as an urgent gas win.
+4. **Profiling first** — Any deeper optimization should be driven by traces/profiling on representative txs; contract internals are unlikely to beat the cost of external protocols.
+
+**Related:** Storage layout for upgrades is documented via `__gap` on these zaps, `extra_output = ["storageLayout"]` in `foundry.toml`, and `script/dump-zap-storage-layout.sh` for human-readable layout dumps before upgrades.
+
 ## Prerequisites
 
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) installed

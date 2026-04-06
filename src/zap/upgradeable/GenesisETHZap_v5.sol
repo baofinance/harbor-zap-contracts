@@ -53,6 +53,9 @@ contract GenesisETHZap_v5 is
     // ========== Configurable ==========
     address public referral;
 
+    /// @dev Reserved slots for future storage variables. Shrink the array when appending new state (OZ upgradeable pattern).
+    uint256[50] private __gap;
+
     // ========== Events ==========
     /// @notice Emitted when base asset is successfully zapped into Genesis (same shape as `GenesisUSDCZap_v5` for indexers)
     /// @param wrappedCollateralOut wstETH deposited (1:1 Genesis shares for this vault)

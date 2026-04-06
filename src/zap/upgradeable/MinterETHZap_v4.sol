@@ -61,6 +61,9 @@ contract MinterETHZap_v4 is
     /// @notice Mapping of allowed stability pool addresses
     mapping(address => bool) public allowedStabilityPools;
 
+    /// @dev Reserved slots for future storage variables. Shrink the array when appending new state (OZ upgradeable pattern).
+    uint256[50] private __gap;
+
     // ============ Events ============
 
     /// @notice Emitted when base asset is zapped to mint pegged tokens

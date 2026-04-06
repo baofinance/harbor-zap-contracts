@@ -59,6 +59,9 @@ contract GenesisUSDCZap_v5 is
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable GENESIS;
 
+    /// @dev Reserved slots for future storage variables. Shrink the array when appending new state (OZ upgradeable pattern).
+    uint256[50] private __gap;
+
     // ============ Events ============
     /// @notice Emitted when base asset is zapped into Genesis
     /// @param user Address that initiated the zap
