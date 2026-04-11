@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "chainId": 4326,
+  "chainName": "MegaETH",
+  "chainTokens": {
+    "wstETH": "0x601aC63637933D88285A025C685AC4e9a92a98dA"
+  },
+  "sourceState": "harbor-minter/harbor/deployments/megaeth/megaeth_test_v1.state.json",
+  "owner": "",
+  "markets": {
+    "BTC": {
+      "addresses": {
+        "genesisEth": "",
+        "genesisUsdc": "0x7dC5Ed845cD3A0754Ff0FCb01c7B7bcD305eCeCf",
+        "minterEth": "",
+        "minterUsdc": "0x26C3DF97df2d3f3D8f5F787e3332Bc213f39a96b"
+      },
+      "stabilityPools": [
+        "0x91C4B59658776d704cb5Bd99B13aF83a20C13737",
+        "0x6A4BfAF9e7C7268F954a83B56085ff0277D1b94B"
+      ]
+    },
+    "ETH": {
+      "addresses": {
+        "genesisEth": "0x384343cb6F2309D0fF2f7d96087635b9C18bDe43",
+        "genesisUsdc": "",
+        "minterEth": "0x0f88bD3Bbe465c618DbB32dB07B77C2745a32c24",
+        "minterUsdc": ""
+      },
+      "stabilityPools": [
+        "0x5EefF77A7937883FDaDbc167B4Bce9791ccDE02b",
+        "0xCb01320C53Bd514a63E9149354ECFf26285A7827"
+      ]
+    }
+  }
+}

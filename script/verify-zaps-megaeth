@@ -1,0 +1,317 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Verify zap implementations/proxies on MegaETH from deployments/megaeth/zaps*.json.
+# Default verifier: Etherscan API (chain 4326).
+# Optional verifier: Blockscout.
+
+FORGE=${FORGE:-$HOME/.foundry/bin/forge}
+CAST=${CAST:-$HOME/.foundry/bin/cast}
+
+CHAIN_ID=4326
+SOLC_VERSION=${ZAP_VERIFY_SOLC_VERSION:-0.8.30}
+BLOCKSCOUT_URL="https://megaeth.blockscout.com/api/"
+ETHERSCAN_API_URL="${MEGAETH_ETHERSCAN_API_URL:-https://api.etherscan.io/v2/api}"
+COMPILER_VERSION="v${SOLC_VERSION}+commit.73712a01"
+OPTIMIZER_RUNS=700
+EVM_VERSION=cancun
+PROXY_PATH="lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  script/verify-zaps-megaeth [options]
+
+Options:
+  --state <path>             State file path (default: deployments/megaeth/zaps.json)
+  --salt <salt-prefix>       Use deployments/megaeth/zaps-<salt-prefix>.json (ignored if --state is set)
+  --verifier <name>          etherscan (default) | blockscout
+  --etherscan-api-key <key>  API key for etherscan verifier (or set ETHERSCAN_API_KEY)
+  --impl-only                Verify implementations only
+  --proxies-only             Verify proxies only
+  -h, --help                 Show help
+
+Examples:
+  script/verify-zaps-megaeth --salt mega_test_v1
+  script/verify-zaps-megaeth --salt mega_test_v1 --proxies-only
+  script/verify-zaps-megaeth --salt mega_test_v1 --verifier blockscout
+EOF
+}
+
+STATE_FILE=""
+SALT_PREFIX=""
+VERIFIER="etherscan"
+ETHERSCAN_KEY="${ETHERSCAN_API_KEY:-}"
+VERIFY_IMPL=true
+VERIFY_PROXIES=true
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --state)
+      STATE_FILE=${2:-}
+      shift 2
+      ;;
+    --salt)
+      SALT_PREFIX=${2:-}
+      shift 2
+      ;;
+    --verifier)
+      VERIFIER=${2:-}
+      shift 2
+      ;;
+    --etherscan-api-key)
+      ETHERSCAN_KEY=${2:-}
+      shift 2
+      ;;
+    --impl-only)
+      VERIFY_PROXIES=false
+      shift
+      ;;
+    --proxies-only)
+      VERIFY_IMPL=false
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$STATE_FILE" ]]; then
+  if [[ -n "$SALT_PREFIX" ]] && [[ "$SALT_PREFIX" != "harbor_v1" ]]; then
+    STATE_FILE="deployments/megaeth/zaps-${SALT_PREFIX}.json"
+  else
+    STATE_FILE="deployments/megaeth/zaps.json"
+  fi
+fi
+
+if [[ ! -f "$STATE_FILE" ]]; then
+  echo "❌ State file not found: $STATE_FILE" >&2
+  exit 1
+fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "❌ jq is required" >&2
+  exit 1
+fi
+
+case "$VERIFIER" in
+  etherscan|blockscout) ;;
+  *)
+    echo "❌ --verifier must be etherscan or blockscout" >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$VERIFIER" == "etherscan" ]] && [[ -z "$ETHERSCAN_KEY" ]]; then
+  echo "❌ ETHERSCAN_API_KEY is required for etherscan verifier" >&2
+  exit 1
+fi
+if [[ "$VERIFIER" == "blockscout" ]] && [[ -z "$ETHERSCAN_KEY" ]]; then
+  # forge requires a value for --etherscan-api-key with blockscout verifier.
+  ETHERSCAN_KEY="dummy"
+fi
+
+verify_contract() {
+  local address=$1
+  local contract_path=$2
+  local constructor_args=${3:-}
+  local label=$4
+
+  local code
+  code=$("$CAST" code "$address" --rpc-url megaeth 2>/dev/null | head -n 1 || echo "0x")
+  if [[ "$code" == "0x" ]]; then
+    echo "⏭  Skip $label ($address): no code on-chain"
+    return 2
+  fi
+
+  local out
+  if [[ "$VERIFIER" == "etherscan" ]]; then
+    # Use Etherscan API v2 submission flow (same approach as harbor/script/verify-megaeth).
+    local raw json_content candidate line count_line temp_json response status ctor_hex
+    if [[ -n "$constructor_args" ]]; then
+      raw=$("$FORGE" verify-contract \
+        --rpc-url megaeth \
+        --show-standard-json-input \
+        --compiler-version "$SOLC_VERSION" \
+        --constructor-args "$constructor_args" \
+        "$address" \
+        "$contract_path" 2>&1 || true)
+    else
+      raw=$("$FORGE" verify-contract \
+        --rpc-url megaeth \
+        --show-standard-json-input \
+        --compiler-version "$SOLC_VERSION" \
+        "$address" \
+        "$contract_path" 2>&1 || true)
+    fi
+
+    json_content=""
+    if echo "$raw" | jq -c '.' 2>/dev/null | jq -e '.sources' >/dev/null 2>&1; then
+      json_content=$(echo "$raw" | jq -c '.')
+    else
+      line=""
+      count_line=0
+      while IFS= read -r line; do
+        count_line=$((count_line + 1))
+        candidate=$(echo "$raw" | tail -n +"$count_line" | jq -c '.' 2>/dev/null || true)
+        if [[ -n "$candidate" ]] && echo "$candidate" | jq -e '.sources' >/dev/null 2>&1; then
+          json_content=$candidate
+          break
+        fi
+      done <<< "$raw"
+      if [[ -z "$json_content" ]]; then
+        candidate=$(echo "$raw" | tail -n 1 | jq -c '.' 2>/dev/null || true)
+        if [[ -n "$candidate" ]] && echo "$candidate" | jq -e '.sources' >/dev/null 2>&1; then
+          json_content=$candidate
+        fi
+      fi
+    fi
+
+    if [[ -z "$json_content" ]]; then
+      out="Error: could not build standard-json-input for Etherscan submission"
+    else
+      temp_json=$(mktemp)
+      echo "$json_content" > "$temp_json"
+      if [[ -n "$constructor_args" ]]; then
+        ctor_hex=${constructor_args#0x}
+        response=$(curl -s -X POST "${ETHERSCAN_API_URL}?apikey=${ETHERSCAN_KEY}&chainid=${CHAIN_ID}&module=contract&action=verifysourcecode" \
+          --data-urlencode "contractaddress=$address" \
+          --data-urlencode "sourceCode@$temp_json" \
+          --data-urlencode "codeformat=solidity-standard-json-input" \
+          --data-urlencode "contractname=$contract_path" \
+          --data-urlencode "compilerversion=$COMPILER_VERSION" \
+          --data-urlencode "optimizationUsed=1" \
+          --data-urlencode "runs=$OPTIMIZER_RUNS" \
+          --data-urlencode "evmVersion=$EVM_VERSION" \
+          --data-urlencode "licenseType=3" \
+          --data-urlencode "constructorArguments=$ctor_hex" 2>/dev/null || true)
+      else
+        response=$(curl -s -X POST "${ETHERSCAN_API_URL}?apikey=${ETHERSCAN_KEY}&chainid=${CHAIN_ID}&module=contract&action=verifysourcecode" \
+          --data-urlencode "contractaddress=$address" \
+          --data-urlencode "sourceCode@$temp_json" \
+          --data-urlencode "codeformat=solidity-standard-json-input" \
+          --data-urlencode "contractname=$contract_path" \
+          --data-urlencode "compilerversion=$COMPILER_VERSION" \
+          --data-urlencode "optimizationUsed=1" \
+          --data-urlencode "runs=$OPTIMIZER_RUNS" \
+          --data-urlencode "evmVersion=$EVM_VERSION" \
+          --data-urlencode "licenseType=3" 2>/dev/null || true)
+      fi
+      rm -f "$temp_json"
+      status=$(echo "$response" | jq -r '.status // ""' 2>/dev/null)
+      if [[ "$status" == "1" ]]; then
+        out="Submitted"
+      elif echo "$response" | grep -qi "already verified"; then
+        out="Already verified"
+      else
+        out=$(echo "$response" | jq -r 'if .result != "" and .result != null then .result else .message // "unknown" end' 2>/dev/null || echo "$response")
+      fi
+    fi
+  else
+    local -a cmd
+    cmd=(
+      "$FORGE" verify-contract
+      "$address"
+      "$contract_path"
+      --compiler-version "$SOLC_VERSION"
+      --chain "$CHAIN_ID"
+      --rpc-url megaeth
+      --verifier blockscout
+      --verifier-url "$BLOCKSCOUT_URL"
+      --etherscan-api-key "$ETHERSCAN_KEY"
+    )
+    if [[ -n "$constructor_args" ]]; then
+      cmd+=(--constructor-args "$constructor_args")
+    fi
+    out=$("${cmd[@]}" 2>&1 || true)
+  fi
+  if echo "$out" | grep -qi "Contract successfully verified"; then
+    echo "✅ Verified $label ($address)"
+    return 0
+  elif echo "$out" | grep -qi "already verified"; then
+    echo "✅ Already verified $label ($address)"
+    return 0
+  elif echo "$out" | grep -qi "submitted\|pending\|waiting"; then
+    echo "🕒 Submitted $label ($address); check explorer shortly"
+    return 0
+  elif echo "$out" | grep -qi "Address is not a smart-contract\|Failed to obtain contract ABI\|Failed to deserialize response: EOF"; then
+    # Common Blockscout index lag / empty-body responses; do not fail entire run.
+    echo "⏭  Skip $label ($address): explorer/indexer not ready yet"
+    return 2
+  fi
+
+  echo "❌ Verification failed for $label ($address)"
+  echo "$out" | sed 's/^/   /' | head -n 12
+  return 1
+}
+
+echo "=== Verify Zaps (MegaETH) ==="
+echo "State:    $STATE_FILE"
+echo "Verifier: $VERIFIER"
+echo ""
+
+ok=0
+fail=0
+skip=0
+
+if [[ "$VERIFY_IMPL" == true ]]; then
+  echo "Implementations:"
+  while IFS= read -r addr; do
+    [[ -z "$addr" ]] && continue
+    contract_id=$(jq -r --arg a "$addr" '.implementations[$a].contractId // empty' "$STATE_FILE")
+    if [[ -z "$contract_id" ]]; then
+      echo "⏭  Skip implementation $addr: missing contractId in state"
+      skip=$((skip + 1))
+      continue
+    fi
+    if verify_contract "$addr" "$contract_id" "" "implementation"; then
+      ok=$((ok + 1))
+    else
+      rc=$?
+      if [[ $rc -eq 2 ]]; then
+        skip=$((skip + 1))
+      else
+        fail=$((fail + 1))
+      fi
+    fi
+    sleep 1
+  done < <(jq -r '.implementations | keys[]?' "$STATE_FILE" | sort -u)
+  echo ""
+fi
+
+if [[ "$VERIFY_PROXIES" == true ]]; then
+  echo "Proxies:"
+  while IFS= read -r entry; do
+    key=$(jq -r '.key' <<<"$entry")
+    addr=$(jq -r '.value.address // empty' <<<"$entry")
+    impl=$(jq -r '.value.implementation // empty' <<<"$entry")
+    init_data=$(jq -r '.value.initData // empty' <<<"$entry")
+    if [[ -z "$addr" || -z "$impl" || -z "$init_data" ]]; then
+      echo "⏭  Skip proxy $key: missing address/implementation/initData"
+      skip=$((skip + 1))
+      continue
+    fi
+    ctor_args=$("$CAST" abi-encode "constructor(address,bytes)" "$impl" "$init_data")
+    if verify_contract "$addr" "$PROXY_PATH" "$ctor_args" "proxy:$key"; then
+      ok=$((ok + 1))
+    else
+      rc=$?
+      if [[ $rc -eq 2 ]]; then
+        skip=$((skip + 1))
+      else
+        fail=$((fail + 1))
+      fi
+    fi
+    sleep 1
+  done < <(jq -c '.proxies | to_entries[]?' "$STATE_FILE")
+  echo ""
+fi
+
+echo "Done: ok=$ok fail=$fail skip=$skip"
+[[ $fail -eq 0 ]]

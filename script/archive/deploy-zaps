@@ -27,10 +27,16 @@ Options:
   --network             Required. Network name (foundry.toml rpc_endpoints key)
   --local               Use local anvil RPC (enables auto-impersonate for operator/owner)
   --salt                Salt prefix for CREATE3 address (default: "harbor_v1")
-  --account             Foundry keystore account name (required for non-local deploys)
+  --account             Foundry keystore account name (non-local deploy: use this or PRIVATE_KEY)
   --etherscan-api-key   Required for --verify / --verify-impl (non-local)
-  --market              Market key used to resolve config addresses (optional)
-  --config              Config file path (default: deployments/mainnet/zap-addresses.json)
+  --market              Market key: loads genesis/minter addresses from config; for minter-* --deploy,
+                        also runs setStabilityPoolAllowed + transferOwnership like deploy-minter*-zap.sh
+  --config              Config file path (default: deployments/<--network>/zap-addresses.json)
+
+Env (non-local deploy):
+  PRIVATE_KEY           Raw hex key if not using --account
+  DEPLOYER_ACCOUNT_PASSWORD  Keystore password (otherwise prompted once)
+  BAO_FACTORY           Override BaoFactory address (default: mainnet factory)
 
 Zap targets (positional):
   genesis-eth | genesis-usdc | minter-eth | minter-usdc
@@ -59,7 +65,7 @@ ACCOUNT_NAME=""
 MODE=""
 ETHERSCAN_API_KEY=""
 MARKET=""
-CONFIG_FILE=${ZAP_CONFIG_FILE:-deployments/mainnet/zap-addresses.json}
+CONFIG_FILE=${ZAP_CONFIG_FILE:-}
 ZAPS=()
 
 while [[ $# -gt 0 ]]; do
@@ -123,6 +129,10 @@ if [[ -z "$NETWORK" ]]; then
   exit 1
 fi
 
+if [[ -z "$CONFIG_FILE" ]]; then
+  CONFIG_FILE="deployments/${NETWORK}/zap-addresses.json"
+fi
+
 if [[ "$NETWORK" == *"://"* ]] || [[ "$NETWORK" == ws://* ]] || [[ "$NETWORK" == wss://* ]]; then
   echo "❌ --network must be an rpc_endpoints name from foundry.toml, not a URL." >&2
   exit 1
@@ -140,8 +150,14 @@ else
   RPC_NETWORK="$NETWORK"
 fi
 
-if [[ "$USE_LOCAL" != true ]] && [[ "$MODE" == "deploy" || "$MODE" == "deploy-impl" ]] && [[ -z "$ACCOUNT_NAME" ]]; then
-  echo "❌ --account is required when deploying against $NETWORK" >&2
+# forge verify-contract --chain: use numeric ID for chains not named in Foundry's built-in list
+FORGE_VERIFY_CHAIN="$NETWORK"
+if [[ "$NETWORK" == "megaeth" ]]; then
+  FORGE_VERIFY_CHAIN="4326"
+fi
+
+if [[ "$USE_LOCAL" != true ]] && [[ "$MODE" == "deploy" || "$MODE" == "deploy-impl" ]] && [[ -z "$ACCOUNT_NAME" ]] && [[ -z "${PRIVATE_KEY:-}" ]]; then
+  echo "❌ Non-local deploy requires --account or PRIVATE_KEY in the environment" >&2
   exit 1
 fi
 
@@ -174,6 +190,17 @@ load_config() {
   fi
 }
 
+load_list() {
+  local jq_path=$1
+  if [[ -f "$CONFIG_FILE" ]]; then
+    if ! command -v jq >/dev/null 2>&1; then
+      echo "❌ ERROR: jq is required to read $CONFIG_FILE" >&2
+      exit 1
+    fi
+    jq -r "$jq_path" "$CONFIG_FILE" 2>/dev/null || true
+  fi
+}
+
 OWNER=${OWNER:-}
 if [[ -z "$OWNER" ]]; then
   OWNER=$(load_config ".owner")
@@ -198,7 +225,18 @@ fi
 
 REFERRAL_ETH=${REFERRAL_ETH:-0x0000000000000000000000000000000000000000}
 
-CHAIN_ID=$("$CAST" chain-id --rpc-url "$RPC_NETWORK" 2>/dev/null || echo "unknown")
+CHAIN_ID_RAW=$("$CAST" chain-id --rpc-url "$RPC_NETWORK" 2>/dev/null || echo "unknown")
+CHAIN_ID=""
+if [[ "$CHAIN_ID_RAW" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
+  CHAIN_ID=$((16#${CHAIN_ID_RAW:2}))
+elif [[ "$CHAIN_ID_RAW" =~ ^[0-9]+$ ]]; then
+  CHAIN_ID=$CHAIN_ID_RAW
+fi
+if [[ -z "$CHAIN_ID" ]]; then
+  echo "❌ Unable to determine chain ID from RPC alias '$RPC_NETWORK' (got: $CHAIN_ID_RAW)." >&2
+  echo "   Ensure foundry.toml has rpc_endpoints.$NETWORK and required env vars are set (e.g. MEGAETH_RPC_URL)." >&2
+  exit 1
+fi
 
 STATE_VERSION="zaps"
 STATE_FILE=""
@@ -232,6 +270,7 @@ init_state_file() {
       chainId: ($chainId | tonumber),
       baoFactory: $baoFactory,
       owner: $owner,
+      predictions: {},
       implementations: {},
       proxies: {}
     }')
@@ -253,6 +292,19 @@ has_code() {
   [[ "$code" != "0x" ]]
 }
 
+wait_for_code() {
+  local addr=$1
+  local attempts=${2:-12}
+  local i
+  for ((i=1; i<=attempts; i++)); do
+    if has_code "$addr"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 erc1967_impl_address() {
   local proxy=$1
   local impl
@@ -265,10 +317,19 @@ erc1967_impl_address() {
 }
 
 SIGNER_ARGS=()
-if [[ -n "$ACCOUNT_NAME" ]]; then
-  SIGNER_ARGS=(--account "$ACCOUNT_NAME")
-elif [[ "$USE_LOCAL" == true ]]; then
-  SIGNER_ARGS=(--private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80)
+if [[ "$MODE" == "deploy" || "$MODE" == "deploy-impl" ]]; then
+  if [[ -n "$ACCOUNT_NAME" ]]; then
+    if [[ -z "${DEPLOYER_ACCOUNT_PASSWORD:-}" ]]; then
+      read -r -s -p "Enter keystore password for \"$ACCOUNT_NAME\" (input hidden): " DEPLOYER_ACCOUNT_PASSWORD
+      echo ""
+      export DEPLOYER_ACCOUNT_PASSWORD
+    fi
+    SIGNER_ARGS=(--account "$ACCOUNT_NAME" --password "$DEPLOYER_ACCOUNT_PASSWORD")
+  elif [[ -n "${PRIVATE_KEY:-}" ]] && [[ "$USE_LOCAL" != true ]]; then
+    SIGNER_ARGS=(--private-key "$PRIVATE_KEY")
+  elif [[ "$USE_LOCAL" == true ]]; then
+    SIGNER_ARGS=(--private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80)
+  fi
 fi
 
 DEPLOYER=""
@@ -287,7 +348,7 @@ ensure_operator() {
   fi
   if [[ "$USE_LOCAL" == true ]]; then
     echo "Setting BaoFactory operator as OWNER (local mode)..."
-    if ! "$CAST" send "$BAO_FACTORY" "setOperator(address,uint256)" "$DEPLOYER" 500000 \
+    if ! CAST_ASYNC=false "$CAST" send "$BAO_FACTORY" "setOperator(address,uint256)" "$DEPLOYER" 500000 \
       --from "$OWNER" --unlocked --rpc-url "$RPC_NETWORK" --json >/dev/null 2>&1; then
       echo "❌ Failed to call BaoFactory.setOperator as OWNER on local RPC." >&2
       exit 1
@@ -325,7 +386,13 @@ predict_address() {
   local salt_str salt_b32 predicted
   salt_str=$(salt_for_zap "$zap")
   salt_b32=$("$CAST" keccak "$("$CAST" from-utf8 "$salt_str")")
-  predicted=$("$CAST" call "$BAO_FACTORY" "predictAddress(bytes32)(address)" "$salt_b32" --rpc-url "$RPC_NETWORK")
+  if ! predicted=$("$CAST" call "$BAO_FACTORY" "predictAddress(bytes32)(address)" "$salt_b32" --rpc-url "$RPC_NETWORK" 2>&1); then
+    echo "❌ Failed to compute predicted address for $zap" >&2
+    echo "   BaoFactory: $BAO_FACTORY" >&2
+    echo "   RPC alias:  $RPC_NETWORK" >&2
+    echo "   Error:      $predicted" >&2
+    return 1
+  fi
   echo "$predicted"
 }
 
@@ -377,18 +444,122 @@ init_data_for_zap() {
 require_addresses_for_zap() {
   case "$1" in
     genesis-eth)
-      [[ -z "$GENESIS_ETH" ]] && { echo "❌ GENESIS_ETH is not set" >&2; exit 1; }
+      if [[ -z "$GENESIS_ETH" ]]; then
+        echo "❌ GENESIS_ETH is not set" >&2
+        exit 1
+      fi
       ;;
     genesis-usdc)
-      [[ -z "$GENESIS_USDC" ]] && { echo "❌ GENESIS_USDC is not set" >&2; exit 1; }
+      if [[ -z "$GENESIS_USDC" ]]; then
+        echo "❌ GENESIS_USDC is not set" >&2
+        exit 1
+      fi
       ;;
     minter-eth)
-      [[ -z "$MINTER_ETH" ]] && { echo "❌ MINTER_ETH is not set" >&2; exit 1; }
+      if [[ -z "$MINTER_ETH" ]]; then
+        echo "❌ MINTER_ETH is not set" >&2
+        exit 1
+      fi
       ;;
     minter-usdc)
-      [[ -z "$MINTER_USDC" ]] && { echo "❌ MINTER_USDC is not set" >&2; exit 1; }
+      if [[ -z "$MINTER_USDC" ]]; then
+        echo "❌ MINTER_USDC is not set" >&2
+        exit 1
+      fi
       ;;
   esac
+}
+
+# After CREATE3 proxy deploy: match deploy-mintereth-zap.sh / deploy-minterusdc-zap.sh (pools + owner).
+post_configure_minter_zap() {
+  local zap=$1
+  local proxy=$2
+  case "$zap" in
+    minter-eth | minter-usdc) ;;
+    *) return 0 ;;
+  esac
+  if [[ -z "$MARKET" ]]; then
+    echo "⚠️  MARKET unset: skipping setStabilityPoolAllowed + transferOwnership for $zap (pass --market to mirror deploy-minter*-zap.sh)"
+    return 0
+  fi
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "⚠️  Config missing: skipping post-deploy minter steps"
+    return 0
+  fi
+
+  # Post-config writes are owner-gated. Skip safely if signer no longer owns the proxy.
+  local current_owner dep_lc own_lc curr_lc
+  current_owner=$("$CAST" call "$proxy" "owner()(address)" --rpc-url "$RPC_NETWORK" 2>/dev/null || echo "")
+  dep_lc=$(echo "$DEPLOYER" | tr '[:upper:]' '[:lower:]')
+  own_lc=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+  curr_lc=$(echo "$current_owner" | tr '[:upper:]' '[:lower:]')
+  if [[ -n "$current_owner" ]] && [[ "$curr_lc" != "$dep_lc" ]]; then
+    echo "⚠️  Skipping minter post-config for $zap: signer is not current owner ($current_owner)"
+    return 0
+  fi
+
+  local pools=()
+  while IFS= read -r pool || [[ -n "$pool" ]]; do
+    [[ -n "$pool" ]] && pools+=("$pool")
+  done < <(load_list ".markets[\"$MARKET\"].stabilityPools[]?")
+
+  if (( ${#pools[@]} > 0 )); then
+    echo "Setting allowed stability pools for $zap..."
+    for pool in "${pools[@]}"; do
+      if [[ -n "$pool" ]]; then
+        local out=""
+        local sent=false
+        for attempt in 1 2 3; do
+          if out=$(CAST_ASYNC=false "$CAST" send "$proxy" "setStabilityPoolAllowed(address,bool)" "$pool" "true" \
+            --rpc-url "$RPC_NETWORK" \
+            --confirmations 1 \
+            "${SIGNER_ARGS[@]}" 2>&1); then
+            sent=true
+            break
+          fi
+          if echo "$out" | grep -qi "nonce too low"; then
+            echo "⚠️  Nonce race while setting pool $pool (attempt $attempt/3), retrying..."
+            sleep 2
+            continue
+          fi
+          break
+        done
+        if [[ "$sent" != "true" ]]; then
+          echo "❌ Failed to set stability pool $pool:" >&2
+          echo "$out" | sed 's/^/     /' >&2
+          return 1
+        fi
+        echo "✅ Stability pool allowed: $pool"
+      fi
+    done
+  fi
+
+  if [[ "$dep_lc" != "$own_lc" ]]; then
+    echo "Transferring ownership of $proxy to $OWNER..."
+    local out=""
+    local sent=false
+    for attempt in 1 2 3; do
+      if out=$(CAST_ASYNC=false "$CAST" send "$proxy" "transferOwnership(address)" "$OWNER" \
+        --rpc-url "$RPC_NETWORK" \
+        --confirmations 1 \
+        "${SIGNER_ARGS[@]}" 2>&1); then
+        sent=true
+        break
+      fi
+      if echo "$out" | grep -qi "nonce too low"; then
+        echo "⚠️  Nonce race during transferOwnership (attempt $attempt/3), retrying..."
+        sleep 2
+        continue
+      fi
+      break
+    done
+    if [[ "$sent" != "true" ]]; then
+      echo "❌ Failed to transfer ownership:" >&2
+      echo "$out" | sed 's/^/     /' >&2
+      return 1
+    fi
+    echo "✅ Ownership transferred to $OWNER"
+  fi
 }
 
 record_implementation() {
@@ -449,6 +620,32 @@ record_proxy() {
     "$STATE_FILE" >"$tmp" && mv "$tmp" "$STATE_FILE"
 }
 
+record_prediction() {
+  local zap=$1
+  local predicted=$2
+  local has_code=$3
+  local key salt timestamp
+  key=$(zap_key "$zap")
+  salt=$(salt_for_zap "$zap")
+  timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  local tmp
+  tmp=$(mktemp)
+  jq \
+    --arg key "$key" \
+    --arg addr "$predicted" \
+    --arg salt "$salt" \
+    --arg checkedAt "$timestamp" \
+    --argjson hasCode "$has_code" \
+    '.predictions = (.predictions // {}) | .predictions[$key] = {
+      address: $addr,
+      salt: $salt,
+      hasCode: $hasCode,
+      checkedAt: $checkedAt
+    }' \
+    "$STATE_FILE" >"$tmp" && mv "$tmp" "$STATE_FILE"
+}
+
 get_latest_impl_for_zap() {
   jq -r --arg key "$(zap_key "$1")" \
     '[.implementations | to_entries[] | select(.value.zapKey == $key)] | sort_by(.value.deployedAt) | last | .key // empty' \
@@ -456,6 +653,13 @@ get_latest_impl_for_zap() {
 }
 
 init_state_file
+
+factory_code=$("$CAST" code "$BAO_FACTORY" --rpc-url "$RPC_NETWORK" 2>/dev/null | head -n 1 || echo "0x")
+if [[ "$factory_code" == "0x" ]]; then
+  echo "❌ No contract code at BAO_FACTORY on '$RPC_NETWORK': $BAO_FACTORY" >&2
+  echo "   Set BAO_FACTORY to the MegaETH factory address (or verify RPC/network selection)." >&2
+  exit 1
+fi
 
 case "$MODE" in
   deploy)
@@ -470,12 +674,19 @@ case "$MODE" in
 esac
 
 for zap in "${ZAPS[@]}"; do
-  require_addresses_for_zap "$zap"
-
-  contract_id=$(contract_id_for_zap "$zap")
-  contract_name=$(contract_name_for_zap "$zap")
-  ctor_encoded=$(constructor_args_encoded_for_zap "$zap")
-  predicted=$(predict_address "$zap")
+  if [[ "$MODE" != "check" ]]; then
+    require_addresses_for_zap "$zap"
+    contract_id=$(contract_id_for_zap "$zap")
+    contract_name=$(contract_name_for_zap "$zap")
+    ctor_encoded=$(constructor_args_encoded_for_zap "$zap")
+  else
+    contract_id=""
+    contract_name=""
+    ctor_encoded=""
+  fi
+  if ! predicted=$(predict_address "$zap"); then
+    continue
+  fi
 
   echo ""
   echo "═══════════════════════════════════════════════════════════"
@@ -488,9 +699,11 @@ for zap in "${ZAPS[@]}"; do
   case "$MODE" in
     check)
       if ! has_code "$predicted"; then
+        record_prediction "$zap" "$predicted" false
         echo "❌ Not deployed (no code at predicted address)"
         continue
       fi
+      record_prediction "$zap" "$predicted" true
       if ! name=$("$CAST" call "$predicted" "zapName()(string)" --rpc-url "$RPC_NETWORK" 2>&1); then
         echo "⚠️  zapName() call failed"
       else
@@ -504,7 +717,8 @@ for zap in "${ZAPS[@]}"; do
 
     deploy-impl)
       echo "Deploying implementation: $contract_id"
-      if ! out=$("$FORGE" create "$contract_id" --rpc-url "$RPC_NETWORK" "${SIGNER_ARGS[@]}" --broadcast 2>&1); then
+      ctor_args=( $(constructor_args_for_zap "$zap") )
+      if ! out=$("$FORGE" create "$contract_id" --rpc-url "$RPC_NETWORK" "${SIGNER_ARGS[@]}" --broadcast --constructor-args "${ctor_args[@]}" 2>&1); then
         echo "❌ Deployment failed:" >&2
         echo "$out" | sed 's/^/     /' >&2
         continue
@@ -529,12 +743,27 @@ for zap in "${ZAPS[@]}"; do
 
     deploy)
       if has_code "$predicted"; then
-        echo "❌ Proxy already deployed at $predicted"
+        echo "⚠️  Proxy already deployed at $predicted"
+        # Reconcile missing state entries from interrupted previous runs.
+        key=$(zap_key "$zap")
+        state_proxy_addr=$(jq -r --arg key "$key" '.proxies[$key].address // empty' "$STATE_FILE")
+        if [[ -z "$state_proxy_addr" ]]; then
+          current_impl=$(erc1967_impl_address "$predicted" || true)
+          if [[ -n "$current_impl" ]]; then
+            init_data=$(init_data_for_zap "$zap")
+            record_proxy "$zap" "$predicted" "$current_impl" "$init_data"
+            echo "✓ Reconciled missing proxy state entry for $key"
+          else
+            echo "⚠️  Could not infer implementation for $predicted; state not reconciled"
+          fi
+        fi
+        post_configure_minter_zap "$zap" "$predicted"
         continue
       fi
 
       echo "Deploying implementation: $contract_id"
-      if ! out=$("$FORGE" create "$contract_id" --rpc-url "$RPC_NETWORK" "${SIGNER_ARGS[@]}" --broadcast 2>&1); then
+      ctor_args=( $(constructor_args_for_zap "$zap") )
+      if ! out=$("$FORGE" create "$contract_id" --rpc-url "$RPC_NETWORK" "${SIGNER_ARGS[@]}" --broadcast --constructor-args "${ctor_args[@]}" 2>&1); then
         echo "❌ Deployment failed:" >&2
         echo "$out" | sed 's/^/     /' >&2
         continue
@@ -556,8 +785,22 @@ for zap in "${ZAPS[@]}"; do
       echo "Deploying proxy via BaoFactory..."
       salt_str=$(salt_for_zap "$zap")
       salt_b32=$("$CAST" keccak "$("$CAST" from-utf8 "$salt_str")")
-      if ! tx=$("$CAST" send "$BAO_FACTORY" "deploy(bytes,bytes32)(address)" "$init_code" "$salt_b32" \
-        --rpc-url "$RPC_NETWORK" "${SIGNER_ARGS[@]}" --json 2>&1); then
+      tx=""
+      sent=false
+      for attempt in 1 2 3; do
+        if tx=$(CAST_ASYNC=false "$CAST" send "$BAO_FACTORY" "deploy(bytes,bytes32)(address)" "$init_code" "$salt_b32" \
+          --rpc-url "$RPC_NETWORK" "${SIGNER_ARGS[@]}" --json 2>&1); then
+          sent=true
+          break
+        fi
+        if echo "$tx" | grep -qi "nonce too low"; then
+          echo "⚠️  Nonce race on proxy deploy (attempt $attempt/3), retrying..."
+          sleep 2
+          continue
+        fi
+        break
+      done
+      if [[ "$sent" != "true" ]]; then
         echo "❌ Proxy deployment failed:" >&2
         echo "$tx" | sed 's/^/     /' >&2
         continue
@@ -596,12 +839,13 @@ for zap in "${ZAPS[@]}"; do
         continue
       fi
 
-      if ! has_code "$predicted"; then
+      if ! wait_for_code "$predicted" 12; then
         echo "❌ No code at predicted address after deployment"
         continue
       fi
       echo "✅ Proxy deployed: $predicted"
       record_proxy "$zap" "$predicted" "$impl" "$init_data"
+      post_configure_minter_zap "$zap" "$predicted"
       ;;
 
     verify-impl)
@@ -617,7 +861,7 @@ for zap in "${ZAPS[@]}"; do
         --verifier etherscan \
         --etherscan-api-key "$ETHERSCAN_API_KEY" \
         --compiler-version 0.8.30 \
-        --chain "$NETWORK"; then
+        --chain "$FORGE_VERIFY_CHAIN"; then
         echo "❌ Verification failed"
       else
         echo "✅ Implementation verified"
@@ -641,7 +885,7 @@ for zap in "${ZAPS[@]}"; do
         --verifier etherscan \
         --etherscan-api-key "$ETHERSCAN_API_KEY" \
         --compiler-version 0.8.30 \
-        --chain "$NETWORK" || echo "⚠ Implementation verification failed (continuing)"
+        --chain "$FORGE_VERIFY_CHAIN" || echo "⚠ Implementation verification failed (continuing)"
 
       proxy_path="lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy"
       proxy_args=$("$CAST" abi-encode "constructor(address,bytes)" "$impl_addr" "$init_data")
@@ -653,7 +897,7 @@ for zap in "${ZAPS[@]}"; do
         --etherscan-api-key "$ETHERSCAN_API_KEY" \
         --constructor-args "$proxy_args" \
         --compiler-version 0.8.30 \
-        --chain "$NETWORK"; then
+        --chain "$FORGE_VERIFY_CHAIN"; then
         echo "❌ Proxy verification failed"
       else
         echo "✅ Proxy verified"

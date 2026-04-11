@@ -16,7 +16,7 @@ import {IWstETHWrapV2, IWstETH} from "src/interfaces/IWstETH.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {IGenesisZapV5BaseNative} from "src/interfaces/IGenesisZapV5BaseNative.sol";
 import {IGenesisZapV5Common} from "src/interfaces/IGenesisZapV5Common.sol";
-import {WstETHConstants} from "src/constants/ethereum/WstETHConstants.sol";
+import {EthZapNetworkConfig} from "src/zap/upgradeable/config/EthZapNetworkConfig.sol";
 
 /// @title GenesisETHZap V5
 /// @notice One-click zapper: base asset or collateral → wrapped collateral → Genesis vault
@@ -37,11 +37,19 @@ contract GenesisETHZap_v5 is
 {
     using SafeERC20 for IERC20;
 
-    // ========== Constants ==========
-    address public constant DEFAULT_REFERRAL = WstETHConstants.DEFAULT_REFERRAL;
-    address public constant BASE_ASSET = address(0);
-    address public constant COLLATERAL_ASSET = WstETHConstants.STETH;
-    address public constant WRAPPED_COLLATERAL_ASSET = WstETHConstants.WSTETH;
+    // ========== Network Config (immutables) ==========
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    address public immutable DEFAULT_REFERRAL;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    address public immutable BASE_ASSET;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    address public immutable COLLATERAL_ASSET;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    address public immutable WRAPPED_COLLATERAL_ASSET;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    bool public immutable SUPPORTS_BASE_ASSET;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    bool public immutable SUPPORTS_COLLATERAL_ASSET;
 
     // ========== Immutables ==========
     address public immutable GENESIS;
@@ -95,6 +103,14 @@ contract GenesisETHZap_v5 is
     constructor(address genesis_) {
         _disableInitializers();
         if (genesis_ == address(0)) revert IZapErrors.ZeroAddress();
+        EthZapNetworkConfig.Config memory cfg = EthZapNetworkConfig.load(block.chainid);
+        DEFAULT_REFERRAL = cfg.defaultReferral;
+        BASE_ASSET = cfg.baseAsset;
+        COLLATERAL_ASSET = cfg.collateralAsset;
+        WRAPPED_COLLATERAL_ASSET = cfg.wrappedCollateralAsset;
+        SUPPORTS_BASE_ASSET = cfg.supportsBaseAsset;
+        SUPPORTS_COLLATERAL_ASSET = cfg.supportsCollateralAsset;
+        if (WRAPPED_COLLATERAL_ASSET == address(0)) revert IZapErrors.AssetNotSupportedOnChain(address(0), block.chainid);
 
         // Verify that wrapped collateral matches the Genesis wrapped collateral token
         address expectedCollateral = IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN();
@@ -251,9 +267,9 @@ contract GenesisETHZap_v5 is
     }
 
     function _requireSupportedAsset(address asset) internal view {
-        if (block.chainid != 1 && asset == address(0)) {
-            revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
-        }
+        if (asset == BASE_ASSET && SUPPORTS_BASE_ASSET) return;
+        if (asset == COLLATERAL_ASSET && SUPPORTS_COLLATERAL_ASSET) return;
+        revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
     }
 
     // =================================================================

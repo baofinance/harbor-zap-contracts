@@ -17,7 +17,8 @@ if [[ -f "$ROOT_DIR/.env" ]]; then
   set +a
 fi
 
-CONFIG_FILE=${ZAP_CONFIG_FILE:-deployments/mainnet/zap-addresses.json}
+# shellcheck source=script/_zap-deploy-env.sh
+source "$ROOT_DIR/script/_zap-deploy-env.sh"
 MARKET=${MARKET:-}
 
 load_config() {
@@ -31,22 +32,17 @@ load_config() {
   fi
 }
 
-if [[ -z "${GENESIS_ETH:-}" ]]; then
+if [[ -z "${GENESIS_USDC:-}" ]]; then
   if [[ -z "$MARKET" ]]; then
-    echo "❌ ERROR: MARKET is required when GENESIS_ETH is not set"
+    echo "❌ ERROR: MARKET is required when GENESIS_USDC is not set"
     exit 1
   fi
-  GENESIS_ETH=$(load_config ".markets[\"$MARKET\"].addresses.genesisEth")
+  GENESIS_USDC=$(load_config ".markets[\"$MARKET\"].addresses.genesisUsdc")
 fi
 
 FINAL_OWNER=${OWNER:-}
 if [[ -z "$FINAL_OWNER" ]]; then
   FINAL_OWNER=$(load_config ".owner")
-fi
-
-if [[ -z "${MAINNET_RPC_URL:-}" ]]; then
-  echo "❌ ERROR: MAINNET_RPC_URL is not set"
-  exit 1
 fi
 
 if [[ -z "${PRIVATE_KEY:-}" ]]; then
@@ -70,58 +66,65 @@ if [[ -z "$FINAL_OWNER" ]]; then
   exit 1
 fi
 
-if [[ -z "${GENESIS_ETH:-}" ]]; then
-  echo "❌ ERROR: GENESIS_ETH is not set"
-  echo "   Set it via env or in $CONFIG_FILE (markets.$MARKET.addresses.genesisEth)"
+if [[ -z "${GENESIS_USDC:-}" ]]; then
+  echo "❌ ERROR: GENESIS_USDC is not set"
+  echo "   Set it via env or in $CONFIG_FILE (markets.$MARKET.addresses.genesisUsdc)"
   exit 1
 fi
 
-REFERRAL_ETH=${REFERRAL_ETH:-0x0000000000000000000000000000000000000000}
-
-CHAIN_ID=$("$CAST" chain-id --rpc-url "$MAINNET_RPC_URL" 2>/dev/null || echo "unknown")
+CHAIN_ID=$("$CAST" chain-id --rpc-url "$RPC_URL" 2>/dev/null || echo "unknown")
 echo "=== Network Check ==="
-echo "RPC URL: $MAINNET_RPC_URL"
+echo "ZAP_NETWORK: ${ZAP_NETWORK:-mainnet}"
+echo "Config: $CONFIG_FILE"
+echo "RPC URL: $RPC_URL"
 echo "Chain ID: $CHAIN_ID"
-if [[ "$CHAIN_ID" != "0x1" ]] && [[ "$CHAIN_ID" != "1" ]]; then
-  echo "⚠️  WARNING: Expected Mainnet chain ID (1), got: $CHAIN_ID"
-  echo "   Press Ctrl+C to cancel, or wait 10 seconds to continue..."
-  sleep 10
+if [[ "$CHAIN_ID" != "unknown" ]]; then
+  _cid=$CHAIN_ID
+  if [[ "$_cid" =~ ^0[xX] ]]; then
+    _cid=$((16#${_cid:2}))
+  fi
+  if [[ "$_cid" != "$EXPECTED_CHAIN_ID" ]]; then
+    echo "⚠️  WARNING: Expected chain ID $EXPECTED_CHAIN_ID, RPC reports: $CHAIN_ID"
+    echo "   Press Ctrl+C to cancel, or wait 10 seconds to continue..."
+    sleep 10
+  fi
 fi
 echo ""
 
 DEPLOYMENT_DATE=$(date -u +%Y-%m-%d)
 DEPLOYMENT_TS=$(date -u +%Y%m%dT%H%M%SZ)
-DEPLOYMENT_DIR="deployments/mainnet/$DEPLOYMENT_DATE"
+DEPLOYMENT_DIR="$DEPLOYMENT_ROOT/$DEPLOYMENT_DATE"
 mkdir -p "$DEPLOYMENT_DIR"
 if [[ -n "$MARKET" ]]; then
-  DEPLOYMENT_FILE="$DEPLOYMENT_DIR/genesis-eth-zap-v4-${MARKET}-${DEPLOYMENT_TS}.json"
+  DEPLOYMENT_FILE="$DEPLOYMENT_DIR/genesis-usdc-zap-v4-${MARKET}-${DEPLOYMENT_TS}.json"
 else
-  DEPLOYMENT_FILE="$DEPLOYMENT_DIR/genesis-eth-zap-v4-${DEPLOYMENT_TS}.json"
+  DEPLOYMENT_FILE="$DEPLOYMENT_DIR/genesis-usdc-zap-v4-${DEPLOYMENT_TS}.json"
 fi
 
+# Log file first arg; use tee so forge output is not captured only inside $() (clearer TTY / logs).
 deploy_contract() {
+  local log_file=$1
+  shift
   local contract_path=$1
   shift
   local -a constructor_args=("$@")
 
-  local deploy_out
   if [[ "$VERIFY" == "true" ]]; then
-    deploy_out=$("$FORGE" create "$contract_path" \
-      --rpc-url "$MAINNET_RPC_URL" \
+    "$FORGE" create "$contract_path" \
+      --rpc-url "$RPC_URL" \
       --private-key "$PRIVATE_KEY" \
       --broadcast \
       --verify \
       --etherscan-api-key "$ETHERSCAN_API_KEY" \
-      --constructor-args "${constructor_args[@]}" 2>&1)
+      --constructor-args "${constructor_args[@]}" 2>&1 | tee "$log_file"
   else
-    deploy_out=$("$FORGE" create "$contract_path" \
-      --rpc-url "$MAINNET_RPC_URL" \
+    "$FORGE" create "$contract_path" \
+      --rpc-url "$RPC_URL" \
       --private-key "$PRIVATE_KEY" \
       --broadcast \
-      --constructor-args "${constructor_args[@]}" 2>&1)
+      --constructor-args "${constructor_args[@]}" 2>&1 | tee "$log_file"
   fi
-
-  echo "$deploy_out"
+  return "${PIPESTATUS[0]}"
 }
 
 extract_address() {
@@ -144,7 +147,7 @@ verify_contract() {
   fi
 
   local code
-  code=$("$CAST" code "$address" --rpc-url "$MAINNET_RPC_URL" 2>/dev/null | head -1 || echo "0x")
+  code=$("$CAST" code "$address" --rpc-url "$RPC_URL" 2>/dev/null | head -1 || echo "0x")
   if [[ "$code" == "0x" ]]; then
     echo "❌ No contract code at $address for $label"
     return 1
@@ -157,7 +160,7 @@ verify_contract() {
     --verifier etherscan \
     --etherscan-api-key "$ETHERSCAN_API_KEY" \
     --compiler-version 0.8.30 \
-    --chain mainnet \
+    --chain "$VERIFY_CHAIN" \
     --constructor-args "$constructor_args" \
     --watch 2>&1 || true)
 
@@ -174,42 +177,54 @@ verify_contract() {
   fi
 }
 
-echo "=== Deploying GenesisETHZap_v5 (UUPS) ==="
+echo "=== Deploying GenesisUSDCZap_v5 (UUPS) ==="
 echo ""
 
-IMPLEMENTATION_PATH="src/zap/upgradeable/GenesisETHZap_v5.sol:GenesisETHZap_v5"
+IMPLEMENTATION_PATH="src/zap/upgradeable/GenesisUSDCZap_v5.sol:GenesisUSDCZap_v5"
 PROXY_PATH="lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy"
 
+IMPL_LOG=$(mktemp "${TMPDIR:-/tmp}/zap-impl.XXXXXX")
+PROXY_LOG=$(mktemp "${TMPDIR:-/tmp}/zap-proxy.XXXXXX")
+trap 'rm -f "$IMPL_LOG" "$PROXY_LOG"' EXIT
+
 echo "Deploying implementation..."
-impl_out=$(deploy_contract "$IMPLEMENTATION_PATH" "$GENESIS_ETH")
-impl_address=$(extract_address "$impl_out")
+if ! deploy_contract "$IMPL_LOG" "$IMPLEMENTATION_PATH" "$GENESIS_USDC"; then
+  echo "❌ Failed to deploy implementation"
+  cat "$IMPL_LOG"
+  exit 1
+fi
+impl_address=$(extract_address "$(cat "$IMPL_LOG")")
 
 if [[ -z "$impl_address" ]]; then
-  echo "❌ Failed to deploy implementation"
-  echo "$impl_out"
+  echo "❌ Failed to deploy implementation (no address in log)"
+  cat "$IMPL_LOG"
   exit 1
 fi
 
 echo "✅ Implementation deployed: $impl_address"
 
 DEPLOYER=$("$CAST" wallet address --private-key "$PRIVATE_KEY")
-init_data=$("$CAST" calldata "initialize(address,address,address)" "$DEPLOYER" "$FINAL_OWNER" "$REFERRAL_ETH")
-impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$GENESIS_ETH")
+init_data=$("$CAST" calldata "initialize(address,address)" "$DEPLOYER" "$FINAL_OWNER")
+impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$GENESIS_USDC")
 
 echo "Deploying proxy..."
-proxy_out=$(deploy_contract "$PROXY_PATH" "$impl_address" "$init_data")
-proxy_address=$(extract_address "$proxy_out")
+if ! deploy_contract "$PROXY_LOG" "$PROXY_PATH" "$impl_address" "$init_data"; then
+  echo "❌ Failed to deploy proxy"
+  cat "$PROXY_LOG"
+  exit 1
+fi
+proxy_address=$(extract_address "$(cat "$PROXY_LOG")")
 
 if [[ -z "$proxy_address" ]]; then
-  echo "❌ Failed to deploy proxy"
-  echo "$proxy_out"
+  echo "❌ Failed to deploy proxy (no address in log)"
+  cat "$PROXY_LOG"
   exit 1
 fi
 
 echo "✅ Proxy deployed: $proxy_address"
 echo ""
 
-if ! verify_contract "$impl_address" "$IMPLEMENTATION_PATH" "$impl_ctor_args" "GenesisETHZap_v5 implementation"; then
+if ! verify_contract "$impl_address" "$IMPLEMENTATION_PATH" "$impl_ctor_args" "GenesisUSDCZap_v5 implementation"; then
   exit 1
 fi
 proxy_ctor_args=$("$CAST" abi-encode "constructor(address,bytes)" "$impl_address" "$init_data")
@@ -228,21 +243,20 @@ fi
 cat > "$DEPLOYMENT_FILE" <<EOF
 {
   "schemaVersion": 1,
-  "chainId": 1,
-  "chainName": "Mainnet",
+  "chainId": ${EXPECTED_CHAIN_ID},
+  "chainName": "${DEPLOYMENT_CHAIN_NAME}",
 ${NOTE_JSON}  "deploymentTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "contract": "GenesisETHZap_v5",
+  "contract": "GenesisUSDCZap_v5",
   "implementation": "$impl_address",
   "proxy": "$proxy_address",
   "constructorArgs": {
-    "genesis": "$GENESIS_ETH"
+    "genesis": "$GENESIS_USDC"
   },
   "initializer": {
-    "signature": "initialize(address,address,address)",
+    "signature": "initialize(address,address)",
     "args": {
       "deployerOwner": "$DEPLOYER",
-      "pendingOwner": "$FINAL_OWNER",
-      "referral": "$REFERRAL_ETH"
+      "pendingOwner": "$FINAL_OWNER"
     }
   },
   "initializerData": "$init_data",
@@ -252,8 +266,9 @@ EOF
 
 if [[ "$(echo "$FINAL_OWNER" | tr '[:upper:]' '[:lower:]')" != "$(echo "$DEPLOYER" | tr '[:upper:]' '[:lower:]')" ]]; then
   echo "Transferring ownership to $FINAL_OWNER..."
-  "$CAST" send "$proxy_address" "transferOwnership(address)" "$FINAL_OWNER" \
-    --rpc-url "$MAINNET_RPC_URL" \
+  CAST_ASYNC=false "$CAST" send "$proxy_address" "transferOwnership(address)" "$FINAL_OWNER" \
+    --rpc-url "$RPC_URL" \
+    --confirmations 1 \
     --private-key "$PRIVATE_KEY"
 fi
 

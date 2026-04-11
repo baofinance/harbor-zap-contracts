@@ -18,7 +18,7 @@ import {IStabilityPool} from "src/interfaces/IStabilityPool.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {IMinterZapV4BaseNative} from "src/interfaces/IMinterZapV4BaseNative.sol";
 import {IMinterZapV4Common} from "src/interfaces/IMinterZapV4Common.sol";
-import {WstETHConstants} from "src/constants/ethereum/WstETHConstants.sol";
+import {EthZapNetworkConfig} from "src/zap/upgradeable/config/EthZapNetworkConfig.sol";
 
 /// @title MinterETHZapV4
 /// @notice One-click zapper for minting pegged or leveraged tokens with base asset or collateral via wrapped collateral
@@ -40,13 +40,21 @@ contract MinterETHZap_v4 is
 {
     using SafeERC20 for IERC20;
 
-    // ============ Constants ============
+    // ============ Network Config (immutables) ============
 
     /// @notice Default referral address for Lido deposits
-    address public constant DEFAULT_REFERRAL = WstETHConstants.DEFAULT_REFERRAL;
-    address public constant BASE_ASSET = address(0);
-    address public constant COLLATERAL_ASSET = WstETHConstants.STETH;
-    address public constant WRAPPED_COLLATERAL_ASSET = WstETHConstants.WSTETH;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable DEFAULT_REFERRAL;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable BASE_ASSET;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable COLLATERAL_ASSET;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable WRAPPED_COLLATERAL_ASSET;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    bool public immutable SUPPORTS_BASE_ASSET;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    bool public immutable SUPPORTS_COLLATERAL_ASSET;
 
     // ============ Immutables ============
 
@@ -200,6 +208,14 @@ contract MinterETHZap_v4 is
         _disableInitializers();
 
         if (minter_ == address(0)) revert IZapErrors.ZeroAddress();
+        EthZapNetworkConfig.Config memory cfg = EthZapNetworkConfig.load(block.chainid);
+        DEFAULT_REFERRAL = cfg.defaultReferral;
+        BASE_ASSET = cfg.baseAsset;
+        COLLATERAL_ASSET = cfg.collateralAsset;
+        WRAPPED_COLLATERAL_ASSET = cfg.wrappedCollateralAsset;
+        SUPPORTS_BASE_ASSET = cfg.supportsBaseAsset;
+        SUPPORTS_COLLATERAL_ASSET = cfg.supportsCollateralAsset;
+        if (WRAPPED_COLLATERAL_ASSET == address(0)) revert IZapErrors.AssetNotSupportedOnChain(address(0), block.chainid);
 
         // Verify that wrapped collateral matches the Minter wrapped collateral token
         address expectedCollateral = IMinter(minter_).WRAPPED_COLLATERAL_TOKEN();
@@ -643,9 +659,10 @@ contract MinterETHZap_v4 is
     // ============ Internal Helper Functions ============
 
     function _requireSupportedAsset(address asset) internal view {
-        if (block.chainid != 1 && asset == address(0)) {
-            revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
-        }
+        if (asset == WRAPPED_COLLATERAL_ASSET) return;
+        if (asset == BASE_ASSET && SUPPORTS_BASE_ASSET) return;
+        if (asset == COLLATERAL_ASSET && SUPPORTS_COLLATERAL_ASSET) return;
+        revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
     }
 
     /// @notice Helper to handle collateral permit
