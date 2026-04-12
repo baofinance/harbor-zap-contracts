@@ -93,7 +93,7 @@ interface IMinterZapV4Common {
         bytes32 s
     ) external returns (uint256 peggedOut, uint256 deposited);
 
-    // ----- Previews (same selectors; USDC may revert on base/collateral oracle previews) -----
+    // ----- Previews (same selectors on ETH and USDC zaps; USDC leg: ERC4626 `convertToShares` model + peg assumption for USDC→fxUSD, then minter dry-runs for mint previews — not a diamond simulation; use slippage on-chain) -----
     function previewWrappedCollateralFromBase(uint256 baseAssetAmount)
         external
         view

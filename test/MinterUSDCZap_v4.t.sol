@@ -3,11 +3,13 @@ pragma solidity >=0.8.28 <0.9.0;
 
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {MinterUSDCZap_v4} from "src/zap/upgradeable/MinterUSDCZap_v4.sol";
+import {IMinter} from "src/interfaces/IMinter.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
@@ -378,16 +380,19 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         assertGt(previewPegged, 0, "Preview should return > 0");
     }
 
-    /// @dev Base/collateral oracle previews are intentionally unsupported on USDC zap
-    function test_PreviewNotSupported_OnStubPreviews() public {
-        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
-        zap.previewWrappedCollateralFromBase(1e6);
+    function test_PreviewWrappedCollateralFromBase_MatchesFxSaveConvertToShares() public view {
+        uint256 usdcAmount = 1000 * 1e6;
+        uint256 expected = IERC4626(FXSAVE).convertToShares(usdcAmount * 1e12);
+        assertEq(zap.previewWrappedCollateralFromBase(usdcAmount), expected);
+    }
 
-        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
-        zap.previewPeggedFromBase(1e6);
-
-        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
-        zap.previewStabilityPoolFromCollateral(1e18);
+    function test_PreviewPeggedFromBase_UsesDryRun() public view {
+        uint256 usdcAmount = 1000 * 1e6;
+        uint256 wrapped = zap.previewWrappedCollateralFromBase(usdcAmount);
+        (,,, uint256 peggedFromDry,,) = IMinter(minter).mintPeggedTokenDryRun(wrapped);
+        (uint256 peggedOut, uint256 wrappedOut) = zap.previewPeggedFromBase(usdcAmount);
+        assertEq(wrappedOut, wrapped);
+        assertEq(peggedOut, peggedFromDry);
     }
 
     function test_Fallback_FunctionNotFound() public {

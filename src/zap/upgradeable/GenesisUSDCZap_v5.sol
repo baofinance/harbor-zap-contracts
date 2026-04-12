@@ -2,7 +2,6 @@
 pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -11,11 +10,12 @@ import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Cont
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
-import {IFxUSDDiamondV2} from "src/interfaces/IFxUSD.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {IGenesisZapV5BaseErc20} from "src/interfaces/IGenesisZapV5BaseErc20.sol";
 import {IGenesisZapV5Common} from "src/interfaces/IGenesisZapV5Common.sol";
-import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
+import {GenesisZapBase_v1} from "src/zap/upgradeable/base/GenesisZapBase_v1.sol";
+import {FxUSDZapNetworkConfig} from "src/zap/upgradeable/config/FxUSDZapNetworkConfig.sol";
+import {FxUSDZapBase_v1} from "src/zap/upgradeable/asset/FxUSDZapBase_v1.sol";
 
 /// @title GenesisUSDCZapV5 - Production Ready
 /// @notice One-click zapper for depositing base asset or collateral into Genesis via wrapped collateral
@@ -31,28 +31,33 @@ contract GenesisUSDCZap_v5 is
     ContextUpgradeable,
     ReentrancyGuardTransient,
     BaoOwnable,
+    GenesisZapBase_v1,
+    FxUSDZapBase_v1,
     IGenesisZapV5Common,
     IGenesisZapV5BaseErc20
 {
     using SafeERC20 for IERC20;
 
-    // ============ Constants ============
-    /// @notice Base asset address (mainnet)
-    address public constant USDC = FxSAVEConstants.USDC;
-    /// @notice Collateral token address (mainnet)
-    address public constant FXUSD = FxSAVEConstants.FXUSD;
-    /// @notice Wrapped collateral vault address (mainnet)
-    address public constant FXSAVE = FxSAVEConstants.FXSAVE;
-    /// @notice fxUSD Diamond contract address (handles deposits to wrapped collateral)
-    address public constant FXUSD_DIAMOND = FxSAVEConstants.FXUSD_DIAMOND;
-    /// @notice fxUSD swap router/converter address (for base asset and collateral deposits)
-    address public constant FXUSD_SWAP_ROUTER = FxSAVEConstants.FXUSD_SWAP_ROUTER;
-    address public constant BASE_ASSET = USDC;
-    address public constant COLLATERAL_ASSET = FXUSD;
-    address public constant WRAPPED_COLLATERAL_ASSET = FXSAVE;
+    // ============ Network config (immutables) ============
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable USDC;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable FXUSD;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable FXSAVE;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable FXUSD_DIAMOND;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable FXUSD_SWAP_ROUTER;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable BASE_ASSET;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable COLLATERAL_ASSET;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable WRAPPED_COLLATERAL_ASSET;
 
-    // Selector for IFxProtocolRouter.convert(address,uint256,uint256,bytes)
-    bytes4 private constant CONVERT_SELECTOR = FxSAVEConstants.CONVERT_SELECTOR;
+    /// @dev Selector for IFxProtocolRouter.convert(address,uint256,uint256,bytes)
+    bytes4 private immutable CONVERT_SELECTOR;
 
     // ============ Immutables ============
     /// @notice Genesis contract address
@@ -112,6 +117,19 @@ contract GenesisUSDCZap_v5 is
         _disableInitializers();
 
         if (genesis_ == address(0)) revert IZapErrors.ZeroAddress();
+
+        FxUSDZapNetworkConfig.Config memory cfg = FxUSDZapNetworkConfig.load(block.chainid);
+        if (cfg.fxsave == address(0)) revert IZapErrors.AssetNotSupportedOnChain(address(0), block.chainid);
+
+        USDC = cfg.usdc;
+        FXUSD = cfg.fxusd;
+        FXSAVE = cfg.fxsave;
+        FXUSD_DIAMOND = cfg.fxusdDiamond;
+        FXUSD_SWAP_ROUTER = cfg.fxusdSwapRouter;
+        BASE_ASSET = cfg.usdc;
+        COLLATERAL_ASSET = cfg.fxusd;
+        WRAPPED_COLLATERAL_ASSET = cfg.fxsave;
+        CONVERT_SELECTOR = cfg.convertSelector;
 
         address expected = IGenesis(genesis_).WRAPPED_COLLATERAL_TOKEN();
         if (expected != WRAPPED_COLLATERAL_ASSET) {
@@ -250,10 +268,21 @@ contract GenesisUSDCZap_v5 is
     // INTERNAL HELPERS
     // =============================================================
 
+    /// @dev Only tokens this zap is built for (immutables from `FxUSDZapNetworkConfig` + constructor checks).
+    ///      Rejects `address(0)` and any token that is not base, collateral, or wrapped collateral.
     function _requireSupportedAsset(address asset) internal view {
-        if (block.chainid != 1 && asset == address(0)) {
-            revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
-        }
+        if (asset == BASE_ASSET) return;
+        if (asset == COLLATERAL_ASSET) return;
+        if (asset == WRAPPED_COLLATERAL_ASSET) return;
+        revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
+    }
+
+    function _genesisAddress() internal view override returns (address) {
+        return GENESIS;
+    }
+
+    function _wrappedCollateralAddress() internal view override returns (address) {
+        return WRAPPED_COLLATERAL_ASSET;
     }
 
     function _permitBaseAsset(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
@@ -279,27 +308,15 @@ contract GenesisUSDCZap_v5 is
         internal
         returns (uint256 wrappedCollateralReceived)
     {
-        IERC20 token = IERC20(tokenIn);
-
-        // Approve diamond if needed
-        _safeApprove(token, FXUSD_DIAMOND, amountIn);
-
-        // Encode converter call: convert(tokenIn, amountIn, minOut, "")
-        bytes memory data = abi.encodeWithSelector(CONVERT_SELECTOR, tokenIn, amountIn, minOut, bytes(""));
-
-        IFxUSDDiamondV2.ConvertInParams memory params = IFxUSDDiamondV2.ConvertInParams({
-            tokenIn: tokenIn, amount: amountIn, target: FXUSD_SWAP_ROUTER, data: data, minOut: minOut, signature: ""
-        });
-
-        uint256 balanceBefore = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
-        IFxUSDDiamondV2(FXUSD_DIAMOND).depositToFxSave(params, tokenIn, 0, address(this));
-        wrappedCollateralReceived =
-            IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this)) - balanceBefore;
-
-        if (wrappedCollateralReceived == 0) revert IZapErrors.NoWrappedCollateralReceived();
-        if (wrappedCollateralReceived < minOut) {
-            revert IZapErrors.SlippageTooHighWrappedCollateral(wrappedCollateralReceived, minOut);
-        }
+        wrappedCollateralReceived = _convertHeldTokenToWrappedCollateral(
+            FXUSD_DIAMOND,
+            FXUSD_SWAP_ROUTER,
+            WRAPPED_COLLATERAL_ASSET,
+            CONVERT_SELECTOR,
+            tokenIn,
+            amountIn,
+            minOut
+        );
     }
 
     /// @notice Pull token, convert to wrapped collateral, and deposit into Genesis
@@ -334,50 +351,6 @@ contract GenesisUSDCZap_v5 is
         _safeApprove(IERC20(tokenIn), FXUSD_DIAMOND, 0);
     }
 
-    /// @notice Deposit wrapped collateral into Genesis and validate shares
-    /// @dev Confirms mint via receiver share balance delta; reverts `MintMismatchExpected` if mismatch.
-    /// @param amount Amount of wrapped collateral to deposit
-    /// @param receiver Address receiving Genesis shares
-    function _depositToGenesis(uint256 amount, address receiver) internal {
-        if (amount == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        uint256 balance = IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
-        if (balance < amount) {
-            revert IZapErrors.InsufficientBalance(balance, amount);
-        }
-        uint256 sharesBefore = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 currentAllowance = IERC20(WRAPPED_COLLATERAL_ASSET).allowance(address(this), GENESIS);
-        if (currentAllowance < amount) {
-            if (currentAllowance > 0) {
-                IERC20(WRAPPED_COLLATERAL_ASSET).approve(GENESIS, 0);
-            }
-            IERC20(WRAPPED_COLLATERAL_ASSET).approve(GENESIS, type(uint256).max);
-        }
-        IGenesis(GENESIS).deposit(amount, receiver);
-
-        uint256 sharesAfter = IGenesis(GENESIS).balanceOf(receiver);
-        uint256 sharesReceived = sharesAfter - sharesBefore;
-        if (sharesReceived != amount) {
-            revert IZapErrors.MintMismatchExpected(amount, sharesReceived);
-        }
-    }
-
-    /// @notice Safely set allowance to a target amount
-    /// @param token Token to approve
-    /// @param spender Spender address
-    /// @param amount Target allowance amount
-    function _safeApprove(IERC20 token, address spender, uint256 amount) internal {
-        uint256 current = token.allowance(address(this), spender);
-        if (current == amount) return;
-        if (current > 0) {
-            token.safeDecreaseAllowance(spender, current);
-        }
-        if (amount > 0) {
-            token.safeIncreaseAllowance(spender, amount);
-        }
-    }
-
     // =============================================================
     // VIEW FUNCTIONS (FRONTEND)
     // =============================================================
@@ -407,62 +380,67 @@ contract GenesisUSDCZap_v5 is
     // PREVIEW FUNCTIONS
     // =============================================================
 
-    /// @notice Preview wrapped collateral output from a base asset amount
-    /// @dev Not supported without a conversion oracle; kept for API parity
-    function previewWrappedCollateralFromBase(uint256)
+    /// @notice Preview fxSAVE (wrapped collateral) from USDC using ERC4626 `convertToShares` on fxSAVE.
+    /// @dev Uses **$1 USDC ≈ 1 fxUSD** scaling (6→18 decimals); actual diamond output may differ—use slippage on zaps.
+    function previewWrappedCollateralFromBase(uint256 baseAssetAmount)
         external
-        pure
+        view
         returns (uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.PreviewNotSupported();
+        _requireSupportedAsset(BASE_ASSET);
+        wrappedCollateralAmount = _previewFxSaveSharesFromUsdcAssumedPeg(
+            WRAPPED_COLLATERAL_ASSET, FXUSD, baseAssetAmount
+        );
     }
 
-    /// @notice Preview wrapped collateral output from a collateral amount
-    /// @dev Not supported without a conversion oracle; kept for API parity
-    function previewWrappedCollateralFromCollateral(uint256)
+    /// @notice Preview fxSAVE from an fxUSD amount via `convertToShares`.
+    function previewWrappedCollateralFromCollateral(uint256 collateralAmount)
         external
-        pure
+        view
         returns (uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.PreviewNotSupported();
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        wrappedCollateralAmount =
+            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, FXUSD, collateralAmount);
     }
 
-    /// @notice Preview Genesis shares from a base asset amount
-    /// @dev Not supported without a conversion oracle; kept for API parity
-    function previewSharesFromBase(uint256)
+    /// @notice Preview Genesis shares from USDC (same as wrapped preview; Genesis is 1:1 with fxSAVE).
+    function previewSharesFromBase(uint256 baseAssetAmount)
         external
-        pure
+        view
         returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.PreviewNotSupported();
+        _requireSupportedAsset(BASE_ASSET);
+        wrappedCollateralAmount = _previewFxSaveSharesFromUsdcAssumedPeg(
+            WRAPPED_COLLATERAL_ASSET, FXUSD, baseAssetAmount
+        );
+        sharesOut = wrappedCollateralAmount;
     }
 
-    /// @notice Preview Genesis shares from a collateral amount
-    /// @dev Not supported without a conversion oracle; kept for API parity
-    function previewSharesFromCollateral(uint256)
+    /// @notice Preview Genesis shares from fxUSD (1:1 with fxSAVE shares from `convertToShares`).
+    function previewSharesFromCollateral(uint256 collateralAmount)
         external
-        pure
+        view
         returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
     {
-        revert IZapErrors.PreviewNotSupported();
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        wrappedCollateralAmount =
+            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, FXUSD, collateralAmount);
+        sharesOut = wrappedCollateralAmount;
     }
 
-    /// @notice Preview the expected Genesis shares from a wrapped collateral amount
-    /// @dev Genesis uses 1:1 deposits, so wrapped collateral amount equals shares
-    /// @param wrappedCollateralAmount Amount of wrapped collateral
-    /// @return sharesOut Expected Genesis shares that will be minted
+    /// @inheritdoc IGenesisZapV5Common
     function previewSharesFromWrappedCollateral(uint256 wrappedCollateralAmount)
         external
         pure
         returns (uint256 sharesOut)
     {
-        sharesOut = wrappedCollateralAmount; // 1:1 mapping
+        sharesOut = _previewGenesisSharesFromWrappedCollateral(wrappedCollateralAmount);
     }
 
-    /// @notice Human-readable zap name based on the pegged token
+    /// @inheritdoc IGenesisZapV5Common
     function zapName() external view returns (string memory) {
-        address peggedToken = IGenesis(GENESIS).PEGGED_TOKEN();
-        return string(abi.encodePacked("Genesis zap ", IERC20Metadata(peggedToken).name()));
+        return _genesisZapDisplayName();
     }
 
     // =============================================================

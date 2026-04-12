@@ -131,8 +131,8 @@ for file in "${DEPLOYMENT_FILES[@]}"; do
 
   case "$contract" in
     GenesisETHZap_v4|GenesisUSDCZap_v4|MinterETHZap_v3|MinterUSDCZap_v3)
-      echo "❌ Deployment JSON uses a pre-rename contract label ($contract). This tree only ships"
-      echo "   GenesisETHZap_v5 / GenesisUSDCZap_v5 / MinterETHZap_v4 / MinterUSDCZap_v4."
+      echo "❌ Deployment JSON uses a pre-rename contract label ($contract). This tree ships"
+      echo "   GenesisETHZap_v5, GenesisUSDCZap_v5, MinterETHZap_v4, and MinterUSDCZap_v4."
       echo "   Either verify from an older git revision, update the JSON after re-deploying, or use the matching sources."
       failed=$((failed + 1))
       continue

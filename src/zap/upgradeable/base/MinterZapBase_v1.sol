@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity 0.8.30;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IMinter} from "src/interfaces/IMinter.sol";
+import {IZapErrors} from "src/interfaces/IZapErrors.sol";
+import {MinterZapShared_v1} from "src/zap/upgradeable/base/MinterZapShared_v1.sol";
+
+/// @title MinterZapBase_v1
+/// @notice Storage-free template for minter zaps: shared zap pipeline + mint/stability helpers.
+/// @dev Child contracts supply conversion, asset checks, and allowance resets.
+abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
+    using SafeERC20 for IERC20;
+
+    function _convertToWrappedCollateral(address tokenIn, uint256 amountIn, uint256 minWrappedCollateralOut)
+        internal
+        virtual
+        returns (uint256 wrappedCollateralAmount);
+
+    function _requireSupportedAsset(address asset) internal view virtual;
+
+    function _resetAllowances() internal virtual;
+
+    function _zapToPegged(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minPeggedOut
+    ) internal returns (uint256 wrappedCollateralAmount, uint256 peggedOut) {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+
+        wrappedCollateralAmount = _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
+        peggedOut = _mintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
+        _resetAllowances();
+    }
+
+    function _zapToLeveraged(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minLeveragedOut
+    ) internal returns (uint256 wrappedCollateralAmount, uint256 leveragedOut) {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+
+        wrappedCollateralAmount = _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
+        leveragedOut = _mintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
+        _resetAllowances();
+    }
+
+    function _zapToStabilityPoolFromToken(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut,
+        address receiver,
+        uint256 minPeggedOut,
+        address stabilityPool,
+        uint256 minStabilityPoolOut
+    ) internal returns (uint256 wrappedCollateralAmount, uint256 peggedOut, uint256 deposited) {
+        if (amountIn == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
+
+        address wrapped = _wrappedCollateralAssetAddress();
+        if (tokenIn == wrapped) {
+            IERC20(wrapped).safeTransferFrom(msg.sender, address(this), amountIn);
+            wrappedCollateralAmount = amountIn;
+            if (wrappedCollateralAmount < minWrappedCollateralOut) {
+                revert IZapErrors.SlippageTooHighWrappedCollateral(
+                    wrappedCollateralAmount, minWrappedCollateralOut
+                );
+            }
+        } else {
+            wrappedCollateralAmount = _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
+        }
+
+        address peggedToken = IMinter(_minterAddress()).PEGGED_TOKEN();
+        peggedOut = _mintPeggedToken(wrappedCollateralAmount, address(this), minPeggedOut);
+        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
+        _resetAllowances();
+    }
+
+    function _mintPeggedToken(uint256 wrappedCollateralAmount, address receiver, uint256 minPeggedOut)
+        internal
+        returns (uint256 peggedOut)
+    {
+        return _sharedMintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
+    }
+
+    function _mintLeveragedToken(uint256 wrappedCollateralAmount, address receiver, uint256 minLeveragedOut)
+        internal
+        returns (uint256 leveragedOut)
+    {
+        return _sharedMintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
+    }
+
+    function _depositToStabilityPool(
+        address peggedToken,
+        address stabilityPool,
+        uint256 peggedAmount,
+        address receiver,
+        uint256 minStabilityPoolOut
+    ) internal returns (uint256 deposited) {
+        return _sharedDepositToStabilityPool(
+            peggedToken, stabilityPool, peggedAmount, receiver, minStabilityPoolOut
+        );
+    }
+}

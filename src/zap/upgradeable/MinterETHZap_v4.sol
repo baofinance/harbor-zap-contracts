@@ -12,13 +12,13 @@ import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Cont
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
-import {ISTETHV2, IStETHView} from "src/interfaces/IStETH.sol";
-import {IWstETHWrapV2, IWstETHView} from "src/interfaces/IWstETH.sol";
-import {IStabilityPool} from "src/interfaces/IStabilityPool.sol";
+import {IWstETHView} from "src/interfaces/IWstETH.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {IMinterZapV4BaseNative} from "src/interfaces/IMinterZapV4BaseNative.sol";
 import {IMinterZapV4Common} from "src/interfaces/IMinterZapV4Common.sol";
-import {EthZapNetworkConfig} from "src/zap/upgradeable/config/EthZapNetworkConfig.sol";
+import {StETHZapNetworkConfig} from "src/zap/upgradeable/config/StETHZapNetworkConfig.sol";
+import {MinterZapBase_v1} from "src/zap/upgradeable/base/MinterZapBase_v1.sol";
+import {StETHZapBase_v1} from "src/zap/upgradeable/asset/StETHZapBase_v1.sol";
 
 /// @title MinterETHZapV4
 /// @notice One-click zapper for minting pegged or leveraged tokens with base asset or collateral via wrapped collateral
@@ -35,6 +35,8 @@ contract MinterETHZap_v4 is
     ContextUpgradeable,
     ReentrancyGuardTransient,
     BaoOwnable,
+    MinterZapBase_v1,
+    StETHZapBase_v1,
     IMinterZapV4Common,
     IMinterZapV4BaseNative
 {
@@ -208,7 +210,7 @@ contract MinterETHZap_v4 is
         _disableInitializers();
 
         if (minter_ == address(0)) revert IZapErrors.ZeroAddress();
-        EthZapNetworkConfig.Config memory cfg = EthZapNetworkConfig.load(block.chainid);
+        StETHZapNetworkConfig.Config memory cfg = StETHZapNetworkConfig.load(block.chainid);
         DEFAULT_REFERRAL = cfg.defaultReferral;
         BASE_ASSET = cfg.baseAsset;
         COLLATERAL_ASSET = cfg.collateralAsset;
@@ -514,7 +516,7 @@ contract MinterETHZap_v4 is
         if (collateralAmount == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        _permitCollateral(collateralAmount, deadline, v, r, s);
+        _permitCollateral(COLLATERAL_ASSET, _msgSender(), collateralAmount, deadline, v, r, s);
         uint256 wrappedCollateralAmount;
         (wrappedCollateralAmount, peggedOut) = _zapToPegged(
             COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minPeggedOut
@@ -550,7 +552,7 @@ contract MinterETHZap_v4 is
         if (collateralAmount == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        _permitCollateral(collateralAmount, deadline, v, r, s);
+        _permitCollateral(COLLATERAL_ASSET, _msgSender(), collateralAmount, deadline, v, r, s);
         uint256 wrappedCollateralAmount;
         (wrappedCollateralAmount, leveragedOut) = _zapToLeveraged(
             COLLATERAL_ASSET, collateralAmount, minWrappedCollateralOut, receiver, minLeveragedOut
@@ -592,7 +594,7 @@ contract MinterETHZap_v4 is
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
         if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
 
-        _permitCollateral(collateralAmount, deadline, v, r, s);
+        _permitCollateral(COLLATERAL_ASSET, _msgSender(), collateralAmount, deadline, v, r, s);
         uint256 wrappedCollateralAmount;
         (wrappedCollateralAmount, peggedOut, deposited) = _zapToStabilityPoolFromToken(
             COLLATERAL_ASSET,
@@ -658,21 +660,23 @@ contract MinterETHZap_v4 is
 
     // ============ Internal Helper Functions ============
 
-    function _requireSupportedAsset(address asset) internal view {
+    function _requireSupportedAsset(address asset) internal view override {
         if (asset == WRAPPED_COLLATERAL_ASSET) return;
         if (asset == BASE_ASSET && SUPPORTS_BASE_ASSET) return;
         if (asset == COLLATERAL_ASSET && SUPPORTS_COLLATERAL_ASSET) return;
         revert IZapErrors.AssetNotSupportedOnChain(asset, block.chainid);
     }
 
-    /// @notice Helper to handle collateral permit
-    /// @param amount Amount to permit
-    /// @param deadline Permit deadline
-    /// @param v Permit signature v
-    /// @param r Permit signature r
-    /// @param s Permit signature s
-    function _permitCollateral(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
-        IERC20Permit(COLLATERAL_ASSET).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+    function _minterAddress() internal view override returns (address) {
+        return MINTER;
+    }
+
+    function _wrappedCollateralAssetAddress() internal view override returns (address) {
+        return WRAPPED_COLLATERAL_ASSET;
+    }
+
+    function _isStabilityPoolAllowed(address stabilityPool) internal view override returns (bool) {
+        return allowedStabilityPools[stabilityPool];
     }
 
     /// @notice Helper to handle wrapped collateral permit
@@ -694,15 +698,9 @@ contract MinterETHZap_v4 is
         internal
         returns (uint256 wrappedCollateralAmount)
     {
-        // 1. base asset → collateral via Lido (never trust return value, use balance change)
-        uint256 collateralBefore = IERC20(COLLATERAL_ASSET).balanceOf(address(this));
-        ISTETHV2(COLLATERAL_ASSET).submit{value: baseAssetAmount}(referral);
-        uint256 collateralReceived = IERC20(COLLATERAL_ASSET).balanceOf(address(this))
-            - collateralBefore;
-        if (collateralReceived == 0) revert IZapErrors.NoCollateralReceived();
-
-        // 2. collateral → wrapped collateral (use balance change to get actual amount)
-        wrappedCollateralAmount = _wrapCollateralToWrappedCollateral(collateralReceived);
+        uint256 collateralReceived = _convertBaseAssetToCollateral(COLLATERAL_ASSET, referral, baseAssetAmount);
+        wrappedCollateralAmount =
+            _wrapCollateralToWrappedCollateral(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, collateralReceived);
     }
 
     /// @notice Convert collateral to wrapped collateral
@@ -712,28 +710,9 @@ contract MinterETHZap_v4 is
         internal
         returns (uint256 wrappedCollateralAmount)
     {
-        // 1. Pull collateral from user
         IERC20(COLLATERAL_ASSET).safeTransferFrom(_msgSender(), address(this), collateralAmount);
-
-        // 2. collateral → wrapped collateral
-        wrappedCollateralAmount = _wrapCollateralToWrappedCollateral(collateralAmount);
-    }
-
-    /// @notice Wrap collateral to wrapped collateral (assumes collateral is already in this contract)
-    /// @param collateralAmount Amount of collateral to wrap
-    /// @return wrappedCollateralAmount Amount of wrapped collateral received
-    function _wrapCollateralToWrappedCollateral(uint256 collateralAmount)
-        internal
-        returns (uint256 wrappedCollateralAmount)
-    {
-        IERC20(COLLATERAL_ASSET).forceApprove(WRAPPED_COLLATERAL_ASSET, collateralAmount);
-        uint256 wrappedCollateralBefore =
-            IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
-        IWstETHWrapV2(WRAPPED_COLLATERAL_ASSET).wrap(collateralAmount);
-        uint256 wrappedCollateralAfter =
-            IERC20(WRAPPED_COLLATERAL_ASSET).balanceOf(address(this));
-        wrappedCollateralAmount = wrappedCollateralAfter - wrappedCollateralBefore;
-        if (wrappedCollateralAmount == 0) revert IZapErrors.NoWrappedCollateralReceived();
+        wrappedCollateralAmount =
+            _wrapCollateralToWrappedCollateral(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, collateralAmount);
     }
 
     /// @notice Convert an input token to wrapped collateral (native ETH when `tokenIn == BASE_ASSET`)
@@ -747,6 +726,7 @@ contract MinterETHZap_v4 is
         uint256 minWrappedCollateralOut
     )
         internal
+        override
         returns (uint256 wrappedCollateralAmount)
     {
         if (tokenIn == BASE_ASSET) {
@@ -761,202 +741,8 @@ contract MinterETHZap_v4 is
         }
     }
 
-    /// @notice Zap a token into pegged tokens and reset allowances
-    /// @param tokenIn Token to zap (`BASE_ASSET` or `COLLATERAL_ASSET`)
-    /// @param amountIn Amount of tokenIn to zap
-    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
-    /// @param receiver Address receiving pegged tokens
-    /// @param minPeggedOut Minimum pegged tokens to receive
-    /// @return wrappedCollateralAmount Amount of wrapped collateral received
-    /// @return peggedOut Amount of pegged tokens minted
-    function _zapToPegged(
-        address tokenIn,
-        uint256 amountIn,
-        uint256 minWrappedCollateralOut,
-        address receiver,
-        uint256 minPeggedOut
-    ) internal returns (uint256 wrappedCollateralAmount, uint256 peggedOut) {
-        if (amountIn == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        wrappedCollateralAmount =
-            _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
-        peggedOut = _mintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
-        _resetAllowances();
-    }
-
-    /// @notice Zap a token into leveraged tokens and reset allowances
-    /// @param tokenIn Token to zap (`BASE_ASSET` or `COLLATERAL_ASSET`)
-    /// @param amountIn Amount of tokenIn to zap
-    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
-    /// @param receiver Address receiving leveraged tokens
-    /// @param minLeveragedOut Minimum leveraged tokens to receive
-    /// @return wrappedCollateralAmount Amount of wrapped collateral received
-    /// @return leveragedOut Amount of leveraged tokens minted
-    function _zapToLeveraged(
-        address tokenIn,
-        uint256 amountIn,
-        uint256 minWrappedCollateralOut,
-        address receiver,
-        uint256 minLeveragedOut
-    ) internal returns (uint256 wrappedCollateralAmount, uint256 leveragedOut) {
-        if (amountIn == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-
-        wrappedCollateralAmount =
-            _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
-        leveragedOut = _mintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
-        _resetAllowances();
-    }
-
-    /// @notice Zap a token into StabilityPool via minted pegged tokens
-    /// @param tokenIn Token to zap (base asset, collateral, or wrapped collateral)
-    /// @param amountIn Amount of tokenIn to zap
-    /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
-    /// @param receiver Address receiving StabilityPool deposit
-    /// @param minPeggedOut Minimum pegged tokens to receive
-    /// @param stabilityPool StabilityPool address
-    /// @param minStabilityPoolOut Minimum StabilityPool deposit amount
-    /// @return wrappedCollateralAmount Amount of wrapped collateral used to mint pegged tokens
-    /// @return peggedOut Amount of pegged tokens minted
-    /// @return deposited Amount deposited into StabilityPool
-    function _zapToStabilityPoolFromToken(
-        address tokenIn,
-        uint256 amountIn,
-        uint256 minWrappedCollateralOut,
-        address receiver,
-        uint256 minPeggedOut,
-        address stabilityPool,
-        uint256 minStabilityPoolOut
-    ) internal returns (uint256 wrappedCollateralAmount, uint256 peggedOut, uint256 deposited) {
-        if (amountIn == 0) revert IZapErrors.ZeroAmount();
-        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
-        if (stabilityPool == address(0)) revert IZapErrors.ZeroAddress();
-
-        if (tokenIn == WRAPPED_COLLATERAL_ASSET) {
-            IERC20(WRAPPED_COLLATERAL_ASSET).safeTransferFrom(
-                _msgSender(), address(this), amountIn
-            );
-            wrappedCollateralAmount = amountIn;
-            if (wrappedCollateralAmount < minWrappedCollateralOut) {
-                revert IZapErrors.SlippageTooHighWrappedCollateral(
-                    wrappedCollateralAmount, minWrappedCollateralOut
-                );
-            }
-        } else {
-            wrappedCollateralAmount =
-                _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
-        }
-
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        peggedOut = _mintPeggedToken(wrappedCollateralAmount, address(this), minPeggedOut);
-        deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
-        _resetAllowances();
-    }
-
-    /// @notice Mint pegged tokens and validate the result
-    /// @param wrappedCollateralAmount Amount of wrapped collateral to use for minting
-    /// @param receiver Address that will receive the pegged tokens
-    /// @param minPeggedOut Minimum amount of pegged tokens to receive
-    /// @return peggedOut Amount of pegged tokens minted
-    function _mintPeggedToken(uint256 wrappedCollateralAmount, address receiver, uint256 minPeggedOut)
-        internal
-        returns (uint256 peggedOut)
-    {
-        address peggedToken = IMinter(MINTER).PEGGED_TOKEN();
-        uint256 peggedBalanceBefore = IERC20(peggedToken).balanceOf(receiver);
-        IERC20(WRAPPED_COLLATERAL_ASSET).forceApprove(MINTER, wrappedCollateralAmount);
-        peggedOut = IMinter(MINTER).mintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
-
-        // Validate that tokens were actually minted
-        uint256 peggedBalanceAfter = IERC20(peggedToken).balanceOf(receiver);
-        uint256 received = peggedBalanceAfter - peggedBalanceBefore;
-        if (received != peggedOut || peggedOut == 0) {
-            revert IZapErrors.MintMismatchExpected(peggedOut, received);
-        }
-    }
-
-    /// @notice Mint leveraged tokens and validate the result
-    /// @param wrappedCollateralAmount Amount of wrapped collateral to use for minting
-    /// @param receiver Address that will receive the leveraged tokens
-    /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
-    /// @return leveragedOut Amount of leveraged tokens minted
-    function _mintLeveragedToken(
-        uint256 wrappedCollateralAmount,
-        address receiver,
-        uint256 minLeveragedOut
-    )
-        internal
-        returns (uint256 leveragedOut)
-    {
-        address leveragedToken = IMinter(MINTER).LEVERAGED_TOKEN();
-        uint256 leveragedBalanceBefore = IERC20(leveragedToken).balanceOf(receiver);
-        IERC20(WRAPPED_COLLATERAL_ASSET).forceApprove(MINTER, wrappedCollateralAmount);
-        leveragedOut = IMinter(MINTER).mintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
-
-        // Validate that tokens were actually minted
-        uint256 leveragedBalanceAfter = IERC20(leveragedToken).balanceOf(receiver);
-        uint256 received = leveragedBalanceAfter - leveragedBalanceBefore;
-        if (received != leveragedOut || leveragedOut == 0) {
-            revert IZapErrors.MintMismatchExpected(leveragedOut, received);
-        }
-    }
-
-    /// @notice Deposit pegged tokens into StabilityPool
-    /// @param peggedToken Address of the pegged token
-    /// @param stabilityPool Address of the StabilityPool
-    /// @param peggedAmount Amount of pegged tokens to deposit
-    /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedAmount minus small rounding buffer ~0.1%)
-    /// @return deposited Amount deposited into StabilityPool
-    function _depositToStabilityPool(
-        address peggedToken,
-        address stabilityPool,
-        uint256 peggedAmount,
-        address receiver,
-        uint256 minStabilityPoolOut
-    ) internal returns (uint256 deposited) {
-        // Verify stability pool is allowed
-        if (!allowedStabilityPools[stabilityPool]) {
-            revert IZapErrors.StabilityPoolNotAllowed();
-        }
-
-        // Verify StabilityPool accepts the correct pegged token
-        address poolAssetToken = IStabilityPool(stabilityPool).ASSET_TOKEN();
-        if (poolAssetToken != peggedToken) {
-            revert IZapErrors.CollateralMismatch(peggedToken, poolAssetToken);
-        }
-
-        // Verify contract has the pegged tokens to deposit (never trust return values)
-        uint256 balanceBefore = IERC20(peggedToken).balanceOf(address(this));
-        if (balanceBefore < peggedAmount) {
-            revert IZapErrors.InsufficientBalance(balanceBefore, peggedAmount);
-        }
-
-        // Approve and deposit into StabilityPool
-        IERC20(peggedToken).forceApprove(stabilityPool, peggedAmount);
-        deposited = IStabilityPool(stabilityPool).deposit(peggedAmount, receiver, minStabilityPoolOut);
-
-        // Verify the full amount was deposited (stability pool deposits don't incur fees)
-        uint256 balanceAfter = IERC20(peggedToken).balanceOf(address(this));
-        uint256 balanceDecrease = balanceBefore - balanceAfter;
-
-        // Verify balance decreased by exactly peggedAmount (no fees on stability pool deposits)
-        if (balanceDecrease != peggedAmount) {
-            revert IZapErrors.DepositFailed();
-        }
-
-        // Verify returned deposited amount matches what we sent (stability pool deposits don't incur fees)
-        if (deposited != peggedAmount) {
-            revert IZapErrors.DepositFailed();
-        }
-
-        // Reset approval
-        IERC20(peggedToken).forceApprove(stabilityPool, 0);
-    }
-
     /// @notice Reset token allowances to zero
-    function _resetAllowances() internal {
+    function _resetAllowances() internal override {
         IERC20(COLLATERAL_ASSET).forceApprove(WRAPPED_COLLATERAL_ASSET, 0);
         IERC20(WRAPPED_COLLATERAL_ASSET).forceApprove(MINTER, 0);
     }
@@ -971,13 +757,8 @@ contract MinterETHZap_v4 is
         view
         returns (uint256 wrappedCollateralAmount)
     {
-        // Calculate collateral shares that will be minted for this base asset amount
-        uint256 collateralShares = IStETHView(COLLATERAL_ASSET).getSharesByPooledEth(baseAssetAmount);
-        // Convert shares back to collateral token amount (accounts for rounding)
-        uint256 collateralAmount = IStETHView(COLLATERAL_ASSET).getPooledEthByShares(collateralShares);
-        // Convert collateral to wrapped collateral
         wrappedCollateralAmount =
-            IWstETHView(WRAPPED_COLLATERAL_ASSET).getWstETHByStETH(collateralAmount);
+            _estimateWrappedCollateralFromBase(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, baseAssetAmount);
     }
 
     /// @notice Preview the expected wrapped collateral output from a base asset amount

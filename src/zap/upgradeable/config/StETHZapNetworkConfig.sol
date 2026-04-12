@@ -4,9 +4,9 @@ pragma solidity 0.8.30;
 import {WstETHConstants} from "src/constants/ethereum/WstETHConstants.sol";
 import {MegaETHWstETHConstants} from "src/constants/megaeth/MegaETHWstETHConstants.sol";
 
-/// @title ETH zap network configuration
-/// @notice Declarative config for ETH zap contract behavior by chain.
-library EthZapNetworkConfig {
+/// @title stETH / wstETH zap network configuration
+/// @notice Declarative config for zaps whose wrapped collateral is wstETH (native ETH + stETH paths).
+library StETHZapNetworkConfig {
     uint256 internal constant MAINNET_CHAIN_ID = 1;
     uint256 internal constant MEGAETH_CHAIN_ID = 4326;
 
@@ -20,7 +20,6 @@ library EthZapNetworkConfig {
     }
 
     function load(uint256 chainId) internal pure returns (Config memory cfg) {
-        // Mainnet: full ETH + stETH + wstETH flows.
         if (chainId == MAINNET_CHAIN_ID) {
             cfg.defaultReferral = WstETHConstants.DEFAULT_REFERRAL;
             cfg.baseAsset = address(0);
@@ -31,7 +30,6 @@ library EthZapNetworkConfig {
             return cfg;
         }
 
-        // MegaETH: wrapped-collateral only.
         if (chainId == MEGAETH_CHAIN_ID) {
             cfg.defaultReferral = address(0);
             cfg.baseAsset = address(0);
@@ -42,7 +40,6 @@ library EthZapNetworkConfig {
             return cfg;
         }
 
-        // Fallback: fail-closed (wrapped token still chain-specific if provided).
         cfg.defaultReferral = address(0);
         cfg.baseAsset = address(0);
         cfg.collateralAsset = address(0);

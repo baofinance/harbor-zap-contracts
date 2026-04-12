@@ -25,6 +25,8 @@ This repository contains zap contracts that enable users to deposit collateral i
 - **ETH/wstETH Zaps**: Convert ETH or stETH to wstETH and deposit into Genesis/Minter contracts
 - **USDC/fxSAVE Zaps**: Convert USDC or fxUSD to fxSAVE and deposit into Genesis/Minter contracts
 
+See **Zap preview semantics** and **Adding a new zapper** below for integrator expectations and how to extend the tree (e.g. a new chain such as MegaETH).
+
 ## Contracts
 
 ### ETH/wstETH Zap Contracts
@@ -47,7 +49,7 @@ For upgrade prep, use `script/dump-zap-storage-layout.sh` plus `extra_output = [
 
 ### Network-config refactor (maintainability)
 
-ETH zaps now support a declarative network config model (instead of maintaining forked per-network logic): `src/zap/upgradeable/config/EthZapNetworkConfig.sol` provides chain-specific addresses/capabilities, and `GenesisETHZap_v5` / `MinterETHZap_v4` load that config in their constructors. This keeps one primary code path while allowing chain-specific behavior (for example wrapped-collateral-only environments).
+Zaps use declarative network config libraries: `src/zap/upgradeable/config/StETHZapNetworkConfig.sol` for stETH / wstETH paths (`GenesisETHZap_v5`, `MinterETHZap_v4`) and `src/zap/upgradeable/config/FxUSDZapNetworkConfig.sol` for fxSAVE paths (`GenesisUSDCZap_v5`, `MinterUSDCZap_v4`). This keeps shared constants out of the concrete contracts while allowing chain-specific behavior (for example wrapped-collateral-only environments).
 
 ## Prerequisites
 
@@ -86,6 +88,63 @@ export MAINNET_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
 forge test
 ```
 
+## Zap preview semantics
+
+Integrators should treat **previews as hints**, not guaranteed execution results, unless documented otherwise per function.
+
+| Zap | Previews (wrapped / shares) | Notes |
+|-----|----------------------------|--------|
+| `GenesisETHZap_v5` | Lido + wstETH view math for ETH/stETH paths | On-chain views for balances / TVL where implemented |
+| `GenesisUSDCZap_v5` | `IERC4626(fxSAVE).convertToShares` after **USDC→fxUSD $1 peg scaling** (base path) or nominal fxUSD amount (collateral path) | **Not** a static replay of the fxUSD diamond + router `convert` calldata. Live output can differ; always set `minWrappedCollateralOut`. fxSAVE’s ERC4626 `asset()` is the vault’s accounting asset (e.g. fxSP), not necessarily the zap’s `COLLATERAL_ASSET` address. |
+| `MinterETHZap_v4` | Same family as Genesis ETH + minter `*DryRun` for mint / pool previews | — |
+| `MinterUSDCZap_v4` | Same **convertToShares** model as Genesis USDC for the wrapped leg + minter dry-runs for pegged / leveraged / stability pool previews | Same diamond vs model caveat; use slippage parameters on zaps |
+
+**Fork regression:** `test/GenesisUSDCZap_v5.t.sol` → `test_PreviewVsActualZap_WithinBpsTolerance` compares preview to **actual** `zapBaseAsset` / `zapCollateral` output within **200 bps** (2%) relative tolerance (diamond path vs ERC4626 + peg model).
+
+## Adding a new zapper (checklist)
+
+Use this when supporting a **new chain or market** (example sketch: **MegaETH**, no native base asset, **USDM** collateral, **USDMY** wrapped collateral, **haUSD** pegged token). Names are illustrative; wire your real addresses and decimals.
+
+### 1. Constants and network config
+
+- Add or extend a library under `src/constants/<chain>/` (e.g. `MegaETHUsdmConstants.sol`) with token/router/diamond addresses and any chain-specific literals.
+- Add or extend `src/zap/upgradeable/config/*ZapNetworkConfig.sol` (pattern: `StETHZapNetworkConfig`, `FxUSDZapNetworkConfig`):
+  - `struct Config` with immutables the zaps need (base, collateral, wrapped, flags like `supportsBaseAsset`, router addresses, `bytes4` selectors if applicable).
+  - `load(uint256 chainId)` **fail-closed** (return zeroed config or explicit unsupported) for unknown chains.
+
+### 2. Conversion helpers (optional but recommended)
+
+- If the asset path is shared across two zaps, add `src/zap/upgradeable/asset/<Flavor>ZapBase_v1.sol` (like `StETHZapBase_v1`, `FxUSDZapBase_v1`) with **internal** `_convert*` / `_preview*` / `_safeApprove` helpers and NatSpec on preview assumptions.
+
+### 3. Concrete zap contracts
+
+- Add `src/zap/upgradeable/<Name>Zap_v<N>.sol` (Genesis and Minter are separate products):
+  - Inherit `GenesisZapBase_v1` and/or `MinterZapBase_v1` / `MinterZapShared_v1` where the deposit/mint pipeline matches existing zaps.
+  - Constructor: load config, set **immutables**, assert `IGenesis(genesis).WRAPPED_COLLATERAL_TOKEN()` or `IMinter(minter).WRAPPED_COLLATERAL_TOKEN()` matches your wrapped token.
+  - `_requireSupportedAsset`: allow only **base**, **collateral**, and **wrapped** addresses your zap supports (see `GenesisUSDCZap_v5` / `MinterETHZap_v4` for patterns).
+  - Implement previews honestly: revert `PreviewNotSupported` if you cannot model the path, or document model vs diamond.
+
+### 4. Interfaces
+
+- Extend or add `src/interfaces/I<Your>Zap*.sol` so ABI consumers and tests share one surface.
+- Document preview behavior in the interface `@dev` blocks (see `IGenesisZapV5Common`).
+
+### 5. Tests
+
+- Add `test/<Your>Zap_v<N>.t.sol` with `TestMinterSetUp` (or your harness), `vm.createSelectFork` using the RPC alias from `foundry.toml` (e.g. `megaeth`).
+- Cover: happy-path zaps, preview vs actual (with tolerance if the model ≠ router), upgrade, rescue, fallback.
+
+### 6. Scripts and deployments
+
+- `deployments/<network>/zap-addresses.json` (and optional `zaps-<salt>.json` when using CREATE3).
+- Wire **verify** paths in `script/verify-zaps.sh` / `script/verify-zaps-megaeth` (or a new script) with `impl_path` and constructor ABI matching your new contract.
+- Add the contract name to `script/dump-zap-storage-layout.sh` when you need storage diffs for UUPS upgrades.
+
+### 7. README and operators
+
+- Link the new zapper in this file under **Contracts** / **Overview**.
+- Document any new RPC env var in **Testing** and **Deployment** (already uses `MEGAETH_RPC_URL` for MegaETH examples).
+
 ## Deployment
 
 Primary entrypoints:
@@ -121,7 +180,7 @@ The unsalted scripts use `script/_zap-deploy-env.sh` and support:
 
 Required inputs:
 - `--network <network>` where `<network>` is a `foundry.toml` rpc alias (for example `mainnet`, `megaeth`)
-- deploy signer via `PRIVATE_KEY` or `--account <keystore-name>` for deploy modes
+- deploy signer for deploy modes: **`--account <keystore-name>` is preferred** (Foundry keystore, for example via `cast wallet import`); `PRIVATE_KEY` in the environment also works. One-liners below use `PRIVATE_KEY=0x...` only as a short example—use a keystore for real operations when you can.
 - `OWNER` or `.owner` in config
 
 Useful options:
@@ -209,7 +268,7 @@ cast send <ZAP_ADDRESS> "setReferral(address)" <NEW_REFERRAL> \
 
 ## Security Considerations
 
-- **Private Keys**: Never commit private keys to version control
+- **Private Keys**: Never commit private keys to version control. Prefer a **keystore** (`cast wallet import`, then `--account <name>` on `forge` / `cast` and in these scripts where supported) instead of exporting `PRIVATE_KEY` in your shell.
 - **Ownership**: Transfer ownership to a multisig or secure address after deployment
 - **Referral**: The referral address receives rewards from Lido for ETH deposits
 - **Access Control**: Zap contracts have owner-only functions for rescue operations

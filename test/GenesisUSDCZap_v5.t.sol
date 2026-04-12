@@ -3,6 +3,7 @@ pragma solidity >=0.8.28 <0.9.0;
 
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
@@ -150,16 +151,58 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
         assertEq(previewShares, 0, "Preview should return 0 for zero input");
     }
 
-    /// @dev Oracle-less paths intentionally revert with a dedicated error (not `FunctionNotFound`)
+    /// @dev Balance / TVL views remain unsupported on this zap (no oracle); previews use fxSAVE `convertToShares`.
     function test_PreviewNotSupported_OnStubViews() public {
-        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
-        zap.previewWrappedCollateralFromBase(1e6);
-
         vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
         zap.balanceOfBaseAsset(user1);
 
         vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.balanceOfCollateral(user1);
+
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
         zap.totalValueBaseAsset();
+    }
+
+    function test_PreviewWrappedCollateralFromBase_MatchesFxSaveConvertToShares() public view {
+        uint256 usdcAmount = 1000 * 1e6;
+        uint256 expected = IERC4626(FXSAVE).convertToShares(usdcAmount * 1e12);
+        assertEq(zap.previewWrappedCollateralFromBase(usdcAmount), expected);
+    }
+
+    function test_PreviewWrappedCollateralFromCollateral_MatchesFxSaveConvertToShares() public view {
+        uint256 fxUsdAmount = 1000 * 1e18;
+        uint256 expected = IERC4626(FXSAVE).convertToShares(fxUsdAmount);
+        assertEq(zap.previewWrappedCollateralFromCollateral(fxUsdAmount), expected);
+    }
+
+    /// @dev Preview uses ERC4626 + peg model; live zap uses the diamond — expect small drift (tolerance in bps).
+    function test_PreviewVsActualZap_WithinBpsTolerance() public {
+        uint256 usdcAmount = 1000 * 1e6;
+        uint256 previewUsdc = zap.previewWrappedCollateralFromBase(usdcAmount);
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+        uint256 actualUsdc = zap.zapBaseAsset(usdcAmount, 0, receiver);
+        vm.stopPrank();
+        _assertRelativeDiffBps(previewUsdc, actualUsdc, 200);
+
+        uint256 fxUsdAmount = 500 * 1e18;
+        deal(FXUSD, user1, fxUsdAmount);
+        uint256 previewFx = zap.previewWrappedCollateralFromCollateral(fxUsdAmount);
+        vm.startPrank(user1);
+        IERC20(FXUSD).approve(address(zap), fxUsdAmount);
+        uint256 actualFx = zap.zapCollateral(fxUsdAmount, 0, receiver);
+        vm.stopPrank();
+        _assertRelativeDiffBps(previewFx, actualFx, 200);
+    }
+
+    function _assertRelativeDiffBps(uint256 a, uint256 b, uint256 maxBps) internal pure {
+        uint256 diff = a > b ? a - b : b - a;
+        uint256 basis = b > 0 ? b : a;
+        if (basis == 0) {
+            assertEq(diff, 0);
+            return;
+        }
+        assertLe(diff * 10_000 / basis, maxBps, "preview vs actual relative diff");
     }
 
     /// @dev Unknown selectors use `FunctionNotFound`, distinct from unsupported previews
