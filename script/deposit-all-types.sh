@@ -58,7 +58,6 @@ fi
 # Token addresses - must be set in .env.local
 STETH=${STETH}
 WSTETH=${WSTETH}
-REFERRAL=${REFERRAL_ETH:-0x0000000000000000000000000000000000000000}
 
 # Validate required token addresses
 if [[ -z "${STETH:-}" ]]; then
@@ -116,10 +115,10 @@ if [[ "$DEPOSIT_TYPE" == "eth" ]]; then
   echo "  Expected wstETH out:  $("$CAST" --to-unit "$PREVIEW_SHARES" ether) wstETH"
   echo "  Min wstETH (1% slippage): $("$CAST" --to-unit "$MIN_WSTETH_OUT" ether) wstETH"
   MIN_BASE_ASSET_EQUIV_OUT=$(echo "$DEPOSIT_AMOUNT * 99 / 100" | bc)
-  echo "  Calling: zapBaseAsset($WALLET, $MIN_WSTETH_OUT, $MIN_BASE_ASSET_EQUIV_OUT)"
+  echo "  Calling: zapNativeAsset($WALLET, $MIN_WSTETH_OUT, $MIN_BASE_ASSET_EQUIV_OUT)"
   echo ""
   
-  ZAP_OUT=$("$CAST" send "$ZAP_CONTRACT" "zapBaseAsset(address,uint256,uint256)" "$WALLET" "$MIN_WSTETH_OUT" "$MIN_BASE_ASSET_EQUIV_OUT" \
+  ZAP_OUT=$("$CAST" send "$ZAP_CONTRACT" "zapNativeAsset(address,uint256,uint256)" "$WALLET" "$MIN_WSTETH_OUT" "$MIN_BASE_ASSET_EQUIV_OUT" \
     --value "$DEPOSIT_AMOUNT" \
     --rpc-url "$RPC_URL" \
     --private-key "$PRIVATE_KEY" 2>&1)

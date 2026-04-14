@@ -15,6 +15,12 @@ library StETHZapNetworkConfig {
         address baseAsset;
         address collateralAsset;
         address wrappedCollateralAsset;
+        /// @dev ABI parity with fxUSD zaps: stETH path does not use a diamond (`address(0)`).
+        address collateralManager;
+        /// @dev ABI parity with fxUSD zaps: unused on stETH path (`address(0)`).
+        address swapRouter;
+        /// @dev ABI parity with fxUSD zaps: unused on stETH path (`bytes4(0)`).
+        bytes4 convertSelector;
         bool supportsBaseAsset;
         bool supportsCollateralAsset;
     }
@@ -25,6 +31,9 @@ library StETHZapNetworkConfig {
             cfg.baseAsset = address(0);
             cfg.collateralAsset = WstETHConstants.STETH;
             cfg.wrappedCollateralAsset = WstETHConstants.WSTETH;
+            cfg.collateralManager = address(0);
+            cfg.swapRouter = address(0);
+            cfg.convertSelector = bytes4(0);
             cfg.supportsBaseAsset = true;
             cfg.supportsCollateralAsset = true;
             return cfg;
@@ -35,6 +44,9 @@ library StETHZapNetworkConfig {
             cfg.baseAsset = address(0);
             cfg.collateralAsset = address(0);
             cfg.wrappedCollateralAsset = MegaETHWstETHConstants.WSTETH;
+            cfg.collateralManager = address(0);
+            cfg.swapRouter = address(0);
+            cfg.convertSelector = bytes4(0);
             cfg.supportsBaseAsset = false;
             cfg.supportsCollateralAsset = false;
             return cfg;
@@ -44,6 +56,9 @@ library StETHZapNetworkConfig {
         cfg.baseAsset = address(0);
         cfg.collateralAsset = address(0);
         cfg.wrappedCollateralAsset = address(0);
+        cfg.collateralManager = address(0);
+        cfg.swapRouter = address(0);
+        cfg.convertSelector = bytes4(0);
         cfg.supportsBaseAsset = false;
         cfg.supportsCollateralAsset = false;
     }

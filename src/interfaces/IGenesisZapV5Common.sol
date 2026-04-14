@@ -3,7 +3,8 @@ pragma solidity 0.8.30;
 
 /// @title IGenesisZapV5Common
 /// @notice ABI shared by `GenesisETHZap_v5` and `GenesisUSDCZap_v5`.
-/// @dev Pair with `IGenesisZapV5BaseNative` (ETH) or `IGenesisZapV5BaseErc20` (USDC) for zap entrypoints.
+/// @dev Pair with `IGenesisZapV5Native` (ETH: `zapNativeAsset` payable) or `IGenesisZapV5BaseErc20` (USDC:
+///      `zapBaseAsset` / `zapBaseAssetWithPermit`) for zap entrypoints.
 ///
 /// ## Preview semantics (high level)
 /// - **ETH zap (`GenesisETHZap_v5`)**: `previewWrappedCollateralFromBase` / `FromCollateral` use Lido + wstETH view
@@ -19,6 +20,15 @@ interface IGenesisZapV5Common {
     function BASE_ASSET() external view returns (address);
     function COLLATERAL_ASSET() external view returns (address);
     function WRAPPED_COLLATERAL_ASSET() external view returns (address);
+
+    /// @notice fxUSD-style zaps: fxUSD diamond (depositToFxSave). ETH zaps: `address(0)`.
+    function COLLATERAL_MANAGER() external view returns (address);
+
+    /// @notice fxUSD-style zaps: swap router passed into diamond. ETH zaps: `address(0)`.
+    function SWAP_ROUTER() external view returns (address);
+
+    /// @notice fxUSD-style zaps: first `convert` selector on diamond path. ETH zaps: `bytes4(0)`.
+    function CONVERT_SELECTOR() external view returns (bytes4);
 
     function balanceOfBaseAsset(address user) external view returns (uint256);
 

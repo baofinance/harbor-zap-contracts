@@ -3,7 +3,7 @@ pragma solidity 0.8.30;
 
 /// @title IMinterZapV4BaseErc20
 /// @notice Base-asset entrypoints for `MinterUSDCZap_v4` (ERC-20 pulled from caller + optional permit).
-/// @dev Implement only on the USDC zap; ETH uses `IMinterZapV4BaseNative` instead.
+/// @dev Implement only on the USDC zap; ETH uses `IMinterZapV4BaseNative` (`zapNativeAssetTo*`) instead.
 interface IMinterZapV4BaseErc20 {
     function zapBaseAssetToPegged(
         uint256 baseAssetAmount,

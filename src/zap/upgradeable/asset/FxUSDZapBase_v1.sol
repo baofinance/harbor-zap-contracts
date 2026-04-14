@@ -12,10 +12,10 @@ import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 abstract contract FxUSDZapBase_v1 {
     using SafeERC20 for IERC20;
 
-    /// @dev `tokenIn` balance already in this contract; approves diamond then deposits to fxSAVE / wrapped collateral.
+    /// @dev `tokenIn` balance already in this contract; approves collateral manager (e.g. fxUSD diamond) then deposits to wrapped collateral.
     function _convertHeldTokenToWrappedCollateral(
-        address fxusdDiamond,
-        address fxusdSwapRouter,
+        address collateralManager,
+        address swapRouter,
         address wrappedCollateralAsset,
         bytes4 convertSelector,
         address tokenIn,
@@ -23,21 +23,21 @@ abstract contract FxUSDZapBase_v1 {
         uint256 minOut
     ) internal returns (uint256 wrappedCollateralReceived) {
         IERC20 token = IERC20(tokenIn);
-        _safeApprove(token, fxusdDiamond, amountIn);
+        _safeApprove(token, collateralManager, amountIn);
 
         bytes memory data = abi.encodeWithSelector(convertSelector, tokenIn, amountIn, minOut, bytes(""));
 
         IFxUSDDiamondV2.ConvertInParams memory params = IFxUSDDiamondV2.ConvertInParams({
             tokenIn: tokenIn,
             amount: amountIn,
-            target: fxusdSwapRouter,
+            target: swapRouter,
             data: data,
             minOut: minOut,
             signature: ""
         });
 
         uint256 balanceBefore = IERC20(wrappedCollateralAsset).balanceOf(address(this));
-        IFxUSDDiamondV2(fxusdDiamond).depositToFxSave{value: 0}(params, tokenIn, 0, address(this));
+        IFxUSDDiamondV2(collateralManager).depositToFxSave{value: 0}(params, tokenIn, 0, address(this));
         wrappedCollateralReceived = IERC20(wrappedCollateralAsset).balanceOf(address(this)) - balanceBefore;
 
         if (wrappedCollateralReceived == 0) revert IZapErrors.NoWrappedCollateralReceived();

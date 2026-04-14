@@ -223,8 +223,6 @@ if [[ -n "$MARKET" ]]; then
   [[ -z "$MINTER_USDC" ]] && MINTER_USDC=$(load_config ".markets[\"$MARKET\"].addresses.minterUsdc")
 fi
 
-REFERRAL_ETH=${REFERRAL_ETH:-0x0000000000000000000000000000000000000000}
-
 CHAIN_ID_RAW=$("$CAST" chain-id --rpc-url "$RPC_NETWORK" 2>/dev/null || echo "unknown")
 CHAIN_ID=""
 if [[ "$CHAIN_ID_RAW" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
@@ -418,7 +416,7 @@ constructor_args_for_zap() {
   case "$1" in
     genesis-eth) echo "$GENESIS_ETH" ;;
     genesis-usdc) echo "$GENESIS_USDC" ;;
-    minter-eth) echo "$MINTER_ETH $REFERRAL_ETH" ;;
+    minter-eth) echo "$MINTER_ETH" ;;
     minter-usdc) echo "$MINTER_USDC" ;;
   esac
 }
@@ -427,16 +425,16 @@ constructor_args_encoded_for_zap() {
   case "$1" in
     genesis-eth) "$CAST" abi-encode "constructor(address)" "$GENESIS_ETH" ;;
     genesis-usdc) "$CAST" abi-encode "constructor(address)" "$GENESIS_USDC" ;;
-    minter-eth) "$CAST" abi-encode "constructor(address,address)" "$MINTER_ETH" "$REFERRAL_ETH" ;;
+    minter-eth) "$CAST" abi-encode "constructor(address)" "$MINTER_ETH" ;;
     minter-usdc) "$CAST" abi-encode "constructor(address)" "$MINTER_USDC" ;;
   esac
 }
 
 init_data_for_zap() {
   case "$1" in
-    genesis-eth) "$CAST" calldata "initialize(address,address,address)" "$DEPLOYER" "$OWNER" "$REFERRAL_ETH" ;;
+    genesis-eth) "$CAST" calldata "initialize(address,address)" "$DEPLOYER" "$OWNER" ;;
     genesis-usdc) "$CAST" calldata "initialize(address,address)" "$DEPLOYER" "$OWNER" ;;
-    minter-eth) "$CAST" calldata "initialize(address,address,address)" "$DEPLOYER" "$OWNER" "$REFERRAL_ETH" ;;
+    minter-eth) "$CAST" calldata "initialize(address,address)" "$DEPLOYER" "$OWNER" ;;
     minter-usdc) "$CAST" calldata "initialize(address,address)" "$DEPLOYER" "$OWNER" ;;
   esac
 }

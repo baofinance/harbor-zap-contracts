@@ -14,6 +14,76 @@ import {MinterZapShared_v1} from "src/zap/upgradeable/base/MinterZapShared_v1.so
 abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
     using SafeERC20 for IERC20;
 
+    // --- Shared events (ETH and USDC minter zaps emit identical topics) ---
+
+    event BaseAssetZappedToPegged(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 baseAssetAmount,
+        uint256 wrappedCollateralAmount,
+        uint256 peggedOut
+    );
+
+    event BaseAssetZappedToLeveraged(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 baseAssetAmount,
+        uint256 wrappedCollateralAmount,
+        uint256 leveragedOut
+    );
+
+    event CollateralZappedToPegged(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 collateralAmount,
+        uint256 wrappedCollateralAmount,
+        uint256 peggedOut
+    );
+
+    event CollateralZappedToLeveraged(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 collateralAmount,
+        uint256 wrappedCollateralAmount,
+        uint256 leveragedOut
+    );
+
+    event BaseAssetZappedToStabilityPool(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 baseAssetAmount,
+        uint256 wrappedCollateralAmount,
+        uint256 peggedOut,
+        address stabilityPool,
+        uint256 deposited
+    );
+
+    event CollateralZappedToStabilityPool(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 collateralAmount,
+        uint256 wrappedCollateralAmount,
+        uint256 peggedOut,
+        address stabilityPool,
+        uint256 deposited
+    );
+
+    event WrappedCollateralZappedToStabilityPool(
+        address indexed user,
+        address indexed minter,
+        address indexed receiver,
+        uint256 wrappedCollateralAmount,
+        uint256 peggedOut,
+        address stabilityPool,
+        uint256 deposited
+    );
+
     function _convertToWrappedCollateral(address tokenIn, uint256 amountIn, uint256 minWrappedCollateralOut)
         internal
         virtual

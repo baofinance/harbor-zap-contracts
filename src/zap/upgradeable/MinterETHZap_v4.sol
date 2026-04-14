@@ -54,6 +54,12 @@ contract MinterETHZap_v4 is
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable WRAPPED_COLLATERAL_ASSET;
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable COLLATERAL_MANAGER;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable SWAP_ROUTER;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    bytes4 public immutable CONVERT_SELECTOR;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     bool public immutable SUPPORTS_BASE_ASSET;
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     bool public immutable SUPPORTS_COLLATERAL_ASSET;
@@ -66,139 +72,16 @@ contract MinterETHZap_v4 is
 
     // ============ Configurable ============
 
-    address public referral;
-
     /// @notice Mapping of allowed stability pool addresses
     mapping(address => bool) public allowedStabilityPools;
 
     /// @dev Reserved slots for future storage variables. Shrink the array when appending new state (OZ upgradeable pattern).
-    uint256[50] private __gap;
+    ///      One slot reserved where `referral` storage lived before it was replaced by `DEFAULT_REFERRAL` only.
+    uint256[51] private __gap;
 
     // ============ Events ============
+    /// @dev Zap lifecycle events (`BaseAssetZappedTo*`, etc.) live on `MinterZapBase_v1`.
 
-    /// @notice Emitted when base asset is zapped to mint pegged tokens
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the pegged tokens
-    /// @param baseAssetAmount Amount of base asset deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param peggedOut Amount of pegged tokens minted
-    event BaseAssetZappedToPegged(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 baseAssetAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut
-    );
-
-    /// @notice Emitted when base asset is zapped to mint leveraged tokens
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the leveraged tokens
-    /// @param baseAssetAmount Amount of base asset deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param leveragedOut Amount of leveraged tokens minted
-    event BaseAssetZappedToLeveraged(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 baseAssetAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 leveragedOut
-    );
-
-    /// @notice Emitted when collateral is zapped to mint pegged tokens
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the pegged tokens
-    /// @param collateralAmount Amount of collateral deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param peggedOut Amount of pegged tokens minted
-    event CollateralZappedToPegged(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 collateralAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut
-    );
-
-    /// @notice Emitted when collateral is zapped to mint leveraged tokens
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the leveraged tokens
-    /// @param collateralAmount Amount of collateral deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param leveragedOut Amount of leveraged tokens minted
-    event CollateralZappedToLeveraged(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 collateralAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 leveragedOut
-    );
-
-    /// @notice Emitted when base asset is zapped to StabilityPool
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param baseAssetAmount Amount of base asset deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param peggedOut Amount of pegged tokens minted
-    /// @param stabilityPool Address of the StabilityPool
-    /// @param deposited Amount deposited into StabilityPool
-    event BaseAssetZappedToStabilityPool(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 baseAssetAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut,
-        address stabilityPool,
-        uint256 deposited
-    );
-
-    /// @notice Emitted when collateral is zapped to StabilityPool
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param collateralAmount Amount of collateral deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param peggedOut Amount of pegged tokens minted
-    /// @param stabilityPool Address of the StabilityPool
-    /// @param deposited Amount deposited into StabilityPool
-    event CollateralZappedToStabilityPool(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 collateralAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut,
-        address stabilityPool,
-        uint256 deposited
-    );
-
-    /// @notice Emitted when wrapped collateral is zapped to StabilityPool
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param wrappedCollateralAmount Amount of wrapped collateral deposited
-    /// @param peggedOut Amount of pegged tokens minted
-    /// @param stabilityPool Address of the StabilityPool
-    /// @param deposited Amount deposited into StabilityPool
-    event WrappedCollateralZappedToStabilityPool(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut,
-        address stabilityPool,
-        uint256 deposited
-    );
-
-    event ReferralUpdated(address indexed oldReferral, address indexed newReferral);
     event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
     event Upgraded(address indexed implementation);
 
@@ -206,7 +89,7 @@ contract MinterETHZap_v4 is
 
     /// @notice In UUPS proxies the constructor is used only to stop the implementation being initialized to any version
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor(address minter_, address referral_) {
+    constructor(address minter_) {
         _disableInitializers();
 
         if (minter_ == address(0)) revert IZapErrors.ZeroAddress();
@@ -215,6 +98,9 @@ contract MinterETHZap_v4 is
         BASE_ASSET = cfg.baseAsset;
         COLLATERAL_ASSET = cfg.collateralAsset;
         WRAPPED_COLLATERAL_ASSET = cfg.wrappedCollateralAsset;
+        COLLATERAL_MANAGER = cfg.collateralManager;
+        SWAP_ROUTER = cfg.swapRouter;
+        CONVERT_SELECTOR = cfg.convertSelector;
         SUPPORTS_BASE_ASSET = cfg.supportsBaseAsset;
         SUPPORTS_COLLATERAL_ASSET = cfg.supportsCollateralAsset;
         if (WRAPPED_COLLATERAL_ASSET == address(0)) revert IZapErrors.AssetNotSupportedOnChain(address(0), block.chainid);
@@ -226,10 +112,6 @@ contract MinterETHZap_v4 is
         }
 
         MINTER = minter_;
-
-        // Set referral in constructor for immutable-like behavior (can be changed via initialize)
-        address initialReferral = referral_ == address(0) ? DEFAULT_REFERRAL : referral_;
-        referral = initialReferral;
     }
 
     // ============ Initialization ============
@@ -237,17 +119,10 @@ contract MinterETHZap_v4 is
     /// @notice Initialize the contract
     /// @param deployerOwner Address used for initial setup
     /// @param pendingOwner Address eligible to complete ownership transfer
-    /// @param referral_ Lido referral address (or address(0) to use default)
-    function initialize(address deployerOwner, address pendingOwner, address referral_) external initializer {
+    function initialize(address deployerOwner, address pendingOwner) external initializer {
         _initializeOwner(deployerOwner, pendingOwner);
         __UUPSUpgradeable_init();
         __Context_init();
-
-        // Set referral if provided, otherwise keep constructor value
-        if (referral_ != address(0)) {
-            referral = referral_;
-            emit ReferralUpdated(address(0), referral_);
-        }
     }
 
     /// @notice The check that allows this contract to be upgraded
@@ -259,14 +134,14 @@ contract MinterETHZap_v4 is
 
     // ============ External Functions ============
 
-    /// @notice Zap base asset into pegged tokens in one transaction
-    /// @dev Flow: base asset → collateral → wrapped collateral → Minter mint pegged
+    /// @notice Zap native base asset (ETH) into pegged tokens in one transaction
+    /// @dev Flow: ETH → collateral → wrapped collateral → Minter mint pegged
     /// @dev Use previewPeggedFromBase() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param minWrappedCollateralOut Minimum wrapped collateral from ETH→stETH→wrap; 0 skips slippage check on wrap leg
     /// @param receiver Address that will receive the pegged tokens
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @return peggedOut Amount of pegged tokens minted
-    function zapBaseAssetToPegged(uint256 minWrappedCollateralOut, address receiver, uint256 minPeggedOut)
+    function zapNativeAssetToPegged(uint256 minWrappedCollateralOut, address receiver, uint256 minPeggedOut)
         external
         payable
         nonReentrant
@@ -284,14 +159,14 @@ contract MinterETHZap_v4 is
         );
     }
 
-    /// @notice Zap base asset into leveraged tokens in one transaction
-    /// @dev Flow: base asset → collateral → wrapped collateral → Minter mint leveraged
+    /// @notice Zap native base asset (ETH) into leveraged tokens in one transaction
+    /// @dev Flow: ETH → collateral → wrapped collateral → Minter mint leveraged
     /// @dev Use previewLeveragedFromBase() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param minWrappedCollateralOut Minimum wrapped collateral from ETH→stETH→wrap; 0 skips slippage check on wrap leg
     /// @param receiver Address that will receive the leveraged tokens
     /// @param minLeveragedOut Minimum amount of leveraged tokens to receive
     /// @return leveragedOut Amount of leveraged tokens minted
-    function zapBaseAssetToLeveraged(uint256 minWrappedCollateralOut, address receiver, uint256 minLeveragedOut)
+    function zapNativeAssetToLeveraged(uint256 minWrappedCollateralOut, address receiver, uint256 minLeveragedOut)
         external
         payable
         nonReentrant
@@ -367,8 +242,8 @@ contract MinterETHZap_v4 is
         );
     }
 
-    /// @notice Zap base asset into StabilityPool in one transaction
-    /// @dev Flow: base asset → collateral → wrapped collateral → Minter mint pegged → StabilityPool deposit
+    /// @notice Zap native base asset (ETH) into StabilityPool in one transaction
+    /// @dev Flow: ETH → collateral → wrapped collateral → Minter mint pegged → StabilityPool deposit
     /// @dev Use previewStabilityPoolFromBase() to calculate expected output, then apply a slippage buffer (0.5-1%)
     /// @param minWrappedCollateralOut Minimum wrapped collateral from ETH→stETH→wrap; 0 skips slippage check on wrap leg
     /// @param receiver Address that will receive the StabilityPool deposit
@@ -377,7 +252,7 @@ contract MinterETHZap_v4 is
     /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
-    function zapBaseAssetToStabilityPool(
+    function zapNativeAssetToStabilityPool(
         uint256 minWrappedCollateralOut,
         address receiver,
         uint256 minPeggedOut,
@@ -698,7 +573,7 @@ contract MinterETHZap_v4 is
         internal
         returns (uint256 wrappedCollateralAmount)
     {
-        uint256 collateralReceived = _convertBaseAssetToCollateral(COLLATERAL_ASSET, referral, baseAssetAmount);
+        uint256 collateralReceived = _convertBaseAssetToCollateral(COLLATERAL_ASSET, DEFAULT_REFERRAL, baseAssetAmount);
         wrappedCollateralAmount =
             _wrapCollateralToWrappedCollateral(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, collateralReceived);
     }
@@ -925,9 +800,9 @@ contract MinterETHZap_v4 is
 
     // ============ Owner Functions ============
 
-    function setReferral(address newReferral) external onlyOwner {
-        emit ReferralUpdated(referral, newReferral);
-        referral = newReferral;
+    /// @inheritdoc IMinterZapV4BaseNative
+    function referral() external view returns (address) {
+        return DEFAULT_REFERRAL;
     }
 
     /// @notice Set the allowed status of a stability pool

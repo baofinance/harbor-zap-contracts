@@ -76,6 +76,9 @@ interface IZapErrors {
     /// @param token The protected token address that was attempted to rescue
     error CannotRescueProtectedToken(address token);
 
+    /// @notice Thrown when native ETH transfer to owner fails (e.g. non-payable owner contract)
+    error NativeTransferFailed();
+
     /// @notice Thrown when wrapped collateral output is below minimum acceptable amount
     /// @param received Actual wrapped collateral received
     /// @param minimum Minimum required by user

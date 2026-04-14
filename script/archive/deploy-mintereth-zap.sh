@@ -97,8 +97,6 @@ if [[ -z "${MINTER_ETH:-}" ]]; then
   exit 1
 fi
 
-REFERRAL_ETH=${REFERRAL_ETH:-0x0000000000000000000000000000000000000000}
-
 CHAIN_ID=$("$CAST" chain-id --rpc-url "$RPC_URL" 2>/dev/null || echo "unknown")
 echo "=== Network Check ==="
 echo "ZAP_NETWORK: ${ZAP_NETWORK:-mainnet}"
@@ -220,7 +218,7 @@ PROXY_LOG=$(mktemp "${TMPDIR:-/tmp}/zap-proxy.XXXXXX")
 trap 'rm -f "$IMPL_LOG" "$PROXY_LOG"' EXIT
 
 echo "Deploying implementation..."
-if ! deploy_contract "$IMPL_LOG" "$IMPLEMENTATION_PATH" "$MINTER_ETH" "$REFERRAL_ETH"; then
+if ! deploy_contract "$IMPL_LOG" "$IMPLEMENTATION_PATH" "$MINTER_ETH"; then
   echo "❌ Failed to deploy implementation"
   cat "$IMPL_LOG"
   exit 1
@@ -236,8 +234,8 @@ fi
 echo "✅ Implementation deployed: $impl_address"
 
 DEPLOYER=$("$CAST" wallet address "${SIGNER_FLAGS[@]}")
-init_data=$("$CAST" calldata "initialize(address,address,address)" "$DEPLOYER" "$FINAL_OWNER" "$REFERRAL_ETH")
-impl_ctor_args=$("$CAST" abi-encode "constructor(address,address)" "$MINTER_ETH" "$REFERRAL_ETH")
+init_data=$("$CAST" calldata "initialize(address,address)" "$DEPLOYER" "$FINAL_OWNER")
+impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$MINTER_ETH")
 
 echo "Deploying proxy..."
 if ! deploy_contract "$PROXY_LOG" "$PROXY_PATH" "$impl_address" "$init_data"; then
@@ -303,15 +301,13 @@ ${NOTE_JSON}  "deploymentTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "implementation": "$impl_address",
   "proxy": "$proxy_address",
   "constructorArgs": {
-    "minter": "$MINTER_ETH",
-    "referral": "$REFERRAL_ETH"
+    "minter": "$MINTER_ETH"
   },
   "initializer": {
-    "signature": "initialize(address,address,address)",
+    "signature": "initialize(address,address)",
     "args": {
       "deployerOwner": "$DEPLOYER",
-      "pendingOwner": "$FINAL_OWNER",
-      "referral": "$REFERRAL_ETH"
+      "pendingOwner": "$FINAL_OWNER"
     }
   },
   "initializerData": "$init_data",

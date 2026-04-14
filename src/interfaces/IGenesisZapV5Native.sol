@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-/// @title IGenesisZapV5BaseNative
+/// @title IGenesisZapV5Native
 /// @notice Native-ETH Genesis zaps (`GenesisETHZap_v5`).
-interface IGenesisZapV5BaseNative {
+/// @dev `zapNativeAsset` is the only payable “base” entrypoint on this rail. On success it emits `ZappedBaseAsset`
+///      (declared on `GenesisZapBase_v1`) so topics match `GenesisUSDCZap_v5` / `zapBaseAsset`—there is **no**
+///      `zapBaseAsset` function on the ETH zap; frontends must branch on contract type.
+interface IGenesisZapV5Native {
+    /// @notice Lido referral address passed to `submit` (fixed per implementation from `StETHZapNetworkConfig`)
     function referral() external view returns (address);
 
-    function setReferral(address newReferral) external;
-
-    function zapBaseAsset(
+    /// @notice Zap native base asset (ETH) → collateral → wrapped collateral → Genesis
+    function zapNativeAsset(
         address receiver,
         uint256 minWrappedCollateralOut,
         uint256 minBaseAssetEquivalentOut

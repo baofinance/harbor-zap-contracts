@@ -3,13 +3,24 @@ pragma solidity 0.8.30;
 
 /// @title IMinterZapV4Common
 /// @notice ABI shared by `MinterETHZap_v4` and `MinterUSDCZap_v4` (collateral, wrapped, previews, owner helpers).
-/// @dev Pair with `IMinterZapV4BaseNative` (ETH zaps) or `IMinterZapV4BaseErc20` (USDC zaps) for the full surface.
+/// @dev Pair with `IMinterZapV4BaseNative` (ETH: `zapNativeAssetTo*` payable) or `IMinterZapV4BaseErc20` (USDC:
+///      `zapBaseAssetTo*`) for the full surface.
 interface IMinterZapV4Common {
     // ----- Constants / config (auto-getters match `public constant` / `immutable`) -----
     function MINTER() external view returns (address);
     function BASE_ASSET() external view returns (address);
     function COLLATERAL_ASSET() external view returns (address);
     function WRAPPED_COLLATERAL_ASSET() external view returns (address);
+
+    /// @notice USDC zaps: fxUSD diamond. ETH zaps: `address(0)`.
+    function COLLATERAL_MANAGER() external view returns (address);
+
+    /// @notice USDC zaps: swap router for diamond. ETH zaps: `address(0)`.
+    function SWAP_ROUTER() external view returns (address);
+
+    /// @notice USDC zaps: first `convert` selector. ETH zaps: `bytes4(0)`.
+    function CONVERT_SELECTOR() external view returns (bytes4);
+
     function allowedStabilityPools(address stabilityPool) external view returns (bool);
 
     // ----- Collateral zaps -----

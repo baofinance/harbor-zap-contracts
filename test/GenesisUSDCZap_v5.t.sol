@@ -8,6 +8,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {GenesisUSDCZap_v5} from "src/zap/upgradeable/GenesisUSDCZap_v5.sol";
+import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 import {Genesis_v1} from "src/minter/Genesis_v1.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
@@ -134,6 +135,12 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
         console.log("Genesis zap name:", name);
 
         assertEq(name, expectedName, "Zap name mismatch");
+    }
+
+    function test_CollateralManagerAndRouterMatchConstants() public view {
+        assertEq(zap.COLLATERAL_MANAGER(), FxSAVEConstants.FXUSD_DIAMOND);
+        assertEq(zap.SWAP_ROUTER(), FxSAVEConstants.FXUSD_SWAP_ROUTER);
+        assertEq(zap.CONVERT_SELECTOR(), FxSAVEConstants.CONVERT_SELECTOR);
     }
 
     // ============ Preview Function Tests ============

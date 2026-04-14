@@ -73,7 +73,7 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
         zapOwner = makeAddr("zapOwner");
         zapImpl = address(new GenesisETHZap_v5(genesis));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(GenesisETHZap_v5.initialize, (address(this), zapOwner, address(0)))
+            zapImpl, abi.encodeCall(GenesisETHZap_v5.initialize, (address(this), zapOwner))
         );
         zap = GenesisETHZap_v5(payable(zapProxy));
         vm.label(address(zap), "GenesisETHZapV5");
@@ -111,7 +111,7 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
         // Calculate minWstEthOut with 1% slippage buffer
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
 
-        uint256 sharesOut = zap.zapBaseAsset{value: ethAmount}(receiver, minWstEthOut, 0);
+        uint256 sharesOut = zap.zapNativeAsset{value: ethAmount}(receiver, minWstEthOut, 0);
 
         vm.stopPrank();
 
@@ -138,6 +138,13 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
         console.log("Genesis zap name:", name);
 
         assertEq(name, expectedName, "Zap name mismatch");
+    }
+
+    /// @dev ETH zap has no fxUSD diamond path; getters exist for ABI parity with USDC Genesis zap.
+    function test_FxUsdPathImmutablesAreZero() public view {
+        assertEq(zap.COLLATERAL_MANAGER(), address(0));
+        assertEq(zap.SWAP_ROUTER(), address(0));
+        assertEq(zap.CONVERT_SELECTOR(), bytes4(0));
     }
 
     function test_ZapStEth_Success() public {
@@ -207,7 +214,7 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
 
         vm.startPrank(user1);
-        zap.zapBaseAsset{value: ethAmount}(receiver, minWstEthOut, 0);
+        zap.zapNativeAsset{value: ethAmount}(receiver, minWstEthOut, 0);
         vm.stopPrank();
 
         uint256 balanceEth = zap.balanceOfBaseAsset(receiver);
@@ -219,7 +226,7 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
 
         vm.startPrank(user1);
-        zap.zapBaseAsset{value: ethAmount}(receiver, minWstEthOut, 0);
+        zap.zapNativeAsset{value: ethAmount}(receiver, minWstEthOut, 0);
         vm.stopPrank();
 
         uint256 balanceStEth = zap.balanceOfCollateral(receiver);
@@ -234,8 +241,8 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
         uint256 minWstEthOut1 = _calculateMinWstEthFromEth(ethAmount1);
         uint256 minWstEthOut2 = _calculateMinWstEthFromEth(ethAmount2);
 
-        zap.zapBaseAsset{value: ethAmount1}(receiver, minWstEthOut1, 0);
-        zap.zapBaseAsset{value: ethAmount2}(receiver, minWstEthOut2, 0);
+        zap.zapNativeAsset{value: ethAmount1}(receiver, minWstEthOut1, 0);
+        zap.zapNativeAsset{value: ethAmount2}(receiver, minWstEthOut2, 0);
         vm.stopPrank();
 
         uint256 totalValue = zap.totalValueBaseAsset();
@@ -261,7 +268,7 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
         uint256 ethAmount = 1 ether;
         uint256 minWstEthOut = _calculateMinWstEthFromEth(ethAmount);
         vm.startPrank(user1);
-        uint256 sharesOut = zap.zapBaseAsset{value: ethAmount}(receiver, minWstEthOut, 0);
+        uint256 sharesOut = zap.zapNativeAsset{value: ethAmount}(receiver, minWstEthOut, 0);
         vm.stopPrank();
 
         assertGt(sharesOut, 0, "Should still work after upgrade");
@@ -276,15 +283,6 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
     }
 
     // ============ Owner Function Tests ============
-
-    function test_SetReferral() public {
-        address newReferral = makeAddr("newReferral");
-
-        vm.prank(zapOwner);
-        zap.setReferral(newReferral);
-
-        assertEq(zap.referral(), newReferral, "Referral should be updated");
-    }
 
     function test_RescueNativeAsset() public {
         vm.deal(address(zap), 1 ether);

@@ -147,9 +147,14 @@ for file in "${DEPLOYMENT_FILES[@]}"; do
       ;;
     MinterETHZap_v4)
       impl_path="src/zap/upgradeable/MinterETHZap_v4.sol:MinterETHZap_v4"
-      impl_ctor_args=$("$CAST" abi-encode "constructor(address,address)" \
-        "$(jq -r '.constructorArgs.minter' "$file")" \
-        "$(jq -r '.constructorArgs.referral' "$file")")
+      if jq -e '.constructorArgs | has("referral")' "$file" >/dev/null 2>&1; then
+        impl_ctor_args=$("$CAST" abi-encode "constructor(address,address)" \
+          "$(jq -r '.constructorArgs.minter' "$file")" \
+          "$(jq -r '.constructorArgs.referral' "$file")")
+      else
+        impl_ctor_args=$("$CAST" abi-encode "constructor(address)" \
+          "$(jq -r '.constructorArgs.minter' "$file")")
+      fi
       ;;
     MinterUSDCZap_v4)
       impl_path="src/zap/upgradeable/MinterUSDCZap_v4.sol:MinterUSDCZap_v4"

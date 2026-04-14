@@ -9,6 +9,7 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {MinterUSDCZap_v4} from "src/zap/upgradeable/MinterUSDCZap_v4.sol";
+import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
@@ -81,6 +82,15 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         deal(USDC, user1, 10000 * 1e6);
     }
 
+    function test_CollateralManagerAndRouterMatchConstants() public view {
+        assertEq(zap.COLLATERAL_MANAGER(), FxSAVEConstants.FXUSD_DIAMOND);
+        assertEq(zap.SWAP_ROUTER(), FxSAVEConstants.FXUSD_SWAP_ROUTER);
+        assertEq(zap.CONVERT_SELECTOR(), FxSAVEConstants.CONVERT_SELECTOR);
+        assertEq(zap.BASE_ASSET(), USDC);
+        assertEq(zap.COLLATERAL_ASSET(), FXUSD);
+        assertEq(zap.WRAPPED_COLLATERAL_ASSET(), FXSAVE);
+    }
+
     // ============ USDC to Pegged Tests ============
 
     function test_ZapUsdcToPegged_Success() public {
@@ -110,7 +120,7 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         assertEq(IERC20(USDC).balanceOf(user1), 10000 * 1e6 - usdcAmount, "USDC not deducted");
 
         // Allowances should be cleared
-        assertEq(IERC20(USDC).allowance(address(zap), zap.FXUSD_DIAMOND()), 0, "USDC allowance not cleared");
+        assertEq(IERC20(USDC).allowance(address(zap), zap.COLLATERAL_MANAGER()), 0, "USDC allowance not cleared");
         assertEq(IERC20(FXSAVE).allowance(address(zap), minter), 0, "fxSAVE allowance not cleared");
     }
 

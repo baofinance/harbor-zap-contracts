@@ -66,9 +66,9 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
 
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
-        zapImpl = address(new MinterETHZap_v4(minter, address(0)));
+        zapImpl = address(new MinterETHZap_v4(minter));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(MinterETHZap_v4.initialize, (address(this), zapOwner, address(0)))
+            zapImpl, abi.encodeCall(MinterETHZap_v4.initialize, (address(this), zapOwner))
         );
         zap = MinterETHZap_v4(payable(zapProxy));
         vm.label(address(zap), "MinterETHZapV4");
@@ -83,6 +83,12 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.deal(user1, 100 ether);
     }
 
+    function test_FxUsdPathImmutablesAreZero() public view {
+        assertEq(zap.COLLATERAL_MANAGER(), address(0));
+        assertEq(zap.SWAP_ROUTER(), address(0));
+        assertEq(zap.CONVERT_SELECTOR(), bytes4(0));
+    }
+
     // ============ ETH to Pegged Tests ============
 
     function test_ZapEthToPegged_Success() public {
@@ -93,7 +99,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         uint256 peggedBalBefore = IERC20(peggedToken).balanceOf(receiver);
         uint256 wstEthBalBefore = IERC20(WSTETH).balanceOf(minter);
 
-        uint256 peggedOut = zap.zapBaseAssetToPegged{value: ethAmount}(0, receiver, 0);
+        uint256 peggedOut = zap.zapNativeAssetToPegged{value: ethAmount}(0, receiver, 0);
 
         vm.stopPrank();
 
@@ -115,7 +121,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(IZapErrors.ZeroAmount.selector);
-        zap.zapBaseAssetToPegged{value: 0}(0, receiver, 0);
+        zap.zapNativeAssetToPegged{value: 0}(0, receiver, 0);
 
         vm.stopPrank();
     }
@@ -126,7 +132,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(IZapErrors.ZeroAddress.selector);
-        zap.zapBaseAssetToPegged{value: ethAmount}(0, address(0), 0);
+        zap.zapNativeAssetToPegged{value: ethAmount}(0, address(0), 0);
 
         vm.stopPrank();
     }
@@ -139,7 +145,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         uint256 leveragedBalBefore = IERC20(leveragedToken).balanceOf(receiver);
-        uint256 leveragedOut = zap.zapBaseAssetToLeveraged{value: ethAmount}(0, receiver, 0);
+        uint256 leveragedOut = zap.zapNativeAssetToLeveraged{value: ethAmount}(0, receiver, 0);
 
         vm.stopPrank();
 
@@ -224,7 +230,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         uint256 minPeggedOut = previewPegged * 99 / 100; // 1% slippage
         uint256 minStabilityPoolOut = minPeggedOut * 99 / 100; // 1% slippage
 
-        (uint256 peggedOut, uint256 deposited) = zap.zapBaseAssetToStabilityPool{value: ethAmount}(
+        (uint256 peggedOut, uint256 deposited) = zap.zapNativeAssetToStabilityPool{value: ethAmount}(
             minWrappedOut, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
         );
 
@@ -250,7 +256,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
 
         vm.expectRevert(IZapErrors.StabilityPoolNotAllowed.selector);
-        zap.zapBaseAssetToStabilityPool{value: ethAmount}(0, receiver, 0, address(stabilityPool), 0);
+        zap.zapNativeAssetToStabilityPool{value: ethAmount}(0, receiver, 0, address(stabilityPool), 0);
 
         vm.stopPrank();
     }
@@ -499,7 +505,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
 
     function test_Upgrade() public {
         // Deploy new implementation
-        address newImpl = address(new MinterETHZap_v4(minter, address(0)));
+        address newImpl = address(new MinterETHZap_v4(minter));
 
         // Upgrade proxy
         vm.prank(zapOwner);
@@ -511,14 +517,14 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         // Verify functionality still works
         uint256 ethAmount = 1 ether;
         vm.startPrank(user1);
-        uint256 peggedOut = zap.zapBaseAssetToPegged{value: ethAmount}(0, receiver, 0);
+        uint256 peggedOut = zap.zapNativeAssetToPegged{value: ethAmount}(0, receiver, 0);
         vm.stopPrank();
 
         assertGt(peggedOut, 0, "Should still work after upgrade");
     }
 
     function test_Upgrade_OnlyOwner() public {
-        address newImpl = address(new MinterETHZap_v4(minter, address(0)));
+        address newImpl = address(new MinterETHZap_v4(minter));
 
         vm.prank(user1);
         vm.expectRevert();
@@ -547,15 +553,6 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.prank(user1);
         vm.expectRevert();
         zap.setStabilityPoolAllowed(stabilityPool, true);
-    }
-
-    function test_SetReferral() public {
-        address newReferral = makeAddr("newReferral");
-
-        vm.prank(zapOwner);
-        zap.setReferral(newReferral);
-
-        assertEq(zap.referral(), newReferral, "Referral should be updated");
     }
 
     function test_RescueNativeAsset() public {

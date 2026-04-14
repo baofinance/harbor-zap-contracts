@@ -12,7 +12,7 @@ import {IGenesis} from "src/interfaces/IGenesis.sol";
 import {IStETH} from "src/interfaces/IStETH.sol";
 import {IWstETH} from "src/interfaces/IWstETH.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
-import {IGenesisZapV5BaseNative} from "src/interfaces/IGenesisZapV5BaseNative.sol";
+import {IGenesisZapV5Native} from "src/interfaces/IGenesisZapV5Native.sol";
 import {IGenesisZapV5Common} from "src/interfaces/IGenesisZapV5Common.sol";
 import {StETHZapNetworkConfig} from "src/zap/upgradeable/config/StETHZapNetworkConfig.sol";
 import {GenesisZapBase_v1} from "src/zap/upgradeable/base/GenesisZapBase_v1.sol";
@@ -35,7 +35,7 @@ contract GenesisETHZap_v5 is
     GenesisZapBase_v1,
     StETHZapBase_v1,
     IGenesisZapV5Common,
-    IGenesisZapV5BaseNative
+    IGenesisZapV5Native
 {
     using SafeERC20 for IERC20;
 
@@ -48,6 +48,12 @@ contract GenesisETHZap_v5 is
     address public immutable COLLATERAL_ASSET;
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address public immutable WRAPPED_COLLATERAL_ASSET;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable COLLATERAL_MANAGER;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable SWAP_ROUTER;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    bytes4 public immutable CONVERT_SELECTOR;
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     bool public immutable SUPPORTS_BASE_ASSET;
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
@@ -55,47 +61,14 @@ contract GenesisETHZap_v5 is
 
     // ========== Immutables ==========
     address public immutable GENESIS;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
-    IStETH public immutable collateralToken;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
-    IWstETH public immutable wrappedCollateralToken;
-
-    // ========== Configurable ==========
-    address public referral;
 
     /// @dev Reserved slots for future storage variables. Shrink the array when appending new state (OZ upgradeable pattern).
-    uint256[50] private __gap;
+    ///      One slot reserved where `referral` storage lived before it was replaced by `DEFAULT_REFERRAL` only.
+    uint256[51] private __gap;
 
     // ========== Events ==========
-    /// @notice Emitted when base asset is successfully zapped into Genesis (same shape as `GenesisUSDCZap_v5` for indexers)
-    /// @param wrappedCollateralOut wstETH deposited (1:1 Genesis shares for this vault)
-    /// @param sharesOut Genesis shares minted to receiver
-    /// @param baseAssetValueNow ETH-equivalent value of position (0 on USDC zap)
-    /// @param collateralValueNow stETH-equivalent (0 on USDC zap)
-    event ZappedBaseAsset(
-        address indexed user,
-        address indexed genesis,
-        address indexed receiver,
-        uint256 baseAssetIn,
-        uint256 wrappedCollateralOut,
-        uint256 sharesOut,
-        uint256 baseAssetValueNow,
-        uint256 collateralValueNow
-    );
+    /// @dev `ZappedBaseAsset` / `ZappedCollateral` are declared on `GenesisZapBase_v1`.
 
-    /// @notice Emitted when collateral is successfully zapped into Genesis (same shape as `GenesisUSDCZap_v5`)
-    event ZappedCollateral(
-        address indexed user,
-        address indexed genesis,
-        address indexed receiver,
-        uint256 collateralIn,
-        uint256 wrappedCollateralOut,
-        uint256 sharesOut,
-        uint256 baseAssetValueNow,
-        uint256 collateralValueNow
-    );
-
-    event ReferralUpdated(address indexed oldReferral, address indexed newReferral);
     event Upgraded(address indexed implementation);
 
     // ========== Constructor ==========
@@ -110,6 +83,9 @@ contract GenesisETHZap_v5 is
         BASE_ASSET = cfg.baseAsset;
         COLLATERAL_ASSET = cfg.collateralAsset;
         WRAPPED_COLLATERAL_ASSET = cfg.wrappedCollateralAsset;
+        COLLATERAL_MANAGER = cfg.collateralManager;
+        SWAP_ROUTER = cfg.swapRouter;
+        CONVERT_SELECTOR = cfg.convertSelector;
         SUPPORTS_BASE_ASSET = cfg.supportsBaseAsset;
         SUPPORTS_COLLATERAL_ASSET = cfg.supportsCollateralAsset;
         if (WRAPPED_COLLATERAL_ASSET == address(0)) revert IZapErrors.AssetNotSupportedOnChain(address(0), block.chainid);
@@ -121,23 +97,16 @@ contract GenesisETHZap_v5 is
         }
 
         GENESIS = genesis_;
-        collateralToken = IStETH(COLLATERAL_ASSET);
-        wrappedCollateralToken = IWstETH(WRAPPED_COLLATERAL_ASSET);
     }
 
     // ========== Initialization ==========
     /// @notice Initialize the contract
     /// @param deployerOwner Address used for initial setup
     /// @param pendingOwner Address eligible to complete ownership transfer
-    /// @param referral_ Optional Lido referral (use address(0) for default)
-    function initialize(address deployerOwner, address pendingOwner, address referral_) external initializer {
+    function initialize(address deployerOwner, address pendingOwner) external initializer {
         _initializeOwner(deployerOwner, pendingOwner);
         __UUPSUpgradeable_init();
         __Context_init();
-
-        address initialReferral = referral_ == address(0) ? DEFAULT_REFERRAL : referral_;
-        referral = initialReferral;
-        emit ReferralUpdated(address(0), initialReferral);
     }
 
     /// @notice The check that allows this contract to be upgraded
@@ -151,13 +120,14 @@ contract GenesisETHZap_v5 is
     // ====================== USER FACING ZAPS =========================
     // =================================================================
 
-    /// @notice Zap base asset → collateral → wrapped collateral → Genesis in one transaction
-    /// @dev Includes slippage protection against front-running/MEV
+    /// @notice Zap native base asset (ETH) → collateral → wrapped collateral → Genesis in one transaction
+    /// @dev Emits `ZappedBaseAsset` (see `GenesisZapBase_v1`) for indexer parity with `GenesisUSDCZap_v5`; there is no `zapBaseAsset` on this contract.
+    ///      Slippage protection against front-running/MEV.
     /// @param receiver Address receiving Genesis vault shares
     /// @param minWrappedCollateralOut Minimum acceptable wrapped collateral (use preview for 0.1-0.5% buffer)
     /// @param minBaseAssetEquivalentOut Minimum acceptable base asset value (slippage protection)
     /// @return sharesOut Exact amount of Genesis shares minted
-    function zapBaseAsset(
+    function zapNativeAsset(
         address receiver,
         uint256 minWrappedCollateralOut,
         uint256 minBaseAssetEquivalentOut
@@ -174,22 +144,20 @@ contract GenesisETHZap_v5 is
         uint256 baseAssetIn = msg.value;
 
         // 1. Base asset → collateral via Lido
-        uint256 collateralReceived = _convertBaseAssetToCollateral(COLLATERAL_ASSET, referral, baseAssetIn);
+        uint256 collateralReceived = _convertBaseAssetToCollateral(COLLATERAL_ASSET, DEFAULT_REFERRAL, baseAssetIn);
         // 2. collateral → wrapped collateral
         sharesOut = _wrapCollateralToWrappedCollateral(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, collateralReceived);
         // 3. Slippage protection
         if (sharesOut < minWrappedCollateralOut) {
             revert IZapErrors.SlippageTooHighWrappedCollateral(sharesOut, minWrappedCollateralOut);
         }
-        // 4. Value protection
-        (uint256 baseAssetValueNow,) = _getCurrentValuesBaseCollateral(sharesOut);
-        if (baseAssetValueNow < minBaseAssetEquivalentOut) {
-            revert IZapErrors.SlippageTooHighBaseAssetValue(baseAssetValueNow, minBaseAssetEquivalentOut);
+        // 4. Value protection + indexer fields (single oracle read; values depend only on wrapped amount)
+        (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
+        if (baseAssetNow < minBaseAssetEquivalentOut) {
+            revert IZapErrors.SlippageTooHighBaseAssetValue(baseAssetNow, minBaseAssetEquivalentOut);
         }
         // 5. Deposit to Genesis
         _depositToGenesis(sharesOut, receiver);
-        // 6. Emit real-time values for indexers/frontends
-        (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
         emit ZappedBaseAsset(
             _msgSender(), GENESIS, receiver, baseAssetIn, sharesOut, sharesOut, baseAssetNow, collateralNow
         );
@@ -209,21 +177,8 @@ contract GenesisETHZap_v5 is
         if (collateralAmount == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        // 1. Transfer collateral from user
         IERC20(COLLATERAL_ASSET).safeTransferFrom(_msgSender(), address(this), collateralAmount);
-        // 2. collateral → wrapped collateral
-        sharesOut = _wrapCollateralToWrappedCollateral(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, collateralAmount);
-        // 3. Slippage protection
-        if (sharesOut < minWrappedCollateralOut) {
-            revert IZapErrors.SlippageTooHighWrappedCollateral(sharesOut, minWrappedCollateralOut);
-        }
-        // 4. Deposit to Genesis
-        _depositToGenesis(sharesOut, receiver);
-        // 5. Emit real-time values for indexers/frontends
-        (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
-        emit ZappedCollateral(
-            _msgSender(), GENESIS, receiver, collateralAmount, sharesOut, sharesOut, baseAssetNow, collateralNow
-        );
+        sharesOut = _zapCollateralToGenesisCore(collateralAmount, minWrappedCollateralOut, receiver);
     }
 
     /// @notice Zap collateral → wrapped collateral → Genesis using permit (single transaction, no approval needed)
@@ -251,21 +206,8 @@ contract GenesisETHZap_v5 is
 
         _permitCollateral(COLLATERAL_ASSET, _msgSender(), collateralAmount, deadline, v, r, s);
 
-        // 1. Transfer collateral from user
         IERC20(COLLATERAL_ASSET).safeTransferFrom(_msgSender(), address(this), collateralAmount);
-        // 2. collateral → wrapped collateral
-        sharesOut = _wrapCollateralToWrappedCollateral(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, collateralAmount);
-        // 3. Slippage protection
-        if (sharesOut < minWrappedCollateralOut) {
-            revert IZapErrors.SlippageTooHighWrappedCollateral(sharesOut, minWrappedCollateralOut);
-        }
-        // 4. Deposit to Genesis
-        _depositToGenesis(sharesOut, receiver);
-        // 5. Emit real-time values for indexers/frontends
-        (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
-        emit ZappedCollateral(
-            _msgSender(), GENESIS, receiver, collateralAmount, sharesOut, sharesOut, baseAssetNow, collateralNow
-        );
+        sharesOut = _zapCollateralToGenesisCore(collateralAmount, minWrappedCollateralOut, receiver);
     }
 
     function _requireSupportedAsset(address asset) internal view {
@@ -278,13 +220,43 @@ contract GenesisETHZap_v5 is
         return GENESIS;
     }
 
-    function _wrappedCollateralAddress() internal view override returns (address) {
+    function _wrappedCollateralAssetAddress() internal view override returns (address) {
         return WRAPPED_COLLATERAL_ASSET;
+    }
+
+    function _genesisShareBalance(address user) internal view returns (uint256) {
+        return IERC20(GENESIS).balanceOf(user);
+    }
+
+    /// @dev Shared by collateral previews; uses `COLLATERAL_ASSET` / `WRAPPED_COLLATERAL_ASSET` immutables.
+    function _previewWrappedFromCollateralInternal(uint256 collateralAmount)
+        internal
+        view
+        returns (uint256 wrappedCollateralAmount)
+    {
+        _requireSupportedAsset(COLLATERAL_ASSET);
+        wrappedCollateralAmount = IWstETH(WRAPPED_COLLATERAL_ASSET).getWstETHByStETH(collateralAmount);
     }
 
     // =================================================================
     // ====================== INTERNAL HELPERS =========================
     // =================================================================
+
+    /// @dev Collateral already transferred to this contract.
+    function _zapCollateralToGenesisCore(uint256 collateralAmount, uint256 minWrappedCollateralOut, address receiver)
+        internal
+        returns (uint256 sharesOut)
+    {
+        sharesOut = _wrapCollateralToWrappedCollateral(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, collateralAmount);
+        if (sharesOut < minWrappedCollateralOut) {
+            revert IZapErrors.SlippageTooHighWrappedCollateral(sharesOut, minWrappedCollateralOut);
+        }
+        _depositToGenesis(sharesOut, receiver);
+        (uint256 baseAssetNow, uint256 collateralNow) = _getCurrentValuesBaseCollateral(sharesOut);
+        emit ZappedCollateral(
+            _msgSender(), GENESIS, receiver, collateralAmount, sharesOut, sharesOut, baseAssetNow, collateralNow
+        );
+    }
 
     /// @notice Returns real-time redeemable values for any wrapped collateral amount
     /// @param wrappedCollateralAmount Amount of wrapped collateral
@@ -295,8 +267,8 @@ contract GenesisETHZap_v5 is
         view
         returns (uint256 baseAssetValue, uint256 collateralValue)
     {
-        collateralValue = wrappedCollateralToken.getStETHByWstETH(wrappedCollateralAmount);
-        baseAssetValue = collateralToken.getPooledEthByShares(collateralValue);
+        collateralValue = IWstETH(WRAPPED_COLLATERAL_ASSET).getStETHByWstETH(wrappedCollateralAmount);
+        baseAssetValue = IStETH(COLLATERAL_ASSET).getPooledEthByShares(collateralValue);
     }
 
     // =================================================================
@@ -306,7 +278,7 @@ contract GenesisETHZap_v5 is
     /// @notice Real-time user balance in growing base asset terms (primary display value)
     // forge-lint: disable-next-line(mixed-case-function)
     function balanceOfBaseAsset(address user) external view returns (uint256) {
-        uint256 shares = IERC20(GENESIS).balanceOf(user);
+        uint256 shares = _genesisShareBalance(user);
         if (shares == 0) return 0;
         (uint256 baseAssetValue,) = _getCurrentValuesBaseCollateral(shares);
         return baseAssetValue;
@@ -315,8 +287,8 @@ contract GenesisETHZap_v5 is
     /// @notice Real-time user balance in collateral terms
     // forge-lint: disable-next-line(mixed-case-function)
     function balanceOfCollateral(address user) external view returns (uint256) {
-        uint256 shares = IERC20(GENESIS).balanceOf(user);
-        return shares == 0 ? 0 : wrappedCollateralToken.getStETHByWstETH(shares);
+        uint256 shares = _genesisShareBalance(user);
+        return shares == 0 ? 0 : IWstETH(WRAPPED_COLLATERAL_ASSET).getStETHByWstETH(shares);
     }
 
     /// @notice Total vault value in real base asset (grows daily)
@@ -352,8 +324,7 @@ contract GenesisETHZap_v5 is
         view
         returns (uint256 wrappedCollateralAmount)
     {
-        _requireSupportedAsset(COLLATERAL_ASSET);
-        wrappedCollateralAmount = IWstETH(WRAPPED_COLLATERAL_ASSET).getWstETHByStETH(collateralAmount);
+        wrappedCollateralAmount = _previewWrappedFromCollateralInternal(collateralAmount);
     }
 
     /// @notice Preview the expected Genesis shares from a base asset amount
@@ -366,8 +337,10 @@ contract GenesisETHZap_v5 is
         view
         returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
     {
-        wrappedCollateralAmount = this.previewWrappedCollateralFromBase(baseAssetAmount);
-        sharesOut = wrappedCollateralAmount; // 1:1 mapping
+        _requireSupportedAsset(BASE_ASSET);
+        wrappedCollateralAmount =
+            _estimateWrappedCollateralFromBase(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, baseAssetAmount);
+        sharesOut = wrappedCollateralAmount;
     }
 
     /// @notice Preview the expected Genesis shares from a collateral amount
@@ -380,8 +353,8 @@ contract GenesisETHZap_v5 is
         view
         returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
     {
-        wrappedCollateralAmount = this.previewWrappedCollateralFromCollateral(collateralAmount);
-        sharesOut = wrappedCollateralAmount; // 1:1 mapping
+        wrappedCollateralAmount = _previewWrappedFromCollateralInternal(collateralAmount);
+        sharesOut = wrappedCollateralAmount;
     }
 
     /// @inheritdoc IGenesisZapV5Common
@@ -402,15 +375,17 @@ contract GenesisETHZap_v5 is
     // ====================== OWNER FUNCTIONS ==========================
     // =================================================================
 
-    /// @notice Update Lido referral address
-    function setReferral(address newReferral) external onlyOwner {
-        emit ReferralUpdated(referral, newReferral);
-        referral = newReferral;
+    /// @inheritdoc IGenesisZapV5Native
+    function referral() external view returns (address) {
+        return DEFAULT_REFERRAL;
     }
 
-    /// @notice Rescue stuck base asset
+    /// @notice Rescue stuck native ETH (uses `call` so a contract owner with receive/fallback can recover)
     function rescueNativeAsset() external onlyOwner {
-        payable(owner()).transfer(address(this).balance);
+        address to = owner();
+        uint256 amount = address(this).balance;
+        (bool success,) = payable(to).call{value: amount}("");
+        if (!success) revert IZapErrors.NativeTransferFailed();
     }
 
     /// @notice Rescue any ERC20 (except collateral/wrapped collateral/Genesis which should never be stuck)

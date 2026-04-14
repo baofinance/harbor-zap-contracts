@@ -12,8 +12,8 @@ library FxUSDZapNetworkConfig {
         address usdc;
         address fxusd;
         address fxsave;
-        address fxusdDiamond;
-        address fxusdSwapRouter;
+        address collateralManager;
+        address swapRouter;
         bytes4 convertSelector;
     }
 
@@ -23,8 +23,8 @@ library FxUSDZapNetworkConfig {
             cfg.usdc = FxSAVEConstants.USDC;
             cfg.fxusd = FxSAVEConstants.FXUSD;
             cfg.fxsave = FxSAVEConstants.FXSAVE;
-            cfg.fxusdDiamond = FxSAVEConstants.FXUSD_DIAMOND;
-            cfg.fxusdSwapRouter = FxSAVEConstants.FXUSD_SWAP_ROUTER;
+            cfg.collateralManager = FxSAVEConstants.FXUSD_DIAMOND;
+            cfg.swapRouter = FxSAVEConstants.FXUSD_SWAP_ROUTER;
             cfg.convertSelector = FxSAVEConstants.CONVERT_SELECTOR;
         }
     }

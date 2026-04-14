@@ -43,21 +43,6 @@ contract MinterUSDCZap_v4 is
     // ============ Network config (immutables) ============
 
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-    address public immutable USDC;
-
-    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-    address public immutable FXSAVE;
-
-    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-    address public immutable FXUSD_DIAMOND;
-
-    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-    address public immutable FXUSD_SWAP_ROUTER;
-
-    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-    address public immutable FXUSD;
-
-    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable BASE_ASSET;
 
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
@@ -66,7 +51,14 @@ contract MinterUSDCZap_v4 is
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable WRAPPED_COLLATERAL_ASSET;
 
-    bytes4 private immutable CONVERT_SELECTOR;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable COLLATERAL_MANAGER;
+
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable SWAP_ROUTER;
+
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    bytes4 public immutable CONVERT_SELECTOR;
 
     // ============ Immutables ============
 
@@ -83,128 +75,7 @@ contract MinterUSDCZap_v4 is
     uint256[50] private __gap;
 
     // ============ Events ============
-
-    /// @notice Emitted when base asset is zapped to mint pegged tokens
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the pegged tokens
-    /// @param baseAssetAmount Amount of base asset deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param peggedOut Amount of pegged tokens minted
-    event BaseAssetZappedToPegged(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 baseAssetAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut
-    );
-
-    /// @notice Emitted when base asset is zapped to mint leveraged tokens
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the leveraged tokens
-    /// @param baseAssetAmount Amount of base asset deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param leveragedOut Amount of leveraged tokens minted
-    event BaseAssetZappedToLeveraged(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 baseAssetAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 leveragedOut
-    );
-
-    /// @notice Emitted when collateral is zapped to mint pegged tokens
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the pegged tokens
-    /// @param collateralAmount Amount of collateral deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param peggedOut Amount of pegged tokens minted
-    event CollateralZappedToPegged(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 collateralAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut
-    );
-
-    /// @notice Emitted when collateral is zapped to mint leveraged tokens
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the leveraged tokens
-    /// @param collateralAmount Amount of collateral deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param leveragedOut Amount of leveraged tokens minted
-    event CollateralZappedToLeveraged(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 collateralAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 leveragedOut
-    );
-
-    /// @notice Emitted when base asset is zapped to StabilityPool
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param baseAssetAmount Amount of base asset deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param peggedOut Amount of pegged tokens minted
-    /// @param stabilityPool Address of the StabilityPool
-    /// @param deposited Amount deposited into StabilityPool
-    event BaseAssetZappedToStabilityPool(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 baseAssetAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut,
-        address stabilityPool,
-        uint256 deposited
-    );
-
-    /// @notice Emitted when collateral is zapped to StabilityPool
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param collateralAmount Amount of collateral deposited
-    /// @param wrappedCollateralAmount Amount of wrapped collateral received
-    /// @param peggedOut Amount of pegged tokens minted
-    /// @param stabilityPool Address of the StabilityPool
-    /// @param deposited Amount deposited into StabilityPool
-    event CollateralZappedToStabilityPool(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 collateralAmount,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut,
-        address stabilityPool,
-        uint256 deposited
-    );
-
-    /// @notice Emitted when wrapped collateral is zapped to StabilityPool
-    /// @param user Address that initiated the zap
-    /// @param minter Address of the Minter contract
-    /// @param receiver Address that will receive the StabilityPool deposit
-    /// @param wrappedCollateralAmount Amount of wrapped collateral deposited
-    /// @param peggedOut Amount of pegged tokens minted
-    /// @param stabilityPool Address of the StabilityPool
-    /// @param deposited Amount deposited into StabilityPool
-    event WrappedCollateralZappedToStabilityPool(
-        address indexed user,
-        address indexed minter,
-        address indexed receiver,
-        uint256 wrappedCollateralAmount,
-        uint256 peggedOut,
-        address stabilityPool,
-        uint256 deposited
-    );
+    /// @dev Zap lifecycle events (`BaseAssetZappedTo*`, etc.) live on `MinterZapBase_v1`.
 
     event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
     event Upgraded(address indexed implementation);
@@ -221,14 +92,11 @@ contract MinterUSDCZap_v4 is
         FxUSDZapNetworkConfig.Config memory cfg = FxUSDZapNetworkConfig.load(block.chainid);
         if (cfg.fxsave == address(0)) revert IZapErrors.AssetNotSupportedOnChain(address(0), block.chainid);
 
-        USDC = cfg.usdc;
-        FXSAVE = cfg.fxsave;
-        FXUSD_DIAMOND = cfg.fxusdDiamond;
-        FXUSD_SWAP_ROUTER = cfg.fxusdSwapRouter;
-        FXUSD = cfg.fxusd;
         BASE_ASSET = cfg.usdc;
         COLLATERAL_ASSET = cfg.fxusd;
         WRAPPED_COLLATERAL_ASSET = cfg.fxsave;
+        COLLATERAL_MANAGER = cfg.collateralManager;
+        SWAP_ROUTER = cfg.swapRouter;
         CONVERT_SELECTOR = cfg.convertSelector;
 
         // Verify that wrapped collateral matches the Minter wrapped collateral token
@@ -835,8 +703,8 @@ contract MinterUSDCZap_v4 is
         IERC20(tokenIn).safeTransferFrom(_msgSender(), address(this), amountIn);
 
         wrappedCollateralAmount = _convertHeldTokenToWrappedCollateral(
-            FXUSD_DIAMOND,
-            FXUSD_SWAP_ROUTER,
+            COLLATERAL_MANAGER,
+            SWAP_ROUTER,
             WRAPPED_COLLATERAL_ASSET,
             CONVERT_SELECTOR,
             tokenIn,
@@ -847,8 +715,8 @@ contract MinterUSDCZap_v4 is
 
     /// @notice Reset token allowances to zero
     function _resetAllowances() internal override {
-        _safeApprove(IERC20(BASE_ASSET), FXUSD_DIAMOND, 0);
-        _safeApprove(IERC20(COLLATERAL_ASSET), FXUSD_DIAMOND, 0);
+        _safeApprove(IERC20(BASE_ASSET), COLLATERAL_MANAGER, 0);
+        _safeApprove(IERC20(COLLATERAL_ASSET), COLLATERAL_MANAGER, 0);
         IERC20(WRAPPED_COLLATERAL_ASSET).forceApprove(MINTER, 0);
     }
 
@@ -862,7 +730,7 @@ contract MinterUSDCZap_v4 is
     {
         _requireSupportedAsset(BASE_ASSET);
         wrappedCollateralAmount = _previewFxSaveSharesFromUsdcAssumedPeg(
-            WRAPPED_COLLATERAL_ASSET, FXUSD, baseAssetAmount
+            WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, baseAssetAmount
         );
     }
 
@@ -874,7 +742,7 @@ contract MinterUSDCZap_v4 is
     {
         _requireSupportedAsset(COLLATERAL_ASSET);
         wrappedCollateralAmount =
-            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, FXUSD, collateralAmount);
+            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, collateralAmount);
     }
 
     /// @notice Preview pegged mint from USDC (wrapped leg uses fxSAVE `convertToShares`; peg leg uses minter dry-run).
@@ -885,7 +753,7 @@ contract MinterUSDCZap_v4 is
     {
         _requireSupportedAsset(BASE_ASSET);
         wrappedCollateralAmount = _previewFxSaveSharesFromUsdcAssumedPeg(
-            WRAPPED_COLLATERAL_ASSET, FXUSD, baseAssetAmount
+            WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, baseAssetAmount
         );
         (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wrappedCollateralAmount);
     }
@@ -898,7 +766,7 @@ contract MinterUSDCZap_v4 is
     {
         _requireSupportedAsset(BASE_ASSET);
         wrappedCollateralAmount = _previewFxSaveSharesFromUsdcAssumedPeg(
-            WRAPPED_COLLATERAL_ASSET, FXUSD, baseAssetAmount
+            WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, baseAssetAmount
         );
         (,,,, leveragedOut,,) = IMinter(MINTER).mintLeveragedTokenDryRun(wrappedCollateralAmount);
     }
@@ -911,7 +779,7 @@ contract MinterUSDCZap_v4 is
     {
         _requireSupportedAsset(COLLATERAL_ASSET);
         wrappedCollateralAmount =
-            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, FXUSD, collateralAmount);
+            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, collateralAmount);
         (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wrappedCollateralAmount);
     }
 
@@ -923,7 +791,7 @@ contract MinterUSDCZap_v4 is
     {
         _requireSupportedAsset(COLLATERAL_ASSET);
         wrappedCollateralAmount =
-            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, FXUSD, collateralAmount);
+            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, collateralAmount);
         (,,,, leveragedOut,,) = IMinter(MINTER).mintLeveragedTokenDryRun(wrappedCollateralAmount);
     }
 
@@ -935,7 +803,7 @@ contract MinterUSDCZap_v4 is
     {
         _requireSupportedAsset(BASE_ASSET);
         wrappedCollateralAmount = _previewFxSaveSharesFromUsdcAssumedPeg(
-            WRAPPED_COLLATERAL_ASSET, FXUSD, baseAssetAmount
+            WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, baseAssetAmount
         );
         (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wrappedCollateralAmount);
     }
@@ -948,7 +816,7 @@ contract MinterUSDCZap_v4 is
     {
         _requireSupportedAsset(COLLATERAL_ASSET);
         wrappedCollateralAmount =
-            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, FXUSD, collateralAmount);
+            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, collateralAmount);
         (,,, peggedOut,,) = IMinter(MINTER).mintPeggedTokenDryRun(wrappedCollateralAmount);
     }
 

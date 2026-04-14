@@ -4,20 +4,51 @@ pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IGenesis} from "src/interfaces/IGenesis.sol";
 import {IZapErrors} from "src/interfaces/IZapErrors.sol";
 
 /// @title GenesisZapBase_v1
 /// @notice Storage-free shared Genesis deposit + share validation for ETH and USDC genesis zaps.
 abstract contract GenesisZapBase_v1 {
+    using SafeERC20 for IERC20;
+    /// @notice Emitted when base asset is zapped into Genesis (same shape on ETH and USDC zaps for indexers)
+    /// @dev Native ETH zaps use `zapNativeAsset` (payable); they emit this event—not `zapBaseAsset`—for topic parity
+    ///      with ERC20 genesis zaps.
+    /// @param baseAssetValueNow ETH zap: valuation; USDC zap: 0
+    /// @param collateralValueNow ETH zap: valuation; USDC zap: 0
+    event ZappedBaseAsset(
+        address indexed user,
+        address indexed genesis,
+        address indexed receiver,
+        uint256 baseAssetIn,
+        uint256 wrappedCollateralOut,
+        uint256 sharesOut,
+        uint256 baseAssetValueNow,
+        uint256 collateralValueNow
+    );
+
+    /// @notice Emitted when collateral is zapped into Genesis (same shape on ETH and USDC zaps)
+    event ZappedCollateral(
+        address indexed user,
+        address indexed genesis,
+        address indexed receiver,
+        uint256 collateralIn,
+        uint256 wrappedCollateralOut,
+        uint256 sharesOut,
+        uint256 baseAssetValueNow,
+        uint256 collateralValueNow
+    );
+
     function _genesisAddress() internal view virtual returns (address);
 
-    function _wrappedCollateralAddress() internal view virtual returns (address);
+    /// @dev Name aligns with `MinterZapShared_v1._wrappedCollateralAssetAddress`.
+    function _wrappedCollateralAssetAddress() internal view virtual returns (address);
 
     /// @notice Deposit wrapped collateral into Genesis and validate shares (1:1 expected).
     function _depositToGenesis(uint256 amount, address receiver) internal {
         address genesis = _genesisAddress();
-        address wrapped = _wrappedCollateralAddress();
+        address wrapped = _wrappedCollateralAssetAddress();
 
         if (amount == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
@@ -29,10 +60,7 @@ abstract contract GenesisZapBase_v1 {
 
         uint256 currentAllowance = IERC20(wrapped).allowance(address(this), genesis);
         if (currentAllowance < amount) {
-            if (currentAllowance > 0) {
-                IERC20(wrapped).approve(genesis, 0);
-            }
-            IERC20(wrapped).approve(genesis, type(uint256).max);
+            IERC20(wrapped).forceApprove(genesis, type(uint256).max);
         }
 
         IGenesis(genesis).deposit(amount, receiver);

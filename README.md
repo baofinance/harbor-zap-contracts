@@ -259,18 +259,11 @@ Notes:
 - Salted minter deploys with `--market` apply stability pool allowlist + ownership transfer post-deploy.
 - Re-runs reconcile state when proxies are already deployed, so interrupted runs can be resumed safely.
 
-Optional follow-up (ETH zaps): update referral if needed:
-```bash
-cast send <ZAP_ADDRESS> "setReferral(address)" <NEW_REFERRAL> \
-  --rpc-url <RPC_URL> \
-  --private-key <PRIVATE_KEY>
-```
-
 ## Security Considerations
 
 - **Private Keys**: Never commit private keys to version control. Prefer a **keystore** (`cast wallet import`, then `--account <name>` on `forge` / `cast` and in these scripts where supported) instead of exporting `PRIVATE_KEY` in your shell.
 - **Ownership**: Transfer ownership to a multisig or secure address after deployment
-- **Referral**: The referral address receives rewards from Lido for ETH deposits
+- **Lido referral (ETH zaps)**: `GenesisETHZap_v5` and `MinterETHZap_v4` pass a fixed referral into Lido `submit` from `StETHZapNetworkConfig` (implementation immutable). Integrators can read it via `referral()` on the native ETH zap interfaces. It is not owner-updatable on-chain; changing it means updating network config and deploying a new implementation (then upgrading the proxy if you use UUPS).
 - **Access Control**: Zap contracts have owner-only functions for rescue operations
 
 ## Development
