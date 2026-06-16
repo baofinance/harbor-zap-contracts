@@ -2,6 +2,7 @@
 pragma solidity >=0.8.28 <0.9.0;
 
 import {console} from "forge-std/console.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -403,6 +404,62 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         (uint256 peggedOut, uint256 wrappedOut) = zap.previewPeggedFromBase(usdcAmount);
         assertEq(wrappedOut, wrapped);
         assertEq(peggedOut, peggedFromDry);
+    }
+
+    /// @dev Preview uses ERC4626 + peg model; live zap uses the diamond — expect small drift (tolerance in bps).
+    function test_PreviewVsActualZap_WithinBpsTolerance() public {
+        uint256 usdcAmount = 1000 * 1e6;
+        uint256 previewUsdc = zap.previewWrappedCollateralFromBase(usdcAmount);
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+        vm.recordLogs();
+        zap.zapBaseAssetToPegged(usdcAmount, 0, receiver, 0);
+        vm.stopPrank();
+        uint256 actualUsdc = _wrappedFromBaseAssetZapEvent(vm.getRecordedLogs());
+        _assertRelativeDiffBps(previewUsdc, actualUsdc, 200);
+
+        uint256 fxUsdAmount = 500 * 1e18;
+        deal(FXUSD, user1, fxUsdAmount);
+        uint256 previewFx = zap.previewWrappedCollateralFromCollateral(fxUsdAmount);
+        vm.startPrank(user1);
+        IERC20(FXUSD).approve(address(zap), fxUsdAmount);
+        vm.recordLogs();
+        zap.zapCollateralToPegged(fxUsdAmount, 0, receiver, 0);
+        vm.stopPrank();
+        uint256 actualFx = _wrappedFromCollateralZapEvent(vm.getRecordedLogs());
+        _assertRelativeDiffBps(previewFx, actualFx, 200);
+    }
+
+    function _assertRelativeDiffBps(uint256 a, uint256 b, uint256 maxBps) internal pure {
+        uint256 diff = a > b ? a - b : b - a;
+        uint256 basis = b > 0 ? b : a;
+        if (basis == 0) {
+            assertEq(diff, 0);
+            return;
+        }
+        assertLe(diff * 10_000 / basis, maxBps, "preview vs actual relative diff");
+    }
+
+    function _wrappedFromBaseAssetZapEvent(Vm.Log[] memory logs) internal pure returns (uint256 wrapped) {
+        bytes32 sig = keccak256("BaseAssetZappedToPegged(address,address,address,uint256,uint256,uint256)");
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == sig) {
+                (, wrapped,) = abi.decode(logs[i].data, (uint256, uint256, uint256));
+                return wrapped;
+            }
+        }
+        revert("BaseAssetZappedToPegged not found");
+    }
+
+    function _wrappedFromCollateralZapEvent(Vm.Log[] memory logs) internal pure returns (uint256 wrapped) {
+        bytes32 sig = keccak256("CollateralZappedToPegged(address,address,address,uint256,uint256,uint256)");
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == sig) {
+                (, wrapped,) = abi.decode(logs[i].data, (uint256, uint256, uint256));
+                return wrapped;
+            }
+        }
+        revert("CollateralZappedToPegged not found");
     }
 
     function test_Fallback_FunctionNotFound() public {

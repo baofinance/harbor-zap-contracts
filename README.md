@@ -45,7 +45,7 @@ Current zap set (`GenesisETHZap_v5`, `GenesisUSDCZap_v5`, `MinterETHZap_v4`, `Mi
 
 If you do a future optimization pass, treat it as maintainability work (shared helpers/base for duplicated minter patterns) and run full upgrade safety checks.
 
-For upgrade prep, use `script/dump-zap-storage-layout.sh` plus `extra_output = ["storageLayout"]` in `foundry.toml` to diff layouts before any implementation upgrade.
+For upgrade prep, use `script/dump-zap-storage-layout.sh` plus `extra_output = ["storageLayout"]` in `foundry.toml` to diff layouts before any implementation upgrade. See [docs/zap-storage-layout-upgrade.md](docs/zap-storage-layout-upgrade.md) and [docs/zap-v3-v4-migration.md](docs/zap-v3-v4-migration.md) for production v3/v4 → branch v4/v5 migration.
 
 ### Network-config refactor (maintainability)
 
@@ -88,6 +88,8 @@ export MAINNET_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
 forge test
 ```
 
+**Market integration (production minters + stability pools):** `test/MinterMarketForkIntegration.t.sol` forks mainnet, loads `deployments/mainnet/zap-addresses.json` (default market `BTC`), deploys v4 zaps against production minters, and zaps into each configured stability pool on both rails (ETH/stETH/wstETH and USDC/fxUSD/fxSAVE). Requires `MAINNET_RPC_URL`; runtime ~50s for the BTC suite.
+
 ## Zap preview semantics
 
 Integrators should treat **previews as hints**, not guaranteed execution results, unless documented otherwise per function.
@@ -99,7 +101,7 @@ Integrators should treat **previews as hints**, not guaranteed execution results
 | `MinterETHZap_v4` | Same family as Genesis ETH + minter `*DryRun` for mint / pool previews | — |
 | `MinterUSDCZap_v4` | Same **convertToShares** model as Genesis USDC for the wrapped leg + minter dry-runs for pegged / leveraged / stability pool previews | Same diamond vs model caveat; use slippage parameters on zaps |
 
-**Fork regression:** `test/GenesisUSDCZap_v5.t.sol` → `test_PreviewVsActualZap_WithinBpsTolerance` compares preview to **actual** `zapBaseAsset` / `zapCollateral` output within **200 bps** (2%) relative tolerance (diamond path vs ERC4626 + peg model).
+**Fork regression:** `test/GenesisUSDCZap_v5.t.sol` and `test/MinterUSDCZap_v4.t.sol` → `test_PreviewVsActualZap_WithinBpsTolerance` compare preview to **actual** zap wrapped-collateral output within **200 bps** (2%) relative tolerance (diamond path vs ERC4626 + peg model).
 
 ## Adding a new zapper (checklist)
 
