@@ -7,8 +7,8 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {MinterETHZap_v4} from "src/zap/upgradeable/MinterETHZap_v4.sol";
-import {IZapErrors} from "src/interfaces/IZapErrors.sol";
+import {MinterETHZap_v4} from "@harborzap/MinterETHZap_v4.sol";
+import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";

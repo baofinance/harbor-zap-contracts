@@ -4,19 +4,19 @@ pragma solidity 0.8.30;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "src/utils/upgradeable/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@harbor/utils/upgradeable/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
-import {IGenesis} from "src/interfaces/IGenesis.sol";
-import {IStETH} from "src/interfaces/IStETH.sol";
-import {IWstETH} from "src/interfaces/IWstETH.sol";
-import {IZapErrors} from "src/interfaces/IZapErrors.sol";
-import {IGenesisZapV5Native} from "src/interfaces/IGenesisZapV5Native.sol";
-import {IGenesisZapV5Common} from "src/interfaces/IGenesisZapV5Common.sol";
-import {StETHZapNetworkConfig} from "src/zap/upgradeable/config/StETHZapNetworkConfig.sol";
-import {GenesisZapBase_v1} from "src/zap/upgradeable/base/GenesisZapBase_v1.sol";
-import {StETHZapBase_v1} from "src/zap/upgradeable/asset/StETHZapBase_v1.sol";
+import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
+import {IStETH} from "@harbor/interfaces/IStETH.sol";
+import {IWstETH} from "@harbor/interfaces/IWstETH.sol";
+import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
+import {IGenesisZapV5Native} from "@harbor/interfaces/IGenesisZapV5Native.sol";
+import {IGenesisZapV5Common} from "@harbor/interfaces/IGenesisZapV5Common.sol";
+import {StETHZapNetworkConfig} from "@harborzap/config/StETHZapNetworkConfig.sol";
+import {GenesisZapBase_v1} from "@harborzap/base/GenesisZapBase_v1.sol";
+import {StETHZapBase_v1} from "@harborzap/asset/StETHZapBase_v1.sol";
 
 /// @title GenesisETHZap V5
 /// @notice One-click zapper: base asset or collateral → wrapped collateral → Genesis vault

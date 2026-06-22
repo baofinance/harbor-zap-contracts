@@ -2,14 +2,14 @@
 pragma solidity 0.8.30;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "src/utils/upgradeable/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@harbor/utils/upgradeable/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {BaoOwnableRoles} from "@bao/BaoOwnableRoles.sol";
 import {TokenHolder} from "@bao/TokenHolder.sol";
-import {IReservePool} from "src/interfaces/IReservePool.sol";
+import {IReservePool} from "@harbor/interfaces/IReservePool.sol";
 
 /// @title Reserve Pool
 /// @author rootminus0x1

@@ -14,14 +14,14 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IBaoOwnable} from "@bao/interfaces/IBaoOwnable.sol";
 import {IBaoRoles} from "@bao/interfaces/IBaoRoles.sol";
 
-import {Minter_v1} from "src/minter/Minter_v1.sol";
+import {Minter_v1} from "@harbor/minter/Minter_v1.sol";
 import {MintableBurnableERC20_v1} from "@bao/MintableBurnableERC20_v1.sol";
-import {ReservePool_v1} from "src/minter/ReservePool_v1.sol";
+import {ReservePool_v1} from "@harbor/minter/ReservePool_v1.sol";
 
-import {IMinter} from "src/interfaces/IMinter.sol";
+import {IMinter} from "@harbor/interfaces/IMinter.sol";
 import {Token} from "@bao/Token.sol";
 import {IMintable} from "@bao/interfaces/IMintable.sol";
-import {IWrappedPriceOracle} from "src/interfaces/IWrappedPriceOracle.sol";
+import {IWrappedPriceOracle} from "@harbor/interfaces/IWrappedPriceOracle.sol";
 
 import {Deployed} from "@bao/Deployed.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";

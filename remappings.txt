@@ -8,5 +8,6 @@ dummy/=/lib/dummy
 @chainlink/contracts/=lib/chainlink-brownie-contracts/contracts/src/v0.8/
 @solady/=lib/solady/src/
 @bao/=lib/bao-base/src/
-src/=src/
+@harbor/=src/
+@harborzap/=src/zap/upgradeable/
 test/=test/

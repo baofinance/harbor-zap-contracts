@@ -5,17 +5,17 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "src/utils/upgradeable/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@harbor/utils/upgradeable/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {BaoOwnable} from "@bao/BaoOwnable.sol";
-import {IGenesis} from "src/interfaces/IGenesis.sol";
-import {IZapErrors} from "src/interfaces/IZapErrors.sol";
-import {IGenesisZapV5BaseErc20} from "src/interfaces/IGenesisZapV5BaseErc20.sol";
-import {IGenesisZapV5Common} from "src/interfaces/IGenesisZapV5Common.sol";
-import {GenesisZapBase_v1} from "src/zap/upgradeable/base/GenesisZapBase_v1.sol";
-import {FxUSDZapNetworkConfig} from "src/zap/upgradeable/config/FxUSDZapNetworkConfig.sol";
-import {FxUSDZapBase_v1} from "src/zap/upgradeable/asset/FxUSDZapBase_v1.sol";
+import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
+import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
+import {IGenesisZapV5BaseErc20} from "@harbor/interfaces/IGenesisZapV5BaseErc20.sol";
+import {IGenesisZapV5Common} from "@harbor/interfaces/IGenesisZapV5Common.sol";
+import {GenesisZapBase_v1} from "@harborzap/base/GenesisZapBase_v1.sol";
+import {FxUSDZapNetworkConfig} from "@harborzap/config/FxUSDZapNetworkConfig.sol";
+import {FxUSDZapBase_v1} from "@harborzap/asset/FxUSDZapBase_v1.sol";
 
 /// @title GenesisUSDCZapV5 - Production Ready
 /// @notice One-click zapper for depositing base asset or collateral into Genesis via wrapped collateral

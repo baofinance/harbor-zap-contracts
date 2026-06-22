@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {FxSAVEConstants} from "src/constants/ethereum/FxSAVEConstants.sol";
+import {FxSAVEConstants} from "@harbor/constants/ethereum/FxSAVEConstants.sol";
 
 /// @title fxUSD / fxSAVE zap network configuration
 /// @notice Declarative config for zaps whose wrapped collateral is fxSAVE (USDC + fxUSD paths).

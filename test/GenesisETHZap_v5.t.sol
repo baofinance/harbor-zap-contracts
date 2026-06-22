@@ -6,10 +6,10 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {GenesisETHZap_v5} from "src/zap/upgradeable/GenesisETHZap_v5.sol";
-import {IZapErrors} from "src/interfaces/IZapErrors.sol";
-import {Genesis_v1} from "src/minter/Genesis_v1.sol";
-import {IGenesis} from "src/interfaces/IGenesis.sol";
+import {GenesisETHZap_v5} from "@harborzap/GenesisETHZap_v5.sol";
+import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
+import {Genesis_v1} from "@harbor/minter/Genesis_v1.sol";
+import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";

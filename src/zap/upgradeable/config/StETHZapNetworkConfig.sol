@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {WstETHConstants} from "src/constants/ethereum/WstETHConstants.sol";
-import {MegaETHWstETHConstants} from "src/constants/megaeth/MegaETHWstETHConstants.sol";
+import {WstETHConstants} from "@harbor/constants/ethereum/WstETHConstants.sol";
+import {MegaETHWstETHConstants} from "@harbor/constants/megaeth/MegaETHWstETHConstants.sol";
 
 /// @title stETH / wstETH zap network configuration
 /// @notice Declarative config for zaps whose wrapped collateral is wstETH (native ETH + stETH paths).

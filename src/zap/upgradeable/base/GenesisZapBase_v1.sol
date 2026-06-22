@@ -5,8 +5,8 @@ pragma solidity 0.8.30;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IGenesis} from "src/interfaces/IGenesis.sol";
-import {IZapErrors} from "src/interfaces/IZapErrors.sol";
+import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
+import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
 
 /// @title GenesisZapBase_v1
 /// @notice Storage-free shared Genesis deposit + share validation for ETH and USDC genesis zaps.

@@ -4,8 +4,8 @@ pragma solidity 0.8.30;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IFxUSDDiamondV2} from "src/interfaces/IFxUSD.sol";
-import {IZapErrors} from "src/interfaces/IZapErrors.sol";
+import {IFxUSDDiamondV2} from "@harbor/interfaces/IFxUSD.sol";
+import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
 
 /// @title FxUSDZapBase_v1
 /// @notice Internal helpers for fxUSD diamond → fxSAVE conversion paths (Genesis + Minter zaps).

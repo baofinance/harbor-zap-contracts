@@ -4,9 +4,9 @@ pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IMinter} from "src/interfaces/IMinter.sol";
-import {IZapErrors} from "src/interfaces/IZapErrors.sol";
-import {MinterZapShared_v1} from "src/zap/upgradeable/base/MinterZapShared_v1.sol";
+import {IMinter} from "@harbor/interfaces/IMinter.sol";
+import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
+import {MinterZapShared_v1} from "@harborzap/base/MinterZapShared_v1.sol";
 
 /// @title MinterZapBase_v1
 /// @notice Storage-free template for minter zaps: shared zap pipeline + mint/stability helpers.

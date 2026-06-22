@@ -3,7 +3,7 @@
 // and https://docs.soliditylang.org/en/latest/style-guide.html
 pragma solidity 0.8.30;
 
-import {UUPSUpgradeable} from "src/utils/upgradeable/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@harbor/utils/upgradeable/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -14,7 +14,7 @@ import {Token} from "@bao/Token.sol";
 import {TokenHolder, ITokenHolder} from "@bao/TokenHolder.sol";
 
 import {BaoOwnableRoles} from "@bao/BaoOwnableRoles.sol";
-import {IMinter} from "src/interfaces/IMinter.sol";
+import {IMinter} from "@harbor/interfaces/IMinter.sol";
 
 // different ERC20 mint/burn interfaces
 import {IMintable} from "@bao/interfaces/IMintable.sol";
@@ -22,11 +22,11 @@ import {IBurnable} from "@bao/interfaces/IBurnable.sol";
 import {IBurnableFrom} from "@bao/interfaces/IBurnableFrom.sol";
 import {IBurnable2Arg} from "@bao/interfaces/IBurnable2Arg.sol";
 
-import {IWrappedPriceOracle} from "src/interfaces/IWrappedPriceOracle.sol";
-import {IReservePool} from "src/interfaces/IReservePool.sol";
+import {IWrappedPriceOracle} from "@harbor/interfaces/IWrappedPriceOracle.sol";
+import {IReservePool} from "@harbor/interfaces/IReservePool.sol";
 
-import {ConfigIncentiveLib} from "src/minter/library/ConfigIncentiveLib.sol";
-import {Config_v1} from "src/minter/library/Config_v1.sol";
+import {ConfigIncentiveLib} from "./library/ConfigIncentiveLib.sol";
+import {Config_v1} from "./library/Config_v1.sol";
 
 /// @title Bao Minter
 /// @author rootminus0x1 based on (albeit significantly modified) Aladdin's FX system
