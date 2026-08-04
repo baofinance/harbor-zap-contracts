@@ -5,16 +5,16 @@ import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
+import {UnsafeUpgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {MinterETHZap_v4} from "@harborzap/zap/upgradeable/MinterETHZap_v4.sol";
+import {MinterETHZap_v1} from "@harborzap/zap/upgradeable/MinterETHZap_v1.sol";
 import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
-import {TestMinterSetUp} from "test/Minter_base.t.sol";
-import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
-import {MockERC20} from "test/mock/MockERC20.sol";
-import {MockStabilityPool} from "test/mock/MockStabilityPool.sol";
+import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
+import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
+import {MockStabilityPool} from "@harborzap-test/mock/MockStabilityPool.sol";
 
 /// @notice Interface for stETH submit function
 interface ISTETHV2 {
@@ -25,10 +25,11 @@ interface IWstETHWrapV2 {
     function wrap(uint256 stEthAmount) external returns (uint256);
 }
 
-contract MinterETHZapV4ForkTest is TestMinterSetUp {
-    bytes32 private constant PERMIT_TYPEHASH =
-        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
-    MinterETHZap_v4 zap;
+contract MinterETHZapV1ForkTest is TestMinterSetUp {
+    bytes32 private constant PERMIT_TYPEHASH = keccak256(
+        "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+    );
+    MinterETHZap_v1 zap;
     address zapImpl;
     address zapProxy;
     address user1;
@@ -67,12 +68,13 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
 
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
-        zapImpl = address(new MinterETHZap_v4(minter));
+        zapImpl = address(new MinterETHZap_v1(minter));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(MinterETHZap_v4.initialize, (address(this), zapOwner))
+            zapImpl,
+            abi.encodeCall(MinterETHZap_v1.initialize, (address(this), zapOwner))
         );
-        zap = MinterETHZap_v4(payable(zapProxy));
-        vm.label(address(zap), "MinterETHZapV4");
+        zap = MinterETHZap_v1(payable(zapProxy));
+        vm.label(address(zap), "MinterETHZapV1");
 
         // Complete ownership transfer from deployer to zapOwner
         // During proxy initialization, msg.sender (deployer) becomes owner, and zapOwner is set as pending owner
@@ -226,13 +228,17 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         uint256 stabilityPoolBalBefore = stabilityPool.balanceOf(receiver);
 
         // Get preview for minPeggedOut and wrapped slippage floor
-        uint256 minWrappedOut = zap.previewWrappedCollateralFromBase(ethAmount) * 99 / 100;
-        (uint256 previewPegged,) = zap.previewStabilityPoolFromBase(ethAmount);
-        uint256 minPeggedOut = previewPegged * 99 / 100; // 1% slippage
-        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100; // 1% slippage
+        uint256 minWrappedOut = (zap.previewWrappedCollateralFromBase(ethAmount) * 99) / 100;
+        (uint256 previewPegged, ) = zap.previewStabilityPoolFromBase(ethAmount);
+        uint256 minPeggedOut = (previewPegged * 99) / 100; // 1% slippage
+        uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100; // 1% slippage
 
         (uint256 peggedOut, uint256 deposited) = zap.zapNativeAssetToStabilityPool{value: ethAmount}(
-            minWrappedOut, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+            minWrappedOut,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -277,12 +283,17 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(STETH).approve(address(zap), stEthAmount);
 
-        (uint256 previewPegged,) = zap.previewStabilityPoolFromCollateral(stEthAmount);
-        uint256 minPeggedOut = previewPegged * 99 / 100;
-        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+        (uint256 previewPegged, ) = zap.previewStabilityPoolFromCollateral(stEthAmount);
+        uint256 minPeggedOut = (previewPegged * 99) / 100;
+        uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100;
 
         (uint256 peggedOut, uint256 deposited) = zap.zapCollateralToStabilityPool(
-            stEthAmount, 0, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+            stEthAmount,
+            0,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -311,11 +322,15 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         IERC20(WSTETH).approve(address(zap), wstEthAmount);
 
         uint256 previewPegged = zap.previewStabilityPoolFromWrappedCollateral(wstEthAmount);
-        uint256 minPeggedOut = previewPegged * 99 / 100;
-        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+        uint256 minPeggedOut = (previewPegged * 99) / 100;
+        uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100;
 
         (uint256 peggedOut, uint256 deposited) = zap.zapWrappedCollateralToStabilityPool(
-            wstEthAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+            wstEthAmount,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -343,18 +358,27 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
 
         uint256 nonce = IERC20Permit(WSTETH).nonces(userPermit);
         uint256 deadline = block.timestamp + 1 hours;
-        bytes32 structHash =
-            keccak256(abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), wstEthAmount, nonce, deadline));
+        bytes32 structHash = keccak256(
+            abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), wstEthAmount, nonce, deadline)
+        );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(WSTETH).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
 
         uint256 previewPegged = zap.previewStabilityPoolFromWrappedCollateral(wstEthAmount);
-        uint256 minPeggedOut = previewPegged * 99 / 100;
-        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+        uint256 minPeggedOut = (previewPegged * 99) / 100;
+        uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100;
 
         vm.prank(userPermit);
         (uint256 peggedOut, uint256 deposited) = zap.zapWrappedCollateralToStabilityPoolWithPermit(
-            wstEthAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut, deadline, v, r, s
+            wstEthAmount,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut,
+            deadline,
+            v,
+            r,
+            s
         );
 
         assertGt(peggedOut, 0, "Should mint pegged tokens");
@@ -369,16 +393,15 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
 
         uint256 nonce = IERC20Permit(WSTETH).nonces(userPermit);
         uint256 deadline = block.timestamp + 1 hours;
-        bytes32 structHash =
-            keccak256(abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), uint256(0), nonce, deadline));
+        bytes32 structHash = keccak256(
+            abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), uint256(0), nonce, deadline)
+        );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(WSTETH).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
 
         vm.prank(userPermit);
         vm.expectRevert(IZapErrors.ZeroAmount.selector);
-        zap.zapWrappedCollateralToStabilityPoolWithPermit(
-            0, receiver, 0, address(stabilityPool), 0, deadline, v, r, s
-        );
+        zap.zapWrappedCollateralToStabilityPoolWithPermit(0, receiver, 0, address(stabilityPool), 0, deadline, v, r, s);
     }
 
     function test_ZapWstEthToStabilityPool_ZeroAmount() public {
@@ -466,7 +489,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         assertGt(previewPegged, 0, "Preview should return > 0");
         assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
         // Should match previewPeggedFromBase since it's the same calculation
-        (uint256 peggedFromEth,) = zap.previewPeggedFromBase(ethAmount);
+        (uint256 peggedFromEth, ) = zap.previewPeggedFromBase(ethAmount);
         assertEq(previewPegged, peggedFromEth, "Should match pegged preview");
     }
 
@@ -482,7 +505,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         assertGt(previewPegged, 0, "Preview should return > 0");
         assertGt(previewWstEth, 0, "Preview wstETH should return > 0");
         // Should match previewPeggedFromCollateral since it's the same calculation
-        (uint256 peggedFromStEth,) = zap.previewPeggedFromCollateral(stEthAmount);
+        (uint256 peggedFromStEth, ) = zap.previewPeggedFromCollateral(stEthAmount);
         assertEq(previewPegged, peggedFromStEth, "Should match pegged preview");
     }
 
@@ -506,7 +529,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
 
     function test_Upgrade() public {
         // Deploy new implementation
-        address newImpl = address(new MinterETHZap_v4(minter));
+        address newImpl = address(new MinterETHZap_v1(minter));
 
         // Upgrade proxy
         vm.prank(zapOwner);
@@ -525,7 +548,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
     }
 
     function test_Upgrade_OnlyOwner() public {
-        address newImpl = address(new MinterETHZap_v4(minter));
+        address newImpl = address(new MinterETHZap_v1(minter));
 
         vm.prank(user1);
         vm.expectRevert(IHarborOwnable.Unauthorized.selector);
@@ -590,4 +613,3 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
     }
 }
-

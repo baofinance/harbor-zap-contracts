@@ -4,17 +4,17 @@ pragma solidity >=0.8.28 <0.9.0;
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
+import {UnsafeUpgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {GenesisETHZap_v5} from "@harborzap/zap/upgradeable/GenesisETHZap_v5.sol";
+import {GenesisETHZap_v1} from "@harborzap/zap/upgradeable/GenesisETHZap_v1.sol";
 import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
-import {Genesis_v1} from "@harborzap/minter/Genesis_v1.sol";
+import {Genesis_v1} from "@harbor/minter/Genesis_v1.sol";
 import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
 
-import {TestMinterSetUp} from "test/Minter_base.t.sol";
-import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
-import {MockERC20} from "test/mock/MockERC20.sol";
+import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
+import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
 
 /// @notice Interface for stETH submit function
 interface ISTETHV2 {
@@ -28,8 +28,8 @@ interface IWstETHV2 {
     function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
 }
 
-contract GenesisETHZapV5ForkTest is TestMinterSetUp {
-    GenesisETHZap_v5 zap;
+contract GenesisETHZapV1ForkTest is TestMinterSetUp {
+    GenesisETHZap_v1 zap;
     address zapImpl;
     address zapProxy;
     address genesis;
@@ -72,12 +72,13 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
 
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
-        zapImpl = address(new GenesisETHZap_v5(genesis));
+        zapImpl = address(new GenesisETHZap_v1(genesis));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(GenesisETHZap_v5.initialize, (address(this), zapOwner))
+            zapImpl,
+            abi.encodeCall(GenesisETHZap_v1.initialize, (address(this), zapOwner))
         );
-        zap = GenesisETHZap_v5(payable(zapProxy));
-        vm.label(address(zap), "GenesisETHZapV5");
+        zap = GenesisETHZap_v1(payable(zapProxy));
+        vm.label(address(zap), "GenesisETHZapV1");
 
         // Complete ownership transfer from deployer to zapOwner
         zap.transferOwnership(zapOwner);
@@ -92,13 +93,13 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
     function _calculateMinWstEthFromEth(uint256 ethAmount) internal view returns (uint256) {
         // Use the preview function from the contract
         uint256 wstEthAmount = zap.previewWrappedCollateralFromBase(ethAmount);
-        return wstEthAmount * 99 / 100; // 1% slippage buffer
+        return (wstEthAmount * 99) / 100; // 1% slippage buffer
     }
 
     /// @notice Helper to calculate expected wstETH from stETH amount (for slippage protection)
     function _calculateMinWstEthFromStEth(uint256 stEthAmount) internal view returns (uint256) {
         uint256 wstEthAmount = IWstETHV2(WSTETH).getWstETHByStETH(stEthAmount);
-        return wstEthAmount * 99 / 100; // 1% slippage buffer
+        return (wstEthAmount * 99) / 100; // 1% slippage buffer
     }
 
     function test_ZapEth_Success() public {
@@ -132,8 +133,9 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
     }
 
     function test_ZapName() public view {
-        string memory expectedName =
-            string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name()));
+        string memory expectedName = string(
+            abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name())
+        );
         string memory name = zap.zapName();
 
         console.log("Genesis zap name:", name);
@@ -192,7 +194,7 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
 
     function test_PreviewGenesisFromEth() public view {
         uint256 ethAmount = 1 ether;
-        (uint256 previewShares,) = zap.previewSharesFromBase(ethAmount);
+        (uint256 previewShares, ) = zap.previewSharesFromBase(ethAmount);
 
         assertGt(previewShares, 0, "Preview should return > 0");
         // Should match previewWrappedCollateralFromBase since Genesis uses 1:1 mapping
@@ -201,7 +203,7 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
 
     function test_PreviewGenesisFromStEth() public view {
         uint256 stEthAmount = 1 ether;
-        (uint256 previewShares,) = zap.previewSharesFromCollateral(stEthAmount);
+        (uint256 previewShares, ) = zap.previewSharesFromCollateral(stEthAmount);
 
         assertGt(previewShares, 0, "Preview should return > 0");
         // Should match previewWrappedCollateralFromCollateral since Genesis uses 1:1 mapping
@@ -249,14 +251,14 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
         uint256 totalValue = zap.totalValueBaseAsset();
 
         assertGt(totalValue, 0, "Total value should be > 0");
-        assertGe(totalValue, (ethAmount1 + ethAmount2) * 90 / 100, "Total value should be reasonable");
+        assertGe(totalValue, ((ethAmount1 + ethAmount2) * 90) / 100, "Total value should be reasonable");
     }
 
     // ============ Upgrade Tests ============
 
     function test_Upgrade() public {
         // Deploy new implementation
-        address newImpl = address(new GenesisETHZap_v5(genesis));
+        address newImpl = address(new GenesisETHZap_v1(genesis));
 
         // Upgrade proxy
         vm.prank(zapOwner);
@@ -276,7 +278,7 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
     }
 
     function test_Upgrade_OnlyOwner() public {
-        address newImpl = address(new GenesisETHZap_v5(genesis));
+        address newImpl = address(new GenesisETHZap_v1(genesis));
 
         vm.prank(user1);
         vm.expectRevert(IHarborOwnable.Unauthorized.selector);
@@ -319,4 +321,3 @@ contract GenesisETHZapV5ForkTest is TestMinterSetUp {
         assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
     }
 }
-

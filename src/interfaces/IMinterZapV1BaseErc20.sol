@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-/// @title IMinterZapV4BaseErc20
-/// @notice Base-asset entrypoints for `MinterUSDCZap_v4` (ERC-20 pulled from caller + optional permit).
-/// @dev Implement only on the USDC zap; ETH uses `IMinterZapV4BaseNative` (`zapNativeAssetTo*`) instead.
-interface IMinterZapV4BaseErc20 {
+/// @title IMinterZapV1BaseErc20
+/// @notice Base-asset entrypoints for `MinterUSDCZap_v1` (ERC-20 pulled from caller + optional permit).
+/// @dev Implement only on the USDC zap; ETH uses `IMinterZapV1BaseNative` (`zapNativeAssetTo*`) instead.
+interface IMinterZapV1BaseErc20 {
     function zapBaseAssetToPegged(
         uint256 baseAssetAmount,
         uint256 minWrappedCollateralOut,

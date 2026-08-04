@@ -15,10 +15,11 @@ contract MockStabilityPool {
         ASSET_TOKEN = assetToken_;
     }
 
-    function deposit(uint256 assetAmount, address receiver, uint256 minAmount)
-        external
-        returns (uint256 assetsDeposited)
-    {
+    function deposit(
+        uint256 assetAmount,
+        address receiver,
+        uint256 minAmount
+    ) external returns (uint256 assetsDeposited) {
         if (assetAmount < minAmount) revert("Slippage");
         IERC20(ASSET_TOKEN).safeTransferFrom(msg.sender, address(this), assetAmount);
         deposits[receiver] += assetAmount;
@@ -29,4 +30,3 @@ contract MockStabilityPool {
         return deposits[user];
     }
 }
-

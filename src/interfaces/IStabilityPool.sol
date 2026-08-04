@@ -1,1 +1,0 @@
-../../lib/harbor/src/interfaces/IStabilityPool.sol

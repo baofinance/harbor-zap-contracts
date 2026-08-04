@@ -17,7 +17,7 @@
     "test": "./lib/bao-base/run test",
     "test:duration": "./lib/bao-base/run test-duration",
     "gas": "./lib/bao-base/run duration-of regression-of gas",
-    "coverage": "./lib/bao-base/run regression-of coverage",
+    "coverage": "./lib/bao-base/run regression-of coverage --ir-minimum",
     "slither": "./lib/bao-base/run slither",
     "verify-audit": "./lib/bao-base/run verify-audit",
     "validate": "./lib/bao-base/run validate",

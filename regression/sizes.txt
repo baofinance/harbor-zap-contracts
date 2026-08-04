@@ -1,0 +1,12 @@
+| Contract               |   Runtime Size (B) |   Runtime Margin (B) |   Initcode Size (B) |   Deploy Gas |   Deploy Cost ($) |
+|------------------------|--------------------|----------------------|---------------------|--------------|-------------------|
+| FxSAVEConstants        |                 57 |               24,519 |                  85 |       12,250 |              1.23 |
+| FxUSDZapNetworkConfig  |                 57 |               24,519 |                  85 |       12,250 |              1.23 |
+| GenesisETHZap_v1       |             10,502 |               14,074 |              11,870 |    2,219,100 |            221.91 |
+| GenesisUSDCZap_v1      |              9,964 |               14,612 |              11,083 |    2,103,630 |            210.36 |
+| MegaETHWstETHConstants |                 57 |               24,519 |                  85 |       12,250 |              1.23 |
+| MinterETHZap_v1        |             16,387 |                8,189 |              17,972 |    3,457,120 |            345.71 |
+| MinterUSDCZap_v1       |             16,224 |                8,352 |              17,595 |    3,420,750 |            342.07 |
+| StETHZapNetworkConfig  |                 57 |               24,519 |                  85 |       12,250 |              1.23 |
+| WstETHConstants        |                 57 |               24,519 |                  85 |       12,250 |              1.23 |
+| ZapIntake              |                 57 |               24,519 |                  85 |       12,250 |              1.23 |

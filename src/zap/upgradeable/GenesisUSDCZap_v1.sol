@@ -11,22 +11,22 @@ import {HarborOwnable} from "@bao/HarborOwnable.sol";
 import {TokenHolder_v2} from "@bao/TokenHolder_v2.sol";
 import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
-import {IGenesisZapV5BaseErc20} from "@harborzap/interfaces/IGenesisZapV5BaseErc20.sol";
-import {IGenesisZapV5Common} from "@harborzap/interfaces/IGenesisZapV5Common.sol";
+import {IGenesisZapV1BaseErc20} from "@harborzap/interfaces/IGenesisZapV1BaseErc20.sol";
+import {IGenesisZapV1Common} from "@harborzap/interfaces/IGenesisZapV1Common.sol";
 import {GenesisZapBase_v1} from "@harborzap/zap/upgradeable/base/GenesisZapBase_v1.sol";
 import {ZapIntake} from "@harborzap/zap/upgradeable/base/ZapIntake.sol";
 import {FxUSDZapNetworkConfig} from "@harborzap/zap/upgradeable/config/FxUSDZapNetworkConfig.sol";
 import {FxUSDZapBase_v1} from "@harborzap/zap/upgradeable/asset/FxUSDZapBase_v1.sol";
 
-/// @title GenesisUSDCZapV5 - Production Ready
+/// @title GenesisUSDCZapV1 - Production Ready
 /// @notice One-click zapper for depositing base asset or collateral into Genesis via wrapped collateral
 /// @dev Enables users to deposit base asset or collateral in a single transaction
 /// @dev Flow: base asset/collateral → wrapped collateral → Genesis deposit
 /// @dev Uses UUPS proxy, upgradeable
 /// @author Harbor Yield Protocol
 /// @custom:oz-upgrades
-// solhint-disable-next-line contract-name-camelcase
-contract GenesisUSDCZap_v5 is
+// solhint-disable-next-line contract-name-capwords
+contract GenesisUSDCZap_v1 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
@@ -34,8 +34,8 @@ contract GenesisUSDCZap_v5 is
     TokenHolder_v2,
     GenesisZapBase_v1,
     FxUSDZapBase_v1,
-    IGenesisZapV5Common,
-    IGenesisZapV5BaseErc20
+    IGenesisZapV1Common,
+    IGenesisZapV1BaseErc20
 {
     using SafeERC20 for IERC20;
 
@@ -57,9 +57,6 @@ contract GenesisUSDCZap_v5 is
     /// @notice Genesis contract address
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable GENESIS;
-
-    /// @dev Reserved slots for future storage variables. Shrink the array when appending new state (OZ upgradeable pattern).
-    uint256[50] private __gap;
 
     // ========== Events ==========
     /// @dev `ZappedBaseAsset` / `ZappedCollateral` are declared on `GenesisZapBase_v1`.
@@ -119,11 +116,11 @@ contract GenesisUSDCZap_v5 is
     /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Who gets the Genesis shares
     /// @return sharesOut Amount of shares minted to Genesis
-    function zapBaseAsset(uint256 baseAssetAmount, uint256 minWrappedCollateralOut, address receiver)
-        external
-        nonReentrant
-        returns (uint256 sharesOut)
-    {
+    function zapBaseAsset(
+        uint256 baseAssetAmount,
+        uint256 minWrappedCollateralOut,
+        address receiver
+    ) external nonReentrant returns (uint256 sharesOut) {
         _requireSupportedAsset(BASE_ASSET);
         sharesOut = _zapBaseAssetToGenesisCore(baseAssetAmount, minWrappedCollateralOut, receiver);
     }
@@ -134,11 +131,11 @@ contract GenesisUSDCZap_v5 is
     /// @param minWrappedCollateralOut Minimum wrapped collateral to receive
     /// @param receiver Who gets the Genesis shares
     /// @return sharesOut Amount of shares minted to Genesis
-    function zapCollateral(uint256 collateralAmount, uint256 minWrappedCollateralOut, address receiver)
-        external
-        nonReentrant
-        returns (uint256 sharesOut)
-    {
+    function zapCollateral(
+        uint256 collateralAmount,
+        uint256 minWrappedCollateralOut,
+        address receiver
+    ) external nonReentrant returns (uint256 sharesOut) {
         _requireSupportedAsset(COLLATERAL_ASSET);
         sharesOut = _zapCollateralToGenesisCore(collateralAmount, minWrappedCollateralOut, receiver);
     }
@@ -218,7 +215,7 @@ contract GenesisUSDCZap_v5 is
         return WRAPPED_COLLATERAL_ASSET;
     }
 
-    /// @dev Pull → convert → `_depositToGenesis` → `ZappedBaseAsset` (matches `GenesisETHZap_v5` `*Core` naming).
+    /// @dev Pull → convert → `_depositToGenesis` → `ZappedBaseAsset` (matches `GenesisETHZap_v1` `*Core` naming).
     function _zapBaseAssetToGenesisCore(
         uint256 baseAssetAmount,
         uint256 minWrappedCollateralOut,
@@ -257,10 +254,11 @@ contract GenesisUSDCZap_v5 is
     /// @param amountIn Amount of tokenIn to convert
     /// @param minOut Minimum wrapped collateral expected (slippage protection)
     /// @return wrappedCollateralReceived Amount of wrapped collateral received
-    function _convertToWrappedCollateral(address tokenIn, uint256 amountIn, uint256 minOut)
-        internal
-        returns (uint256 wrappedCollateralReceived)
-    {
+    function _convertToWrappedCollateral(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minOut
+    ) internal returns (uint256 wrappedCollateralReceived) {
         wrappedCollateralReceived = _convertHeldTokenToWrappedCollateral(
             COLLATERAL_MANAGER,
             SWAP_ROUTER,
@@ -285,10 +283,7 @@ contract GenesisUSDCZap_v5 is
         uint256 amountIn,
         uint256 minWrappedCollateralOut,
         address receiver
-    )
-        internal
-        returns (uint256 wrappedCollateralReceived)
-    {
+    ) internal returns (uint256 wrappedCollateralReceived) {
         if (amountIn == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
         if (tokenIn != BASE_ASSET && tokenIn != COLLATERAL_ASSET) {
@@ -298,9 +293,7 @@ contract GenesisUSDCZap_v5 is
         uint256 baseline = IERC20(tokenIn).balanceOf(address(this));
         uint256 received = ZapIntake.pullExact(IERC20(tokenIn), _msgSender(), amountIn);
 
-        wrappedCollateralReceived = _convertToWrappedCollateral(
-            tokenIn, received, minWrappedCollateralOut
-        );
+        wrappedCollateralReceived = _convertToWrappedCollateral(tokenIn, received, minWrappedCollateralOut);
         _depositToGenesis(wrappedCollateralReceived, receiver);
 
         // Refund any unspent input (fee-on-transfer already rejected; this covers partial venue consume).
@@ -341,70 +334,65 @@ contract GenesisUSDCZap_v5 is
 
     /// @notice Preview fxSAVE (wrapped collateral) from USDC using ERC4626 `convertToShares` on fxSAVE.
     /// @dev Uses **$1 USDC ≈ 1 fxUSD** scaling (6→18 decimals); actual diamond output may differ—use slippage on zaps.
-    function previewWrappedCollateralFromBase(uint256 baseAssetAmount)
-        external
-        view
-        returns (uint256 wrappedCollateralAmount)
-    {
+    function previewWrappedCollateralFromBase(
+        uint256 baseAssetAmount
+    ) external view returns (uint256 wrappedCollateralAmount) {
         wrappedCollateralAmount = _previewWrappedFromBaseInternal(baseAssetAmount);
     }
 
     /// @notice Preview fxSAVE from an fxUSD amount via `convertToShares`.
-    function previewWrappedCollateralFromCollateral(uint256 collateralAmount)
-        external
-        view
-        returns (uint256 wrappedCollateralAmount)
-    {
+    function previewWrappedCollateralFromCollateral(
+        uint256 collateralAmount
+    ) external view returns (uint256 wrappedCollateralAmount) {
         wrappedCollateralAmount = _previewWrappedFromCollateralInternal(collateralAmount);
     }
 
     /// @notice Preview Genesis shares from USDC (same as wrapped preview; Genesis is 1:1 with fxSAVE).
-    function previewSharesFromBase(uint256 baseAssetAmount)
-        external
-        view
-        returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
-    {
+    function previewSharesFromBase(
+        uint256 baseAssetAmount
+    ) external view returns (uint256 sharesOut, uint256 wrappedCollateralAmount) {
         wrappedCollateralAmount = _previewWrappedFromBaseInternal(baseAssetAmount);
         sharesOut = wrappedCollateralAmount;
     }
 
     /// @notice Preview Genesis shares from fxUSD (1:1 with fxSAVE shares from `convertToShares`).
-    function previewSharesFromCollateral(uint256 collateralAmount)
-        external
-        view
-        returns (uint256 sharesOut, uint256 wrappedCollateralAmount)
-    {
+    function previewSharesFromCollateral(
+        uint256 collateralAmount
+    ) external view returns (uint256 sharesOut, uint256 wrappedCollateralAmount) {
         wrappedCollateralAmount = _previewWrappedFromCollateralInternal(collateralAmount);
         sharesOut = wrappedCollateralAmount;
     }
 
-    function _previewWrappedFromBaseInternal(uint256 baseAssetAmount) internal view returns (uint256 wrappedCollateralAmount) {
+    function _previewWrappedFromBaseInternal(
+        uint256 baseAssetAmount
+    ) internal view returns (uint256 wrappedCollateralAmount) {
         _requireSupportedAsset(BASE_ASSET);
         wrappedCollateralAmount = _previewFxSaveSharesFromUsdcAssumedPeg(
-            WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, baseAssetAmount
+            WRAPPED_COLLATERAL_ASSET,
+            COLLATERAL_ASSET,
+            baseAssetAmount
         );
     }
 
-    function _previewWrappedFromCollateralInternal(uint256 collateralAmount)
-        internal
-        view
-        returns (uint256 wrappedCollateralAmount)
-    {
+    function _previewWrappedFromCollateralInternal(
+        uint256 collateralAmount
+    ) internal view returns (uint256 wrappedCollateralAmount) {
         _requireSupportedAsset(COLLATERAL_ASSET);
-        wrappedCollateralAmount =
-            _previewFxSaveSharesFromFxUsd(WRAPPED_COLLATERAL_ASSET, COLLATERAL_ASSET, collateralAmount);
+        wrappedCollateralAmount = _previewFxSaveSharesFromFxUsd(
+            WRAPPED_COLLATERAL_ASSET,
+            COLLATERAL_ASSET,
+            collateralAmount
+        );
     }
 
-    /// @inheritdoc IGenesisZapV5Common
-    function previewSharesFromWrappedCollateral(uint256 wrappedCollateralAmount)
-        external
-        pure
-        returns (uint256 sharesOut)
-    {
+    /// @inheritdoc IGenesisZapV1Common
+    function previewSharesFromWrappedCollateral(
+        uint256 wrappedCollateralAmount
+    ) external pure returns (uint256 sharesOut) {
         sharesOut = _previewGenesisSharesFromWrappedCollateral(wrappedCollateralAmount);
     }
 
-    /// @inheritdoc IGenesisZapV5Common
+    /// @inheritdoc IGenesisZapV1Common
     function zapName() external view returns (string memory) {
         return _genesisZapDisplayName();
     }
@@ -417,7 +405,8 @@ contract GenesisUSDCZap_v5 is
     function rescueNativeAsset() external onlyOwner {
         address to = owner();
         uint256 amount = address(this).balance;
-        (bool success,) = payable(to).call{value: amount}("");
+        // slither-disable-next-line low-level-calls — intentional: `.transfer` can brick contract owners
+        (bool success, ) = payable(to).call{value: amount}("");
         if (!success) revert IZapErrors.NativeTransferFailed();
     }
 
@@ -428,10 +417,7 @@ contract GenesisUSDCZap_v5 is
 
     /// @dev Blocks sweeping protocol-critical tokens (same denylist as legacy `rescueToken`).
     function _sweep(address token, uint256 amount, address receiver) internal override {
-        if (
-            token == BASE_ASSET || token == COLLATERAL_ASSET || token == WRAPPED_COLLATERAL_ASSET
-                || token == GENESIS
-        ) {
+        if (token == BASE_ASSET || token == COLLATERAL_ASSET || token == WRAPPED_COLLATERAL_ASSET || token == GENESIS) {
             revert IZapErrors.CannotRescueProtectedToken(token);
         }
         super._sweep(token, amount, receiver);
@@ -447,4 +433,3 @@ contract GenesisUSDCZap_v5 is
         revert IZapErrors.FunctionNotFound();
     }
 }
-

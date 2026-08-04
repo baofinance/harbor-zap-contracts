@@ -207,10 +207,10 @@ verify_contract() {
   fi
 }
 
-echo "=== Deploying MinterETHZap_v4 (UUPS) ==="
+echo "=== Deploying MinterETHZap_v1 (UUPS) ==="
 echo ""
 
-IMPLEMENTATION_PATH="src/zap/upgradeable/MinterETHZap_v4.sol:MinterETHZap_v4"
+IMPLEMENTATION_PATH="src/zap/upgradeable/MinterETHZap_v1.sol:MinterETHZap_v1"
 PROXY_PATH="lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy"
 
 IMPL_LOG=$(mktemp "${TMPDIR:-/tmp}/zap-impl.XXXXXX")
@@ -254,7 +254,7 @@ fi
 echo "✅ Proxy deployed: $proxy_address"
 echo ""
 
-if ! verify_contract "$impl_address" "$IMPLEMENTATION_PATH" "$impl_ctor_args" "MinterETHZap_v4 implementation"; then
+if ! verify_contract "$impl_address" "$IMPLEMENTATION_PATH" "$impl_ctor_args" "MinterETHZap_v1 implementation"; then
   exit 1
 fi
 proxy_ctor_args=$("$CAST" abi-encode "constructor(address,bytes)" "$impl_address" "$init_data")
@@ -297,7 +297,7 @@ cat > "$DEPLOYMENT_FILE" <<EOF
   "chainId": ${EXPECTED_CHAIN_ID},
   "chainName": "${DEPLOYMENT_CHAIN_NAME}",
 ${NOTE_JSON}  "deploymentTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "contract": "MinterETHZap_v4",
+  "contract": "MinterETHZap_v1",
   "implementation": "$impl_address",
   "proxy": "$proxy_address",
   "constructorArgs": {

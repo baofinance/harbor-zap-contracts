@@ -12,6 +12,7 @@ import {ZapIntake} from "@harborzap/zap/upgradeable/base/ZapIntake.sol";
 /// @title MinterZapBase_v1
 /// @notice Storage-free template for minter zaps: shared zap pipeline + mint/stability helpers.
 /// @dev Child contracts supply conversion, asset checks, and allowance resets.
+// solhint-disable-next-line contract-name-capwords
 abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
     using SafeERC20 for IERC20;
 
@@ -85,10 +86,11 @@ abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
         uint256 deposited
     );
 
-    function _convertToWrappedCollateral(address tokenIn, uint256 amountIn, uint256 minWrappedCollateralOut)
-        internal
-        virtual
-        returns (uint256 wrappedCollateralAmount);
+    function _convertToWrappedCollateral(
+        address tokenIn,
+        uint256 amountIn,
+        uint256 minWrappedCollateralOut
+    ) internal virtual returns (uint256 wrappedCollateralAmount);
 
     function _requireSupportedAsset(address asset) internal view virtual;
 
@@ -143,9 +145,7 @@ abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
             inputBaseline = IERC20(wrapped).balanceOf(address(this));
             wrappedCollateralAmount = ZapIntake.pullExact(IERC20(wrapped), msg.sender, amountIn);
             if (wrappedCollateralAmount < minWrappedCollateralOut) {
-                revert IZapErrors.SlippageTooHighWrappedCollateral(
-                    wrappedCollateralAmount, minWrappedCollateralOut
-                );
+                revert IZapErrors.SlippageTooHighWrappedCollateral(wrappedCollateralAmount, minWrappedCollateralOut);
             }
         } else {
             wrappedCollateralAmount = _convertToWrappedCollateral(tokenIn, amountIn, minWrappedCollateralOut);
@@ -161,17 +161,19 @@ abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
         _resetAllowances();
     }
 
-    function _mintPeggedToken(uint256 wrappedCollateralAmount, address receiver, uint256 minPeggedOut)
-        internal
-        returns (uint256 peggedOut)
-    {
+    function _mintPeggedToken(
+        uint256 wrappedCollateralAmount,
+        address receiver,
+        uint256 minPeggedOut
+    ) internal returns (uint256 peggedOut) {
         return _sharedMintPeggedToken(wrappedCollateralAmount, receiver, minPeggedOut);
     }
 
-    function _mintLeveragedToken(uint256 wrappedCollateralAmount, address receiver, uint256 minLeveragedOut)
-        internal
-        returns (uint256 leveragedOut)
-    {
+    function _mintLeveragedToken(
+        uint256 wrappedCollateralAmount,
+        address receiver,
+        uint256 minLeveragedOut
+    ) internal returns (uint256 leveragedOut) {
         return _sharedMintLeveragedToken(wrappedCollateralAmount, receiver, minLeveragedOut);
     }
 
@@ -182,8 +184,6 @@ abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
         address receiver,
         uint256 minStabilityPoolOut
     ) internal returns (uint256 deposited) {
-        return _sharedDepositToStabilityPool(
-            peggedToken, stabilityPool, peggedAmount, receiver, minStabilityPoolOut
-        );
+        return _sharedDepositToStabilityPool(peggedToken, stabilityPool, peggedAmount, receiver, minStabilityPoolOut);
     }
 }

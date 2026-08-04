@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-/// @title IMinterZapV4BaseNative
-/// @notice Native-base-asset (ETH) entrypoints for `MinterETHZap_v4` via `msg.value`.
-/// @dev Implement only on the ETH zap; USDC uses `IMinterZapV4BaseErc20` instead.
-interface IMinterZapV4BaseNative {
+/// @title IMinterZapV1BaseNative
+/// @notice Native-base-asset (ETH) entrypoints for `MinterETHZap_v1` via `msg.value`.
+/// @dev Implement only on the ETH zap; USDC uses `IMinterZapV1BaseErc20` instead.
+interface IMinterZapV1BaseNative {
     /// @notice Lido referral address passed to `submit` (fixed per implementation from `StETHZapNetworkConfig`)
     function referral() external view returns (address);
 

@@ -19,7 +19,7 @@ cfg.defaultReferral = WstETHConstants.DEFAULT_REFERRAL;
 // 0x3dFc49e5112005179Da613BdE5973229082dAc35
 ```
 
-`MinterETHZap_v4` and `GenesisETHZap_v5`:
+`MinterETHZap_v1` and `GenesisETHZap_v1`:
 
 - Store `DEFAULT_REFERRAL` as an immutable from config at implementation deploy
 - Expose `referral()` view returning that immutable

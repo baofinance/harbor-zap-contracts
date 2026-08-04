@@ -10,6 +10,7 @@ import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
 /// @title GenesisZapBase_v1
 /// @notice Storage-free shared Genesis deposit + share validation for ETH and USDC genesis zaps.
+// solhint-disable-next-line contract-name-capwords
 abstract contract GenesisZapBase_v1 {
     using SafeERC20 for IERC20;
     /// @notice Emitted when base asset is zapped into Genesis (same shape on ETH and USDC zaps for indexers)
@@ -50,6 +51,7 @@ abstract contract GenesisZapBase_v1 {
         address genesis = _genesisAddress();
         address wrapped = _wrappedCollateralAssetAddress();
 
+        // slither-disable-next-line incorrect-equality — zero deposit amount is a hard failure
         if (amount == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
@@ -73,11 +75,9 @@ abstract contract GenesisZapBase_v1 {
     }
 
     /// @dev Genesis vault: 1:1 shares for wrapped collateral amount (shared by ETH and USDC zaps).
-    function _previewGenesisSharesFromWrappedCollateral(uint256 wrappedCollateralAmount)
-        internal
-        pure
-        returns (uint256 sharesOut)
-    {
+    function _previewGenesisSharesFromWrappedCollateral(
+        uint256 wrappedCollateralAmount
+    ) internal pure returns (uint256 sharesOut) {
         sharesOut = wrappedCollateralAmount;
     }
 

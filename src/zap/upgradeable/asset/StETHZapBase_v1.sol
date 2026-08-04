@@ -10,29 +10,36 @@ import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
 /// @title StETHZapBase_v1
 /// @notice Internal helpers for Lido stETH → wstETH conversion paths (Genesis + Minter zaps).
+// solhint-disable-next-line contract-name-capwords
 abstract contract StETHZapBase_v1 {
     using SafeERC20 for IERC20;
 
     /// @dev Native base asset (ETH) credited to this contract → collateral (e.g. stETH) via Lido `submit`.
-    function _convertBaseAssetToCollateral(address collateral, address lidoReferral, uint256 ethAmount)
-        internal
-        returns (uint256 collateralReceived)
-    {
+    function _convertBaseAssetToCollateral(
+        address collateral,
+        address lidoReferral,
+        uint256 ethAmount
+    ) internal returns (uint256 collateralReceived) {
         uint256 beforeB = IERC20(collateral).balanceOf(address(this));
+        // slither-disable-next-line unused-return — output measured as stETH balance delta (share rounding)
         ISTETHV2(collateral).submit{value: ethAmount}(lidoReferral);
         collateralReceived = IERC20(collateral).balanceOf(address(this)) - beforeB;
+        // slither-disable-next-line incorrect-equality — zero stETH after submit is a hard failure
         if (collateralReceived == 0) revert IZapErrors.NoCollateralReceived();
     }
 
     /// @dev Collateral already held by this contract → wrapped collateral (e.g. wstETH).
-    function _wrapCollateralToWrappedCollateral(address collateral, address wrapped, uint256 collateralAmount)
-        internal
-        returns (uint256 wrappedReceived)
-    {
+    function _wrapCollateralToWrappedCollateral(
+        address collateral,
+        address wrapped,
+        uint256 collateralAmount
+    ) internal returns (uint256 wrappedReceived) {
         IERC20(collateral).forceApprove(wrapped, collateralAmount);
         uint256 wBefore = IERC20(wrapped).balanceOf(address(this));
+        // slither-disable-next-line unused-return — output measured as wstETH balance delta
         IWstETHWrapV2(wrapped).wrap(collateralAmount);
         wrappedReceived = IERC20(wrapped).balanceOf(address(this)) - wBefore;
+        // slither-disable-next-line incorrect-equality — zero wrap output is a hard failure
         if (wrappedReceived == 0) revert IZapErrors.NoWrappedCollateralReceived();
         IERC20(collateral).forceApprove(wrapped, 0);
     }
@@ -50,11 +57,11 @@ abstract contract StETHZapBase_v1 {
     }
 
     /// @dev View-only: base asset amount → wrapped collateral if routed via collateral (Lido + wrap math).
-    function _estimateWrappedCollateralFromBase(address collateral, address wrapped, uint256 baseAssetAmount)
-        internal
-        view
-        returns (uint256 wrappedCollateralAmount)
-    {
+    function _estimateWrappedCollateralFromBase(
+        address collateral,
+        address wrapped,
+        uint256 baseAssetAmount
+    ) internal view returns (uint256 wrappedCollateralAmount) {
         uint256 collateralShares = IStETHView(collateral).getSharesByPooledEth(baseAssetAmount);
         uint256 collateralAmount = IStETHView(collateral).getPooledEthByShares(collateralShares);
         wrappedCollateralAmount = IWstETHView(wrapped).getWstETHByStETH(collateralAmount);

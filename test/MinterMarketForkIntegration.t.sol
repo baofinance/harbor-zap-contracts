@@ -7,8 +7,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UnsafeUpgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {MinterETHZap_v4} from "@harborzap/zap/upgradeable/MinterETHZap_v4.sol";
-import {MinterUSDCZap_v4} from "@harborzap/zap/upgradeable/MinterUSDCZap_v4.sol";
+import {MinterETHZap_v1} from "@harborzap/zap/upgradeable/MinterETHZap_v1.sol";
+import {MinterUSDCZap_v1} from "@harborzap/zap/upgradeable/MinterUSDCZap_v1.sol";
 import {IMinter} from "@harbor/interfaces/IMinter.sol";
 import {IStabilityPool} from "@harbor/interfaces/IStabilityPool.sol";
 
@@ -39,8 +39,8 @@ abstract contract MinterMarketForkBase is Test {
     address internal receiver;
     address internal zapOwner;
 
-    MinterETHZap_v4 internal ethZap;
-    MinterUSDCZap_v4 internal usdcZap;
+    MinterETHZap_v1 internal ethZap;
+    MinterUSDCZap_v1 internal usdcZap;
 
     function _marketKey() internal pure virtual returns (string memory);
 
@@ -78,19 +78,21 @@ abstract contract MinterMarketForkBase is Test {
     }
 
     function _deployZaps() internal {
-        address ethImpl = address(new MinterETHZap_v4(minterEth));
+        address ethImpl = address(new MinterETHZap_v1(minterEth));
         address ethProxy = UnsafeUpgrades.deployUUPSProxy(
-            ethImpl, abi.encodeCall(MinterETHZap_v4.initialize, (address(this), zapOwner))
+            ethImpl,
+            abi.encodeCall(MinterETHZap_v1.initialize, (address(this), zapOwner))
         );
-        ethZap = MinterETHZap_v4(payable(ethProxy));
-        vm.label(address(ethZap), "MinterETHZap_v4_integration");
+        ethZap = MinterETHZap_v1(payable(ethProxy));
+        vm.label(address(ethZap), "MinterETHZap_v1_integration");
 
-        address usdcImpl = address(new MinterUSDCZap_v4(minterUsdc));
+        address usdcImpl = address(new MinterUSDCZap_v1(minterUsdc));
         address usdcProxy = UnsafeUpgrades.deployUUPSProxy(
-            usdcImpl, abi.encodeCall(MinterUSDCZap_v4.initialize, (address(this), zapOwner))
+            usdcImpl,
+            abi.encodeCall(MinterUSDCZap_v1.initialize, (address(this), zapOwner))
         );
-        usdcZap = MinterUSDCZap_v4(payable(usdcProxy));
-        vm.label(address(usdcZap), "MinterUSDCZap_v4_integration");
+        usdcZap = MinterUSDCZap_v1(payable(usdcProxy));
+        vm.label(address(usdcZap), "MinterUSDCZap_v1_integration");
 
         for (uint256 i = 0; i < stabilityPools.length; i++) {
             ethZap.setStabilityPoolAllowed(stabilityPools[i], true);
@@ -100,7 +102,7 @@ abstract contract MinterMarketForkBase is Test {
 
     function _minOut(uint256 amount) internal pure returns (uint256) {
         if (amount == 0) return 0;
-        return amount - (amount * SLIPPAGE_BPS / 10_000);
+        return amount - ((amount * SLIPPAGE_BPS) / 10_000);
     }
 
     /// @dev stETH uses Lido share accounting; fund via submit instead of deal().
@@ -134,7 +136,11 @@ contract MinterBtcMarketForkIntegrationTest is MinterMarketForkBase {
 
             vm.prank(user);
             (uint256 peggedOut, uint256 deposited) = ethZap.zapNativeAssetToStabilityPool{value: ethAmount}(
-                _minOut(previewWrapped), receiver, _minOut(previewPegged), pool, _minOut(previewPegged)
+                _minOut(previewWrapped),
+                receiver,
+                _minOut(previewPegged),
+                pool,
+                _minOut(previewPegged)
             );
 
             assertGt(peggedOut, 0, "peggedOut");
@@ -153,7 +159,12 @@ contract MinterBtcMarketForkIntegrationTest is MinterMarketForkBase {
             vm.startPrank(user);
             IERC20(STETH).approve(address(ethZap), stEthAmount);
             (uint256 peggedOut, uint256 deposited) = ethZap.zapCollateralToStabilityPool(
-                stEthAmount, _minOut(previewWrapped), receiver, _minOut(previewPegged), pool, _minOut(previewPegged)
+                stEthAmount,
+                _minOut(previewWrapped),
+                receiver,
+                _minOut(previewPegged),
+                pool,
+                _minOut(previewPegged)
             );
             vm.stopPrank();
 
@@ -179,7 +190,11 @@ contract MinterBtcMarketForkIntegrationTest is MinterMarketForkBase {
             vm.startPrank(user);
             IERC20(WSTETH).approve(address(ethZap), wstEthAmount);
             (uint256 peggedOut, uint256 deposited) = ethZap.zapWrappedCollateralToStabilityPool(
-                wstEthAmount, receiver, _minOut(previewPegged), pool, _minOut(previewPegged)
+                wstEthAmount,
+                receiver,
+                _minOut(previewPegged),
+                pool,
+                _minOut(previewPegged)
             );
             vm.stopPrank();
 
@@ -200,7 +215,12 @@ contract MinterBtcMarketForkIntegrationTest is MinterMarketForkBase {
             vm.startPrank(user);
             IERC20(USDC).approve(address(usdcZap), usdcAmount);
             (uint256 peggedOut, uint256 deposited) = usdcZap.zapBaseAssetToStabilityPool(
-                usdcAmount, _minOut(previewWrapped), receiver, _minOut(previewPegged), pool, _minOut(previewPegged)
+                usdcAmount,
+                _minOut(previewWrapped),
+                receiver,
+                _minOut(previewPegged),
+                pool,
+                _minOut(previewPegged)
             );
             vm.stopPrank();
 
@@ -221,7 +241,12 @@ contract MinterBtcMarketForkIntegrationTest is MinterMarketForkBase {
             vm.startPrank(user);
             IERC20(FXUSD).approve(address(usdcZap), fxUsdAmount);
             (uint256 peggedOut, uint256 deposited) = usdcZap.zapCollateralToStabilityPool(
-                fxUsdAmount, _minOut(previewWrapped), receiver, _minOut(previewPegged), pool, _minOut(previewPegged)
+                fxUsdAmount,
+                _minOut(previewWrapped),
+                receiver,
+                _minOut(previewPegged),
+                pool,
+                _minOut(previewPegged)
             );
             vm.stopPrank();
 
@@ -242,7 +267,11 @@ contract MinterBtcMarketForkIntegrationTest is MinterMarketForkBase {
             vm.startPrank(user);
             IERC20(FXSAVE).approve(address(usdcZap), fxSaveAmount);
             (uint256 peggedOut, uint256 deposited) = usdcZap.zapWrappedCollateralToStabilityPool(
-                fxSaveAmount, receiver, _minOut(previewPegged), pool, _minOut(previewPegged)
+                fxSaveAmount,
+                receiver,
+                _minOut(previewPegged),
+                pool,
+                _minOut(previewPegged)
             );
             vm.stopPrank();
 

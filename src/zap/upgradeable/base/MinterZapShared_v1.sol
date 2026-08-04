@@ -10,6 +10,7 @@ import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
 /// @notice Shared internal mint/deposit logic for minter zaps.
 /// @dev This is a refactor helper to reduce drift across ETH/USDC minter zaps.
+// solhint-disable-next-line contract-name-capwords
 abstract contract MinterZapShared_v1 {
     using SafeERC20 for IERC20;
 
@@ -17,10 +18,11 @@ abstract contract MinterZapShared_v1 {
     function _wrappedCollateralAssetAddress() internal view virtual returns (address);
     function _isStabilityPoolAllowed(address stabilityPool) internal view virtual returns (bool);
 
-    function _sharedMintPeggedToken(uint256 wrappedCollateralAmount, address receiver, uint256 minPeggedOut)
-        internal
-        returns (uint256 peggedOut)
-    {
+    function _sharedMintPeggedToken(
+        uint256 wrappedCollateralAmount,
+        address receiver,
+        uint256 minPeggedOut
+    ) internal returns (uint256 peggedOut) {
         address minter = _minterAddress();
         address wrappedCollateral = _wrappedCollateralAssetAddress();
         address peggedToken = IMinter(minter).PEGGED_TOKEN();
@@ -31,6 +33,7 @@ abstract contract MinterZapShared_v1 {
 
         uint256 peggedBalanceAfter = IERC20(peggedToken).balanceOf(receiver);
         uint256 received = peggedBalanceAfter - peggedBalanceBefore;
+        // slither-disable-next-line incorrect-equality — enforce return matches delta and rejects zero mint
         if (received != peggedOut || peggedOut == 0) {
             revert IZapErrors.MintMismatchExpected(peggedOut, received);
         }
@@ -40,10 +43,7 @@ abstract contract MinterZapShared_v1 {
         uint256 wrappedCollateralAmount,
         address receiver,
         uint256 minLeveragedOut
-    )
-        internal
-        returns (uint256 leveragedOut)
-    {
+    ) internal returns (uint256 leveragedOut) {
         address minter = _minterAddress();
         address wrappedCollateral = _wrappedCollateralAssetAddress();
         address leveragedToken = IMinter(minter).LEVERAGED_TOKEN();
@@ -54,6 +54,7 @@ abstract contract MinterZapShared_v1 {
 
         uint256 leveragedBalanceAfter = IERC20(leveragedToken).balanceOf(receiver);
         uint256 received = leveragedBalanceAfter - leveragedBalanceBefore;
+        // slither-disable-next-line incorrect-equality — enforce return matches delta and rejects zero mint
         if (received != leveragedOut || leveragedOut == 0) {
             revert IZapErrors.MintMismatchExpected(leveragedOut, received);
         }
@@ -65,10 +66,7 @@ abstract contract MinterZapShared_v1 {
         uint256 peggedAmount,
         address receiver,
         uint256 minStabilityPoolOut
-    )
-        internal
-        returns (uint256 deposited)
-    {
+    ) internal returns (uint256 deposited) {
         if (!_isStabilityPoolAllowed(stabilityPool)) {
             revert IZapErrors.StabilityPoolNotAllowed();
         }

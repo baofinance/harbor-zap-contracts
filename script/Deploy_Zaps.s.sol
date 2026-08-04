@@ -11,10 +11,10 @@ import {HarborZapDeployStack} from "@harborzap-script/src/HarborZapDeployStack.s
 /// @notice State-driven CREATE3 deploy of Harbor zap proxies for one market.
 /// @dev Env:
 ///        MARKET          required market key (e.g. ETH, BTC, GOLD) — namespaces salt + state file
-///        GENESIS_ETH     optional Genesis address for GenesisETHZap_v5 (skip if unset/zero)
-///        GENESIS_USDC    optional Genesis address for GenesisUSDCZap_v5
-///        MINTER_ETH      optional Minter address for MinterETHZap_v4
-///        MINTER_USDC     optional Minter address for MinterUSDCZap_v4
+///        GENESIS_ETH     optional Genesis address for GenesisETHZap_v1 (skip if unset/zero)
+///        GENESIS_USDC    optional Genesis address for GenesisUSDCZap_v1
+///        MINTER_ETH      optional Minter address for MinterETHZap_v1
+///        MINTER_USDC     optional Minter address for MinterUSDCZap_v1
 ///
 /// Usage:
 ///   MARKET=GOLD GENESIS_USDC=0x... forge script script/Deploy_Zaps.s.sol:Deploy_Zaps \
@@ -30,7 +30,10 @@ contract Deploy_Zaps is HarborZapDeployStack, Script {
         address minterEth = vm.envOr("MINTER_ETH", address(0));
         address minterUsdc = vm.envOr("MINTER_USDC", address(0));
         require(
-            genesisEth != address(0) || genesisUsdc != address(0) || minterEth != address(0) || minterUsdc != address(0),
+            genesisEth != address(0) ||
+                genesisUsdc != address(0) ||
+                minterEth != address(0) ||
+                minterUsdc != address(0),
             "set at least one of GENESIS_ETH / GENESIS_USDC / MINTER_ETH / MINTER_USDC"
         );
 
@@ -42,7 +45,7 @@ contract Deploy_Zaps is HarborZapDeployStack, Script {
         console.log("  state: %s", _stateFileRead());
 
         vm.startBroadcast();
-        (, address deployer,) = vm.readCallers();
+        (, address deployer, ) = vm.readCallers();
 
         if (genesisEth != address(0)) {
             deployGenesisEthZap(state, genesisEth, deployer);

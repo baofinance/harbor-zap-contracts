@@ -14,8 +14,10 @@ library ZapIntake {
     using SafeERC20 for IERC20;
 
     /// @notice Pull `amount` from `from` and require the zap's balance increases by exactly `amount`.
+    /// @dev Callers always pass `_msgSender()` / `msg.sender` as `from` (user-initiated pull).
     function pullExact(IERC20 token, address from, uint256 amount) internal returns (uint256 received) {
         uint256 beforeBal = token.balanceOf(address(this));
+        // slither-disable-next-line arbitrary-send-erc20 — `from` is the zap caller (msg.sender / _msgSender)
         token.safeTransferFrom(from, address(this), amount);
         received = token.balanceOf(address(this)) - beforeBal;
         if (received != amount) {
@@ -27,19 +29,20 @@ library ZapIntake {
     /// @dev Use for share-based tokens (stETH) where transfers can round down by 1–2 wei.
     function pullMeasured(IERC20 token, address from, uint256 amount) internal returns (uint256 received) {
         uint256 beforeBal = token.balanceOf(address(this));
+        // slither-disable-next-line arbitrary-send-erc20 — `from` is the zap caller (msg.sender / _msgSender)
         token.safeTransferFrom(from, address(this), amount);
         received = token.balanceOf(address(this)) - beforeBal;
+        // slither-disable-next-line incorrect-equality — zero / over-delivery are hard failures for FoT / rounding
         if (received == 0 || received > amount) {
             revert IZapErrors.UnexpectedAmountIn(amount, received);
         }
     }
 
     /// @notice Refund any balance of `token` above `baseline` to `to` (unspent input after a convert leg).
-    function refundLeftoverAbove(IERC20 token, uint256 baseline, address to) internal returns (uint256 leftover) {
+    function refundLeftoverAbove(IERC20 token, uint256 baseline, address to) internal {
         uint256 bal = token.balanceOf(address(this));
         if (bal > baseline) {
-            leftover = bal - baseline;
-            token.safeTransfer(to, leftover);
+            token.safeTransfer(to, bal - baseline);
         }
     }
 }

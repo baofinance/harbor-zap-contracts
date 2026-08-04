@@ -5,26 +5,26 @@ import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
+import {UnsafeUpgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {GenesisUSDCZap_v5} from "@harborzap/zap/upgradeable/GenesisUSDCZap_v5.sol";
+import {GenesisUSDCZap_v1} from "@harborzap/zap/upgradeable/GenesisUSDCZap_v1.sol";
 import {FxSAVEConstants} from "@harborzap/constants/ethereum/FxSAVEConstants.sol";
 import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
-import {Genesis_v1} from "@harborzap/minter/Genesis_v1.sol";
+import {Genesis_v1} from "@harbor/minter/Genesis_v1.sol";
 import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
 
-import {TestMinterSetUp} from "test/Minter_base.t.sol";
-import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
-import {MockERC20} from "test/mock/MockERC20.sol";
+import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
+import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
 
 /// @dev Calls a selector with no implementation so the zap's `fallback` runs (revert propagates to test)
 interface ITriggerZapFallback {
     function __zapFallbackProbe() external;
 }
 
-contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
-    GenesisUSDCZap_v5 zap;
+contract GenesisUSDCZapV1ForkTest is TestMinterSetUp {
+    GenesisUSDCZap_v1 zap;
     address zapImpl;
     address zapProxy;
     address genesis;
@@ -68,12 +68,13 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
 
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
-        zapImpl = address(new GenesisUSDCZap_v5(genesis));
+        zapImpl = address(new GenesisUSDCZap_v1(genesis));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(GenesisUSDCZap_v5.initialize, (address(this), zapOwner))
+            zapImpl,
+            abi.encodeCall(GenesisUSDCZap_v1.initialize, (address(this), zapOwner))
         );
-        zap = GenesisUSDCZap_v5(payable(zapProxy));
-        vm.label(address(zap), "GenesisUSDCZapV5");
+        zap = GenesisUSDCZap_v1(payable(zapProxy));
+        vm.label(address(zap), "GenesisUSDCZapV1");
 
         // Complete ownership transfer from deployer to zapOwner
         zap.transferOwnership(zapOwner);
@@ -129,8 +130,9 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
     }
 
     function test_ZapName() public view {
-        string memory expectedName =
-            string(abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name()));
+        string memory expectedName = string(
+            abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name())
+        );
         string memory name = zap.zapName();
 
         console.log("Genesis zap name:", name);
@@ -210,7 +212,7 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
             assertEq(diff, 0);
             return;
         }
-        assertLe(diff * 10_000 / basis, maxBps, "preview vs actual relative diff");
+        assertLe((diff * 10_000) / basis, maxBps, "preview vs actual relative diff");
     }
 
     /// @dev Unknown selectors use `FunctionNotFound`, distinct from unsupported previews
@@ -223,7 +225,7 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
 
     function test_Upgrade() public {
         // Deploy new implementation
-        address newImpl = address(new GenesisUSDCZap_v5(genesis));
+        address newImpl = address(new GenesisUSDCZap_v1(genesis));
 
         // Upgrade proxy
         vm.prank(zapOwner);
@@ -243,7 +245,7 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
     }
 
     function test_Upgrade_OnlyOwner() public {
-        address newImpl = address(new GenesisUSDCZap_v5(genesis));
+        address newImpl = address(new GenesisUSDCZap_v1(genesis));
 
         vm.prank(user1);
         vm.expectRevert(IHarborOwnable.Unauthorized.selector);
@@ -281,4 +283,3 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
         assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
     }
 }
-

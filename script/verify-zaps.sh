@@ -132,21 +132,21 @@ for file in "${DEPLOYMENT_FILES[@]}"; do
   case "$contract" in
     GenesisETHZap_v4|GenesisUSDCZap_v4|MinterETHZap_v3|MinterUSDCZap_v3)
       echo "❌ Deployment JSON uses a pre-rename contract label ($contract). This tree ships"
-      echo "   GenesisETHZap_v5, GenesisUSDCZap_v5, MinterETHZap_v4, and MinterUSDCZap_v4."
+      echo "   GenesisETHZap_v1, GenesisUSDCZap_v1, MinterETHZap_v1, and MinterUSDCZap_v1."
       echo "   Either verify from an older git revision, update the JSON after re-deploying, or use the matching sources."
       failed=$((failed + 1))
       continue
       ;;
-    GenesisETHZap_v5)
-      impl_path="src/zap/upgradeable/GenesisETHZap_v5.sol:GenesisETHZap_v5"
+    GenesisETHZap_v1)
+      impl_path="src/zap/upgradeable/GenesisETHZap_v1.sol:GenesisETHZap_v1"
       impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$(jq -r '.constructorArgs.genesis' "$file")")
       ;;
-    GenesisUSDCZap_v5)
-      impl_path="src/zap/upgradeable/GenesisUSDCZap_v5.sol:GenesisUSDCZap_v5"
+    GenesisUSDCZap_v1)
+      impl_path="src/zap/upgradeable/GenesisUSDCZap_v1.sol:GenesisUSDCZap_v1"
       impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$(jq -r '.constructorArgs.genesis' "$file")")
       ;;
-    MinterETHZap_v4)
-      impl_path="src/zap/upgradeable/MinterETHZap_v4.sol:MinterETHZap_v4"
+    MinterETHZap_v1)
+      impl_path="src/zap/upgradeable/MinterETHZap_v1.sol:MinterETHZap_v1"
       if jq -e '.constructorArgs | has("referral")' "$file" >/dev/null 2>&1; then
         impl_ctor_args=$("$CAST" abi-encode "constructor(address,address)" \
           "$(jq -r '.constructorArgs.minter' "$file")" \
@@ -156,8 +156,8 @@ for file in "${DEPLOYMENT_FILES[@]}"; do
           "$(jq -r '.constructorArgs.minter' "$file")")
       fi
       ;;
-    MinterUSDCZap_v4)
-      impl_path="src/zap/upgradeable/MinterUSDCZap_v4.sol:MinterUSDCZap_v4"
+    MinterUSDCZap_v1)
+      impl_path="src/zap/upgradeable/MinterUSDCZap_v1.sol:MinterUSDCZap_v1"
       impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$(jq -r '.constructorArgs.minter' "$file")")
       ;;
     *)

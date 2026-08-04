@@ -31,27 +31,30 @@ abstract contract ConfigFile is Test {
         filename = string.concat("./results/config-", style, ".json");
     }
 
-    function _readIncentiveConfig(string memory json, string memory name)
-        private
-        pure
-        returns (IMinter.IncentiveConfig memory incentiveConfig)
-    {
-        incentiveConfig.collateralRatioBandUpperBounds =
-            stdJson.readUintArray(json, string.concat(".", name, ".collateralRatioBandUpperBounds"));
+    function _readIncentiveConfig(
+        string memory json,
+        string memory name
+    ) private pure returns (IMinter.IncentiveConfig memory incentiveConfig) {
+        incentiveConfig.collateralRatioBandUpperBounds = stdJson.readUintArray(
+            json,
+            string.concat(".", name, ".collateralRatioBandUpperBounds")
+        );
         incentiveConfig.incentiveRatios = stdJson.readIntArray(json, string.concat(".", name, ".incentiveRatios"));
     }
 
-    function _addIncentiveConfig(IMinter.IncentiveConfig memory incentiveConfig, string memory name)
-        private
-        returns (string memory json)
-    {
+    function _addIncentiveConfig(
+        IMinter.IncentiveConfig memory incentiveConfig,
+        string memory name
+    ) private returns (string memory json) {
         json = vm.serializeString(
             "config",
             name,
             vm.serializeUint(name, "collateralRatioBandUpperBounds", incentiveConfig.collateralRatioBandUpperBounds)
         );
         json = vm.serializeString(
-            "config", name, vm.serializeInt(name, "incentiveRatios", incentiveConfig.incentiveRatios)
+            "config",
+            name,
+            vm.serializeInt(name, "incentiveRatios", incentiveConfig.incentiveRatios)
         );
     }
 }

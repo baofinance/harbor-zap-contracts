@@ -7,28 +7,29 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
+import {UnsafeUpgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {MinterUSDCZap_v4} from "@harborzap/zap/upgradeable/MinterUSDCZap_v4.sol";
+import {MinterUSDCZap_v1} from "@harborzap/zap/upgradeable/MinterUSDCZap_v1.sol";
 import {FxSAVEConstants} from "@harborzap/constants/ethereum/FxSAVEConstants.sol";
 import {IMinter} from "@harbor/interfaces/IMinter.sol";
 import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
-import {TestMinterSetUp} from "test/Minter_base.t.sol";
-import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
-import {MockERC20} from "test/mock/MockERC20.sol";
-import {MockStabilityPool} from "test/mock/MockStabilityPool.sol";
+import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
+import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
+import {MockStabilityPool} from "@harborzap-test/mock/MockStabilityPool.sol";
 
 /// @dev Calls a selector with no implementation so the zap's `fallback` runs (revert propagates to test)
 interface ITriggerZapFallback {
     function __zapFallbackProbe() external;
 }
 
-contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
-    bytes32 private constant PERMIT_TYPEHASH =
-        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
-    MinterUSDCZap_v4 zap;
+contract MinterUSDCZapV1ForkTest is TestMinterSetUp {
+    bytes32 private constant PERMIT_TYPEHASH = keccak256(
+        "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+    );
+    MinterUSDCZap_v1 zap;
     address zapImpl;
     address zapProxy;
     address user1;
@@ -68,12 +69,13 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
 
         // Deploy upgradeable zap
         zapOwner = makeAddr("zapOwner");
-        zapImpl = address(new MinterUSDCZap_v4(minter));
+        zapImpl = address(new MinterUSDCZap_v1(minter));
         zapProxy = UnsafeUpgrades.deployUUPSProxy(
-            zapImpl, abi.encodeCall(MinterUSDCZap_v4.initialize, (address(this), zapOwner))
+            zapImpl,
+            abi.encodeCall(MinterUSDCZap_v1.initialize, (address(this), zapOwner))
         );
-        zap = MinterUSDCZap_v4(payable(zapProxy));
-        vm.label(address(zap), "MinterUSDCZapV4");
+        zap = MinterUSDCZap_v1(payable(zapProxy));
+        vm.label(address(zap), "MinterUSDCZapV1");
 
         // Complete ownership transfer from deployer to zapOwner
         zap.transferOwnership(zapOwner);
@@ -224,11 +226,16 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
 
         uint256 fxSaveAmount = 900 * 1e18; // Approximate
         uint256 previewPegged = zap.previewPeggedFromWrappedCollateral(fxSaveAmount);
-        uint256 minPeggedOut = previewPegged * 99 / 100;
-        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+        uint256 minPeggedOut = (previewPegged * 99) / 100;
+        uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100;
 
         (uint256 peggedOut, uint256 deposited) = zap.zapBaseAssetToStabilityPool(
-            usdcAmount, 0, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+            usdcAmount,
+            0,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -263,11 +270,16 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
 
         uint256 fxSaveAmount = 900 * 1e18;
         uint256 previewPegged = zap.previewPeggedFromWrappedCollateral(fxSaveAmount);
-        uint256 minPeggedOut = previewPegged * 99 / 100;
-        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+        uint256 minPeggedOut = (previewPegged * 99) / 100;
+        uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100;
 
         (uint256 peggedOut, uint256 deposited) = zap.zapCollateralToStabilityPool(
-            fxUsdAmount, 0, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+            fxUsdAmount,
+            0,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -288,11 +300,15 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         IERC20(FXSAVE).approve(address(zap), fxSaveAmount);
 
         uint256 previewPegged = zap.previewStabilityPoolFromWrappedCollateral(fxSaveAmount);
-        uint256 minPeggedOut = previewPegged * 99 / 100;
-        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+        uint256 minPeggedOut = (previewPegged * 99) / 100;
+        uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100;
 
         (uint256 peggedOut, uint256 deposited) = zap.zapWrappedCollateralToStabilityPool(
-            fxSaveAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut
+            fxSaveAmount,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut
         );
 
         vm.stopPrank();
@@ -322,18 +338,27 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
 
         uint256 nonce = IERC20Permit(FXSAVE).nonces(userPermit);
         uint256 deadline = block.timestamp + 1 hours;
-        bytes32 structHash =
-            keccak256(abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), fxSaveAmount, nonce, deadline));
+        bytes32 structHash = keccak256(
+            abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), fxSaveAmount, nonce, deadline)
+        );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(FXSAVE).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
 
         uint256 previewPegged = zap.previewStabilityPoolFromWrappedCollateral(fxSaveAmount);
-        uint256 minPeggedOut = previewPegged * 99 / 100;
-        uint256 minStabilityPoolOut = minPeggedOut * 99 / 100;
+        uint256 minPeggedOut = (previewPegged * 99) / 100;
+        uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100;
 
         vm.prank(userPermit);
         (uint256 peggedOut, uint256 deposited) = zap.zapWrappedCollateralToStabilityPoolWithPermit(
-            fxSaveAmount, receiver, minPeggedOut, address(stabilityPool), minStabilityPoolOut, deadline, v, r, s
+            fxSaveAmount,
+            receiver,
+            minPeggedOut,
+            address(stabilityPool),
+            minStabilityPoolOut,
+            deadline,
+            v,
+            r,
+            s
         );
 
         assertGt(peggedOut, 0, "Should mint pegged tokens");
@@ -348,16 +373,15 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
 
         uint256 nonce = IERC20Permit(FXSAVE).nonces(userPermit);
         uint256 deadline = block.timestamp + 1 hours;
-        bytes32 structHash =
-            keccak256(abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), uint256(0), nonce, deadline));
+        bytes32 structHash = keccak256(
+            abi.encode(PERMIT_TYPEHASH, userPermit, address(zap), uint256(0), nonce, deadline)
+        );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(FXSAVE).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
 
         vm.prank(userPermit);
         vm.expectRevert(IZapErrors.ZeroAmount.selector);
-        zap.zapWrappedCollateralToStabilityPoolWithPermit(
-            0, receiver, 0, address(stabilityPool), 0, deadline, v, r, s
-        );
+        zap.zapWrappedCollateralToStabilityPoolWithPermit(0, receiver, 0, address(stabilityPool), 0, deadline, v, r, s);
     }
 
     // ============ Preview Function Tests ============
@@ -401,7 +425,7 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
     function test_PreviewPeggedFromBase_UsesDryRun() public view {
         uint256 usdcAmount = 1000 * 1e6;
         uint256 wrapped = zap.previewWrappedCollateralFromBase(usdcAmount);
-        (,,, uint256 peggedFromDry,,) = IMinter(minter).mintPeggedTokenDryRun(wrapped);
+        (, , , uint256 peggedFromDry, , ) = IMinter(minter).mintPeggedTokenDryRun(wrapped);
         (uint256 peggedOut, uint256 wrappedOut) = zap.previewPeggedFromBase(usdcAmount);
         assertEq(wrappedOut, wrapped);
         assertEq(peggedOut, peggedFromDry);
@@ -438,14 +462,14 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
             assertEq(diff, 0);
             return;
         }
-        assertLe(diff * 10_000 / basis, maxBps, "preview vs actual relative diff");
+        assertLe((diff * 10_000) / basis, maxBps, "preview vs actual relative diff");
     }
 
     function _wrappedFromBaseAssetZapEvent(Vm.Log[] memory logs) internal pure returns (uint256 wrapped) {
         bytes32 sig = keccak256("BaseAssetZappedToPegged(address,address,address,uint256,uint256,uint256)");
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == sig) {
-                (, wrapped,) = abi.decode(logs[i].data, (uint256, uint256, uint256));
+                (, wrapped, ) = abi.decode(logs[i].data, (uint256, uint256, uint256));
                 return wrapped;
             }
         }
@@ -456,7 +480,7 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         bytes32 sig = keccak256("CollateralZappedToPegged(address,address,address,uint256,uint256,uint256)");
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == sig) {
-                (, wrapped,) = abi.decode(logs[i].data, (uint256, uint256, uint256));
+                (, wrapped, ) = abi.decode(logs[i].data, (uint256, uint256, uint256));
                 return wrapped;
             }
         }
@@ -472,7 +496,7 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
 
     function test_Upgrade() public {
         // Deploy new implementation
-        address newImpl = address(new MinterUSDCZap_v4(minter));
+        address newImpl = address(new MinterUSDCZap_v1(minter));
 
         // Upgrade proxy
         vm.prank(zapOwner);
@@ -492,7 +516,7 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
     }
 
     function test_Upgrade_OnlyOwner() public {
-        address newImpl = address(new MinterUSDCZap_v4(minter));
+        address newImpl = address(new MinterUSDCZap_v1(minter));
 
         vm.prank(user1);
         vm.expectRevert(IHarborOwnable.Unauthorized.selector);
@@ -552,4 +576,3 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
     }
 }
-

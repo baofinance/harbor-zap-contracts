@@ -4,10 +4,10 @@ set -euo pipefail
 # Harbor Zaps Deployment Script (CREATE3 + BaoFactory)
 #
 # Deploys/checks/verifies implementations and ERC1967 proxies for the four zaps:
-# - GenesisETHZap_v5
-# - GenesisUSDCZap_v5
-# - MinterETHZap_v4
-# - MinterUSDCZap_v4
+# - GenesisETHZap_v1
+# - GenesisUSDCZap_v1
+# - MinterETHZap_v1
+# - MinterUSDCZap_v1
 #
 # Uses CREATE3 via BaoFactory and records deployments in a state file.
 
@@ -396,19 +396,19 @@ predict_address() {
 
 contract_id_for_zap() {
   case "$1" in
-    genesis-eth) echo "src/zap/upgradeable/GenesisETHZap_v5.sol:GenesisETHZap_v5" ;;
-    genesis-usdc) echo "src/zap/upgradeable/GenesisUSDCZap_v5.sol:GenesisUSDCZap_v5" ;;
-    minter-eth) echo "src/zap/upgradeable/MinterETHZap_v4.sol:MinterETHZap_v4" ;;
-    minter-usdc) echo "src/zap/upgradeable/MinterUSDCZap_v4.sol:MinterUSDCZap_v4" ;;
+    genesis-eth) echo "src/zap/upgradeable/GenesisETHZap_v1.sol:GenesisETHZap_v1" ;;
+    genesis-usdc) echo "src/zap/upgradeable/GenesisUSDCZap_v1.sol:GenesisUSDCZap_v1" ;;
+    minter-eth) echo "src/zap/upgradeable/MinterETHZap_v1.sol:MinterETHZap_v1" ;;
+    minter-usdc) echo "src/zap/upgradeable/MinterUSDCZap_v1.sol:MinterUSDCZap_v1" ;;
   esac
 }
 
 contract_name_for_zap() {
   case "$1" in
-    genesis-eth) echo "GenesisETHZap_v5" ;;
-    genesis-usdc) echo "GenesisUSDCZap_v5" ;;
-    minter-eth) echo "MinterETHZap_v4" ;;
-    minter-usdc) echo "MinterUSDCZap_v4" ;;
+    genesis-eth) echo "GenesisETHZap_v1" ;;
+    genesis-usdc) echo "GenesisUSDCZap_v1" ;;
+    minter-eth) echo "MinterETHZap_v1" ;;
+    minter-usdc) echo "MinterUSDCZap_v1" ;;
   esac
 }
 

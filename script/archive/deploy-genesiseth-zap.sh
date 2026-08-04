@@ -178,10 +178,10 @@ verify_contract() {
   fi
 }
 
-echo "=== Deploying GenesisETHZap_v5 (UUPS) ==="
+echo "=== Deploying GenesisETHZap_v1 (UUPS) ==="
 echo ""
 
-IMPLEMENTATION_PATH="src/zap/upgradeable/GenesisETHZap_v5.sol:GenesisETHZap_v5"
+IMPLEMENTATION_PATH="src/zap/upgradeable/GenesisETHZap_v1.sol:GenesisETHZap_v1"
 PROXY_PATH="lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy"
 
 IMPL_LOG=$(mktemp "${TMPDIR:-/tmp}/zap-impl.XXXXXX")
@@ -225,7 +225,7 @@ fi
 echo "✅ Proxy deployed: $proxy_address"
 echo ""
 
-if ! verify_contract "$impl_address" "$IMPLEMENTATION_PATH" "$impl_ctor_args" "GenesisETHZap_v5 implementation"; then
+if ! verify_contract "$impl_address" "$IMPLEMENTATION_PATH" "$impl_ctor_args" "GenesisETHZap_v1 implementation"; then
   exit 1
 fi
 proxy_ctor_args=$("$CAST" abi-encode "constructor(address,bytes)" "$impl_address" "$init_data")
@@ -247,7 +247,7 @@ cat > "$DEPLOYMENT_FILE" <<EOF
   "chainId": ${EXPECTED_CHAIN_ID},
   "chainName": "${DEPLOYMENT_CHAIN_NAME}",
 ${NOTE_JSON}  "deploymentTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "contract": "GenesisETHZap_v5",
+  "contract": "GenesisETHZap_v1",
   "implementation": "$impl_address",
   "proxy": "$proxy_address",
   "constructorArgs": {

@@ -12,7 +12,10 @@ interface IFxUSDDiamondV2 {
         bytes signature;
     }
 
-    function depositToFxSave(ConvertInParams memory params, address tokenOut, uint256 minShares, address receiver)
-        external
-        payable;
+    function depositToFxSave(
+        ConvertInParams memory params,
+        address tokenOut,
+        uint256 minShares,
+        address receiver
+    ) external payable;
 }

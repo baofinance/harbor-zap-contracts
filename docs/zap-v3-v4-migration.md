@@ -1,8 +1,8 @@
-# Zap integrator migration guide: production v3/v4 → branch v4/v5
+# Zap integrator migration guide: production v3/v4 → branch v1
 
-Production mainnet today uses **Minter v3** and **Genesis v4**. The `refactor-upgradeable` branch ships **Minter v4** and **Genesis v5**. Core zap math is preserved; the integration surface is not backward compatible.
+Production mainnet today uses **Minter v3** and **Genesis v4**. The `refactor-upgradeable` branch ships a **new `_v1` implementation family** (Minter + Genesis ETH/USDC). Core zap math is preserved; the integration surface is not backward compatible.
 
-Deploy v4/v5 as **new proxies**. See [zap-storage-layout-upgrade.md](./zap-storage-layout-upgrade.md) for why in-place UUPS upgrade is unsafe.
+Deploy branch v1 as **new proxies**. See [zap-storage-layout-upgrade.md](./zap-storage-layout-upgrade.md) for why in-place UUPS upgrade is unsafe.
 
 ---
 
@@ -10,18 +10,18 @@ Deploy v4/v5 as **new proxies**. See [zap-storage-layout-upgrade.md](./zap-stora
 
 | Contract | API change severity | Indexer change | Notes |
 |----------|--------------------|----------------|-------|
-| `MinterUSDCZap_v4` | Low–medium | Medium | Same function names; removed legacy getters; previews no longer revert |
-| `GenesisUSDCZap_v5` | Low | Low–medium | Same entrypoints; event adds two trailing zero fields |
-| `MinterETHZap_v4` | **High** | Medium | Renamed ETH entrypoints; new slippage args |
-| `GenesisETHZap_v5` | **High** | **High** | Renamed ETH entrypoint; event shape changed; param reorder |
+| `MinterUSDCZap_v1` | Low–medium | Medium | Same function names; removed legacy getters; previews no longer revert |
+| `GenesisUSDCZap_v1` | Low | Low–medium | Same entrypoints; event adds two trailing zero fields |
+| `MinterETHZap_v1` | **High** | Medium | Renamed ETH entrypoints; new slippage args |
+| `GenesisETHZap_v1` | **High** | **High** | Renamed ETH entrypoint; event shape changed; param reorder |
 
 ---
 
-## MinterETHZap_v3 → MinterETHZap_v4
+## MinterETHZap_v3 → MinterETHZap_v1
 
 ### Function renames (ETH payable paths)
 
-| v3 | v4 |
+| production v3 | branch v1 |
 |----|-----|
 | `zapBaseAssetToPegged(receiver, minPeggedOut)` | `zapNativeAssetToPegged(minWrappedCollateralOut, receiver, minPeggedOut)` |
 | `zapBaseAssetToLeveraged(receiver, minLeveragedOut)` | `zapNativeAssetToLeveraged(minWrappedCollateralOut, receiver, minLeveragedOut)` |
@@ -33,7 +33,7 @@ All `zapCollateralTo*` and collateral `*WithPermit` functions gain `minWrappedCo
 
 ### Initialization
 
-| v3 | v4 |
+| production v3 | branch v1 |
 |----|-----|
 | `initialize(deployerOwner, pendingOwner, referral_)` | `initialize(deployerOwner, pendingOwner)` |
 
@@ -49,7 +49,7 @@ Production deployments passed `referral = address(0)` at deploy, which resolved 
 
 ### Events
 
-| v3 | v4 |
+| production v3 | branch v1 |
 |----|-----|
 | `BaseAssetZappedToLeverage(...)` | `BaseAssetZappedToLeveraged(...)` — **new topic** |
 
@@ -57,7 +57,7 @@ Other minter zap events keep the same field layout (now emitted from `MinterZapB
 
 ### Errors
 
-| v3 | v4 |
+| production v3 | branch v1 |
 |----|-----|
 | `MintFailed()` | `MintMismatchExpected(uint256 expected, uint256 received)` |
 | `SlippageExceeded()` | `SlippageTooHighWrappedCollateral(uint256 received, uint256 minimum)` |
@@ -65,7 +65,7 @@ Other minter zap events keep the same field layout (now emitted from `MinterZapB
 
 ---
 
-## MinterUSDCZap_v3 → MinterUSDCZap_v4
+## MinterUSDCZap_v3 → MinterUSDCZap_v1
 
 ### Entrypoints
 
@@ -73,7 +73,7 @@ All `zapBaseAssetTo*`, `zapCollateralTo*`, permit variants, previews, rescue, an
 
 ### Removed getters
 
-| v3 | v4 |
+| production v3 | branch v1 |
 |----|-----|
 | `USDC()` | Use `BASE_ASSET()` |
 | `FXUSD()` | Use `COLLATERAL_ASSET()` |
@@ -91,11 +91,11 @@ Same changes as Minter ETH (`BaseAssetZappedToLeveraged`, `MintMismatchExpected`
 
 ---
 
-## GenesisETHZap_v4 → GenesisETHZap_v5
+## GenesisETHZap_v4 → GenesisETHZap_v1
 
 ### Function renames
 
-| v4 | v5 |
+| production v4 | branch v1 |
 |----|-----|
 | `zapBaseAsset(receiver, minWst, minBaseEquiv)` payable | `zapNativeAsset(receiver, minWst, minBaseEquiv)` payable |
 
@@ -128,7 +128,7 @@ event ZappedBaseAsset(address indexed user, address indexed genesis, address ind
 
 ---
 
-## GenesisUSDCZap_v4 → GenesisUSDCZap_v5
+## GenesisUSDCZap_v4 → GenesisUSDCZap_v1
 
 ### Entrypoints
 
@@ -150,10 +150,10 @@ Update deploy scripts and env to target v4/v5 contract names:
 
 | Script | Contract |
 |--------|----------|
-| `script/deploy-mintereth-zap-unsalted.sh` | `MinterETHZap_v4` |
-| `script/deploy-minterusdc-zap-unsalted.sh` | `MinterUSDCZap_v4` |
-| `script/deploy-genesiseth-zap-unsalted.sh` | `GenesisETHZap_v5` |
-| `script/deploy-genesisusdc-zap-unsalted.sh` | `GenesisUSDCZap_v5` |
+| `script/deploy-mintereth-zap-unsalted.sh` | `MinterETHZap_v1` |
+| `script/deploy-minterusdc-zap-unsalted.sh` | `MinterUSDCZap_v1` |
+| `script/deploy-genesiseth-zap-unsalted.sh` | `GenesisETHZap_v1` |
+| `script/deploy-genesisusdc-zap-unsalted.sh` | `GenesisUSDCZap_v1` |
 
 Constructor args:
 
