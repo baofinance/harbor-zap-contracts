@@ -5,17 +5,18 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@harbor/utils/upgradeable/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
-import {BaoOwnable} from "@bao/BaoOwnable.sol";
+import {HarborOwnable} from "@bao/HarborOwnable.sol";
+import {TokenHolder_v2} from "@bao/TokenHolder_v2.sol";
 import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
-import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
-import {IGenesisZapV5BaseErc20} from "@harbor/interfaces/IGenesisZapV5BaseErc20.sol";
-import {IGenesisZapV5Common} from "@harbor/interfaces/IGenesisZapV5Common.sol";
-import {GenesisZapBase_v1} from "@harborzap/base/GenesisZapBase_v1.sol";
-import {FxUSDZapNetworkConfig} from "@harborzap/config/FxUSDZapNetworkConfig.sol";
-import {FxUSDZapBase_v1} from "@harborzap/asset/FxUSDZapBase_v1.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
+import {IGenesisZapV5BaseErc20} from "@harborzap/interfaces/IGenesisZapV5BaseErc20.sol";
+import {IGenesisZapV5Common} from "@harborzap/interfaces/IGenesisZapV5Common.sol";
+import {GenesisZapBase_v1} from "@harborzap/zap/upgradeable/base/GenesisZapBase_v1.sol";
+import {ZapIntake} from "@harborzap/zap/upgradeable/base/ZapIntake.sol";
+import {FxUSDZapNetworkConfig} from "@harborzap/zap/upgradeable/config/FxUSDZapNetworkConfig.sol";
+import {FxUSDZapBase_v1} from "@harborzap/zap/upgradeable/asset/FxUSDZapBase_v1.sol";
 
 /// @title GenesisUSDCZapV5 - Production Ready
 /// @notice One-click zapper for depositing base asset or collateral into Genesis via wrapped collateral
@@ -29,8 +30,8 @@ contract GenesisUSDCZap_v5 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
-    ReentrancyGuardTransient,
-    BaoOwnable,
+    HarborOwnable,
+    TokenHolder_v2,
     GenesisZapBase_v1,
     FxUSDZapBase_v1,
     IGenesisZapV5Common,
@@ -98,7 +99,6 @@ contract GenesisUSDCZap_v5 is
     /// @param pendingOwner Address eligible to complete ownership transfer
     function initialize(address deployerOwner, address pendingOwner) external initializer {
         _initializeOwner(deployerOwner, pendingOwner);
-        __UUPSUpgradeable_init();
         __Context_init();
     }
 
@@ -295,12 +295,16 @@ contract GenesisUSDCZap_v5 is
             revert IZapErrors.ZapTokenInNotSupported(tokenIn);
         }
 
-        IERC20(tokenIn).safeTransferFrom(_msgSender(), address(this), amountIn);
+        uint256 baseline = IERC20(tokenIn).balanceOf(address(this));
+        uint256 received = ZapIntake.pullExact(IERC20(tokenIn), _msgSender(), amountIn);
 
         wrappedCollateralReceived = _convertToWrappedCollateral(
-            tokenIn, amountIn, minWrappedCollateralOut
+            tokenIn, received, minWrappedCollateralOut
         );
         _depositToGenesis(wrappedCollateralReceived, receiver);
+
+        // Refund any unspent input (fee-on-transfer already rejected; this covers partial venue consume).
+        ZapIntake.refundLeftoverAbove(IERC20(tokenIn), baseline, _msgSender());
 
         // Clean approvals
         _safeApprove(IERC20(tokenIn), COLLATERAL_MANAGER, 0);
@@ -417,15 +421,20 @@ contract GenesisUSDCZap_v5 is
         if (!success) revert IZapErrors.NativeTransferFailed();
     }
 
-    /// @notice Rescue any ERC20 (except base/collateral/wrapped collateral/Genesis)
+    /// @notice Rescue any ERC20 (except base/collateral/wrapped collateral/Genesis). Prefer `sweep`.
     function rescueToken(address token) external onlyOwner {
+        _sweep(token, IERC20(token).balanceOf(address(this)), owner());
+    }
+
+    /// @dev Blocks sweeping protocol-critical tokens (same denylist as legacy `rescueToken`).
+    function _sweep(address token, uint256 amount, address receiver) internal override {
         if (
             token == BASE_ASSET || token == COLLATERAL_ASSET || token == WRAPPED_COLLATERAL_ASSET
                 || token == GENESIS
         ) {
             revert IZapErrors.CannotRescueProtectedToken(token);
         }
-        IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
+        super._sweep(token, amount, receiver);
     }
 
     // =============================================================

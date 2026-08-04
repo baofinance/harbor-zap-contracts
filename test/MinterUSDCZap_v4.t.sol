@@ -9,10 +9,11 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {MinterUSDCZap_v4} from "@harborzap/MinterUSDCZap_v4.sol";
-import {FxSAVEConstants} from "@harbor/constants/ethereum/FxSAVEConstants.sol";
+import {MinterUSDCZap_v4} from "@harborzap/zap/upgradeable/MinterUSDCZap_v4.sol";
+import {FxSAVEConstants} from "@harborzap/constants/ethereum/FxSAVEConstants.sol";
 import {IMinter} from "@harbor/interfaces/IMinter.sol";
-import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
+import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
@@ -494,7 +495,7 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         address newImpl = address(new MinterUSDCZap_v4(minter));
 
         vm.prank(user1);
-        vm.expectRevert();
+        vm.expectRevert(IHarborOwnable.Unauthorized.selector);
         zap.upgradeToAndCall(newImpl, "");
     }
 
@@ -518,7 +519,7 @@ contract MinterUSDCZapV4ForkTest is TestMinterSetUp {
         address stabilityPool = makeAddr("stabilityPool");
 
         vm.prank(user1);
-        vm.expectRevert();
+        vm.expectRevert(IHarborOwnable.Unauthorized.selector);
         zap.setStabilityPoolAllowed(stabilityPool, true);
     }
 

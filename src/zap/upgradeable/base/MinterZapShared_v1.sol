@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IMinter} from "@harbor/interfaces/IMinter.sol";
 import {IStabilityPool} from "@harbor/interfaces/IStabilityPool.sol";
-import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
 /// @notice Shared internal mint/deposit logic for minter zaps.
 /// @dev This is a refactor helper to reduce drift across ETH/USDC minter zaps.

@@ -7,18 +7,19 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@harbor/utils/upgradeable/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
-import {BaoOwnable} from "@bao/BaoOwnable.sol";
+import {HarborOwnable} from "@bao/HarborOwnable.sol";
+import {TokenHolder_v2} from "@bao/TokenHolder_v2.sol";
 import {IMinter} from "@harbor/interfaces/IMinter.sol";
-import {IWstETHView} from "@harbor/interfaces/IWstETH.sol";
-import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
-import {IMinterZapV4BaseNative} from "@harbor/interfaces/IMinterZapV4BaseNative.sol";
-import {IMinterZapV4Common} from "@harbor/interfaces/IMinterZapV4Common.sol";
-import {StETHZapNetworkConfig} from "@harborzap/config/StETHZapNetworkConfig.sol";
-import {MinterZapBase_v1} from "@harborzap/base/MinterZapBase_v1.sol";
-import {StETHZapBase_v1} from "@harborzap/asset/StETHZapBase_v1.sol";
+import {IWstETHView} from "@harborzap/interfaces/IWstETH.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
+import {IMinterZapV4BaseNative} from "@harborzap/interfaces/IMinterZapV4BaseNative.sol";
+import {IMinterZapV4Common} from "@harborzap/interfaces/IMinterZapV4Common.sol";
+import {StETHZapNetworkConfig} from "@harborzap/zap/upgradeable/config/StETHZapNetworkConfig.sol";
+import {MinterZapBase_v1} from "@harborzap/zap/upgradeable/base/MinterZapBase_v1.sol";
+import {ZapIntake} from "@harborzap/zap/upgradeable/base/ZapIntake.sol";
+import {StETHZapBase_v1} from "@harborzap/zap/upgradeable/asset/StETHZapBase_v1.sol";
 
 /// @title MinterETHZapV4
 /// @notice One-click zapper for minting pegged or leveraged tokens with base asset or collateral via wrapped collateral
@@ -33,8 +34,8 @@ contract MinterETHZap_v4 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
-    ReentrancyGuardTransient,
-    BaoOwnable,
+    HarborOwnable,
+    TokenHolder_v2,
     MinterZapBase_v1,
     StETHZapBase_v1,
     IMinterZapV4Common,
@@ -121,7 +122,6 @@ contract MinterETHZap_v4 is
     /// @param pendingOwner Address eligible to complete ownership transfer
     function initialize(address deployerOwner, address pendingOwner) external initializer {
         _initializeOwner(deployerOwner, pendingOwner);
-        __UUPSUpgradeable_init();
         __Context_init();
     }
 
@@ -585,9 +585,11 @@ contract MinterETHZap_v4 is
         internal
         returns (uint256 wrappedCollateralAmount)
     {
-        IERC20(COLLATERAL_ASSET).safeTransferFrom(_msgSender(), address(this), collateralAmount);
+        uint256 baseline = IERC20(COLLATERAL_ASSET).balanceOf(address(this));
+        uint256 received = ZapIntake.pullMeasured(IERC20(COLLATERAL_ASSET), _msgSender(), collateralAmount);
         wrappedCollateralAmount =
-            _wrapCollateralToWrappedCollateral(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, collateralAmount);
+            _wrapCollateralToWrappedCollateral(COLLATERAL_ASSET, WRAPPED_COLLATERAL_ASSET, received);
+        ZapIntake.refundLeftoverAbove(IERC20(COLLATERAL_ASSET), baseline, _msgSender());
     }
 
     /// @notice Convert an input token to wrapped collateral (native ETH when `tokenIn == BASE_ASSET`)
@@ -815,14 +817,21 @@ contract MinterETHZap_v4 is
     }
 
     function rescueNativeAsset() external onlyOwner {
-        payable(owner()).transfer(address(this).balance);
+        address to = owner();
+        uint256 amount = address(this).balance;
+        (bool success,) = payable(to).call{value: amount}("");
+        if (!success) revert IZapErrors.NativeTransferFailed();
     }
 
     function rescueToken(address token) external onlyOwner {
+        _sweep(token, IERC20(token).balanceOf(address(this)), owner());
+    }
+
+    function _sweep(address token, uint256 amount, address receiver) internal override {
         if (token == COLLATERAL_ASSET || token == WRAPPED_COLLATERAL_ASSET || token == MINTER) {
             revert IZapErrors.CannotRescueProtectedToken(token);
         }
-        IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
+        super._sweep(token, amount, receiver);
     }
 
     // ============ Safety Functions ============

@@ -275,21 +275,36 @@ Notes:
 ```
 harbor-zap-contracts/
 ├── src/
-│   ├── interfaces/      # Interface definitions
-│   ├── minter/          # Core contracts (Genesis_v1, Minter_v1, ReservePool_v1)
+│   ├── interfaces/      # Zap interfaces (+ symlinks to shared harbor interfaces)
+│   ├── minter/          # Symlinks into lib/harbor (test fixtures / forge linking)
 │   ├── zap/             # Zap contracts (upgradeable)
 │   │   └── upgradeable/ # Upgradeable zap contracts (UUPS proxy)
-│   └── util/            # Utility contracts (ReentrancyGuard, etc.)
+│   ├── constants/       # Chain address constants
+│   └── util/            # Symlink into lib/harbor util (WordCodec)
+├── lib/
+│   ├── harbor/          # baofinance/harbor (Genesis/Minter/ReservePool + shared interfaces)
+│   └── bao-base/        # Bao base + FactoryDeployer
 ├── test/                # Test files
-├── script/              # Utility scripts
+├── script/              # FactoryDeployer CREATE3 deploy + legacy unsalted wrappers
+├── package.json         # bao-base CI/tooling scripts
 └── foundry.toml         # Foundry configuration
 ```
 
 ### Key Dependencies
 
-- OpenZeppelin Contracts (upgradeable)
-- Bao Base Contracts
+- OpenZeppelin Contracts (upgradeable; via bao-base nested OZ for UUPS init / ReentrancyGuard compat)
+- Bao Base Contracts (`HarborOwnable`, FactoryDeployer)
+- `baofinance/harbor` (minter/genesis implementations for tests)
 - Forge Standard Library
+
+### Deploy (salted / CREATE3)
+
+```bash
+script/deploy.sh --network mainnet --market GOLD --genesis-usdc 0x...
+# or: yarn deploy --network mainnet --market GOLD --genesis-usdc 0x...
+```
+
+Legacy unsalted bash wrappers (`script/*-unsalted.sh`) remain available as a fallback.
 ### Where to find function-level examples
 
 The previous long-form user flow examples were removed to keep this README operationally focused.

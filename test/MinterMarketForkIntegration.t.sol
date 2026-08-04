@@ -7,8 +7,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UnsafeUpgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {MinterETHZap_v4} from "@harborzap/MinterETHZap_v4.sol";
-import {MinterUSDCZap_v4} from "@harborzap/MinterUSDCZap_v4.sol";
+import {MinterETHZap_v4} from "@harborzap/zap/upgradeable/MinterETHZap_v4.sol";
+import {MinterUSDCZap_v4} from "@harborzap/zap/upgradeable/MinterUSDCZap_v4.sol";
 import {IMinter} from "@harbor/interfaces/IMinter.sol";
 import {IStabilityPool} from "@harbor/interfaces/IStabilityPool.sol";
 

@@ -31,9 +31,14 @@ fs_permissions = [
   { access = "read", path = "./" },
   { access = "read-write", path = "./results" },
   { access = "read-write", path = "./log" },
+  { access = "read-write", path = "./deployments" },
 ]
 
 gas_limit = "18446744073709551615"
+
+[lint]
+exclude_lints = ["mixed-case-function"]
+lint_on_build = false
 
 # slither building profile - removes vyper
 [profile.novyper]

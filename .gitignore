@@ -12,6 +12,11 @@ results/
 .env
 .env.local
 
+# Node / yarn
+node_modules/
+.yarn/
+yarn-error.log
+
 # IDE
 .vscode/
 .idea/
@@ -22,23 +27,3 @@ results/
 # OS
 .DS_Store
 Thumbs.db
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

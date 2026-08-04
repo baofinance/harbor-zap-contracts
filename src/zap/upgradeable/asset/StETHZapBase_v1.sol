@@ -4,9 +4,9 @@ pragma solidity 0.8.30;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {ISTETHV2, IStETHView} from "@harbor/interfaces/IStETH.sol";
-import {IWstETHWrapV2, IWstETHView} from "@harbor/interfaces/IWstETH.sol";
-import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
+import {ISTETHV2, IStETHView} from "@harborzap/interfaces/IStETH.sol";
+import {IWstETHWrapV2, IWstETHView} from "@harborzap/interfaces/IWstETH.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
 /// @title StETHZapBase_v1
 /// @notice Internal helpers for Lido stETH → wstETH conversion paths (Genesis + Minter zaps).

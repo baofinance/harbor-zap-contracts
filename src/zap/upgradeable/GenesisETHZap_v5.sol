@@ -4,19 +4,20 @@ pragma solidity 0.8.30;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@harbor/utils/upgradeable/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
-import {BaoOwnable} from "@bao/BaoOwnable.sol";
+import {HarborOwnable} from "@bao/HarborOwnable.sol";
+import {TokenHolder_v2} from "@bao/TokenHolder_v2.sol";
 import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
-import {IStETH} from "@harbor/interfaces/IStETH.sol";
-import {IWstETH} from "@harbor/interfaces/IWstETH.sol";
-import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
-import {IGenesisZapV5Native} from "@harbor/interfaces/IGenesisZapV5Native.sol";
-import {IGenesisZapV5Common} from "@harbor/interfaces/IGenesisZapV5Common.sol";
-import {StETHZapNetworkConfig} from "@harborzap/config/StETHZapNetworkConfig.sol";
-import {GenesisZapBase_v1} from "@harborzap/base/GenesisZapBase_v1.sol";
-import {StETHZapBase_v1} from "@harborzap/asset/StETHZapBase_v1.sol";
+import {IStETH} from "@harborzap/interfaces/IStETH.sol";
+import {IWstETH} from "@harborzap/interfaces/IWstETH.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
+import {IGenesisZapV5Native} from "@harborzap/interfaces/IGenesisZapV5Native.sol";
+import {IGenesisZapV5Common} from "@harborzap/interfaces/IGenesisZapV5Common.sol";
+import {StETHZapNetworkConfig} from "@harborzap/zap/upgradeable/config/StETHZapNetworkConfig.sol";
+import {GenesisZapBase_v1} from "@harborzap/zap/upgradeable/base/GenesisZapBase_v1.sol";
+import {ZapIntake} from "@harborzap/zap/upgradeable/base/ZapIntake.sol";
+import {StETHZapBase_v1} from "@harborzap/zap/upgradeable/asset/StETHZapBase_v1.sol";
 
 /// @title GenesisETHZap V5
 /// @notice One-click zapper: base asset or collateral → wrapped collateral → Genesis vault
@@ -30,8 +31,8 @@ contract GenesisETHZap_v5 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
-    ReentrancyGuardTransient,
-    BaoOwnable,
+    HarborOwnable,
+    TokenHolder_v2,
     GenesisZapBase_v1,
     StETHZapBase_v1,
     IGenesisZapV5Common,
@@ -105,7 +106,6 @@ contract GenesisETHZap_v5 is
     /// @param pendingOwner Address eligible to complete ownership transfer
     function initialize(address deployerOwner, address pendingOwner) external initializer {
         _initializeOwner(deployerOwner, pendingOwner);
-        __UUPSUpgradeable_init();
         __Context_init();
     }
 
@@ -177,8 +177,10 @@ contract GenesisETHZap_v5 is
         if (collateralAmount == 0) revert IZapErrors.ZeroAmount();
         if (receiver == address(0)) revert IZapErrors.ZeroAddress();
 
-        IERC20(COLLATERAL_ASSET).safeTransferFrom(_msgSender(), address(this), collateralAmount);
-        sharesOut = _zapCollateralToGenesisCore(collateralAmount, minWrappedCollateralOut, receiver);
+        uint256 baseline = IERC20(COLLATERAL_ASSET).balanceOf(address(this));
+        uint256 received = ZapIntake.pullMeasured(IERC20(COLLATERAL_ASSET), _msgSender(), collateralAmount);
+        sharesOut = _zapCollateralToGenesisCore(received, minWrappedCollateralOut, receiver);
+        ZapIntake.refundLeftoverAbove(IERC20(COLLATERAL_ASSET), baseline, _msgSender());
     }
 
     /// @notice Zap collateral → wrapped collateral → Genesis using permit (single transaction, no approval needed)
@@ -206,8 +208,10 @@ contract GenesisETHZap_v5 is
 
         _permitCollateral(COLLATERAL_ASSET, _msgSender(), collateralAmount, deadline, v, r, s);
 
-        IERC20(COLLATERAL_ASSET).safeTransferFrom(_msgSender(), address(this), collateralAmount);
-        sharesOut = _zapCollateralToGenesisCore(collateralAmount, minWrappedCollateralOut, receiver);
+        uint256 baseline = IERC20(COLLATERAL_ASSET).balanceOf(address(this));
+        uint256 received = ZapIntake.pullMeasured(IERC20(COLLATERAL_ASSET), _msgSender(), collateralAmount);
+        sharesOut = _zapCollateralToGenesisCore(received, minWrappedCollateralOut, receiver);
+        ZapIntake.refundLeftoverAbove(IERC20(COLLATERAL_ASSET), baseline, _msgSender());
     }
 
     function _requireSupportedAsset(address asset) internal view {
@@ -388,12 +392,16 @@ contract GenesisETHZap_v5 is
         if (!success) revert IZapErrors.NativeTransferFailed();
     }
 
-    /// @notice Rescue any ERC20 (except collateral/wrapped collateral/Genesis which should never be stuck)
+    /// @notice Rescue any ERC20 (except collateral/wrapped collateral/Genesis). Prefer `sweep`.
     function rescueToken(address token) external onlyOwner {
+        _sweep(token, IERC20(token).balanceOf(address(this)), owner());
+    }
+
+    function _sweep(address token, uint256 amount, address receiver) internal override {
         if (token == COLLATERAL_ASSET || token == WRAPPED_COLLATERAL_ASSET || token == GENESIS) {
             revert IZapErrors.CannotRescueProtectedToken(token);
         }
-        IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
+        super._sweep(token, amount, receiver);
     }
 
     // =================================================================

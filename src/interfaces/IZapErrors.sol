@@ -76,6 +76,11 @@ interface IZapErrors {
     /// @param token The protected token address that was attempted to rescue
     error CannotRescueProtectedToken(address token);
 
+    /// @notice Thrown when an ERC20 pull delivers a different amount than requested (fee-on-transfer / non-standard token)
+    /// @param expected Amount requested via `transferFrom`
+    /// @param received Actual balance increase observed on this contract
+    error UnexpectedAmountIn(uint256 expected, uint256 received);
+
     /// @notice Thrown when native ETH transfer to owner fails (e.g. non-payable owner contract)
     error NativeTransferFailed();
 

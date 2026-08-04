@@ -7,8 +7,9 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {MinterETHZap_v4} from "@harborzap/MinterETHZap_v4.sol";
-import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
+import {MinterETHZap_v4} from "@harborzap/zap/upgradeable/MinterETHZap_v4.sol";
+import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
@@ -527,7 +528,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         address newImpl = address(new MinterETHZap_v4(minter));
 
         vm.prank(user1);
-        vm.expectRevert();
+        vm.expectRevert(IHarborOwnable.Unauthorized.selector);
         zap.upgradeToAndCall(newImpl, "");
     }
 
@@ -551,7 +552,7 @@ contract MinterETHZapV4ForkTest is TestMinterSetUp {
         address stabilityPool = makeAddr("stabilityPool");
 
         vm.prank(user1);
-        vm.expectRevert();
+        vm.expectRevert(IHarborOwnable.Unauthorized.selector);
         zap.setStabilityPoolAllowed(stabilityPool, true);
     }
 

@@ -14,9 +14,9 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IBaoOwnable} from "@bao/interfaces/IBaoOwnable.sol";
 import {IBaoRoles} from "@bao/interfaces/IBaoRoles.sol";
 
-import {Minter_v1} from "@harbor/minter/Minter_v1.sol";
+import {Minter_v1} from "@harborzap/minter/Minter_v1.sol";
 import {MintableBurnableERC20_v1} from "@bao/MintableBurnableERC20_v1.sol";
-import {ReservePool_v1} from "@harbor/minter/ReservePool_v1.sol";
+import {ReservePool_v1} from "@harborzap/minter/ReservePool_v1.sol";
 
 import {IMinter} from "@harbor/interfaces/IMinter.sol";
 import {Token} from "@bao/Token.sol";

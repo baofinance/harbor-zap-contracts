@@ -7,17 +7,18 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@harbor/utils/upgradeable/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
-import {BaoOwnable} from "@bao/BaoOwnable.sol";
+import {HarborOwnable} from "@bao/HarborOwnable.sol";
+import {TokenHolder_v2} from "@bao/TokenHolder_v2.sol";
 import {IMinter} from "@harbor/interfaces/IMinter.sol";
-import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
-import {IMinterZapV4BaseErc20} from "@harbor/interfaces/IMinterZapV4BaseErc20.sol";
-import {IMinterZapV4Common} from "@harbor/interfaces/IMinterZapV4Common.sol";
-import {MinterZapBase_v1} from "@harborzap/base/MinterZapBase_v1.sol";
-import {FxUSDZapNetworkConfig} from "@harborzap/config/FxUSDZapNetworkConfig.sol";
-import {FxUSDZapBase_v1} from "@harborzap/asset/FxUSDZapBase_v1.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
+import {IMinterZapV4BaseErc20} from "@harborzap/interfaces/IMinterZapV4BaseErc20.sol";
+import {IMinterZapV4Common} from "@harborzap/interfaces/IMinterZapV4Common.sol";
+import {MinterZapBase_v1} from "@harborzap/zap/upgradeable/base/MinterZapBase_v1.sol";
+import {ZapIntake} from "@harborzap/zap/upgradeable/base/ZapIntake.sol";
+import {FxUSDZapNetworkConfig} from "@harborzap/zap/upgradeable/config/FxUSDZapNetworkConfig.sol";
+import {FxUSDZapBase_v1} from "@harborzap/zap/upgradeable/asset/FxUSDZapBase_v1.sol";
 
 /// @title MinterUSDCZapV4
 /// @notice One-click zapper for minting pegged or leveraged tokens with base asset or collateral via wrapped collateral
@@ -31,8 +32,8 @@ contract MinterUSDCZap_v4 is
     Initializable,
     UUPSUpgradeable,
     ContextUpgradeable,
-    ReentrancyGuardTransient,
-    BaoOwnable,
+    HarborOwnable,
+    TokenHolder_v2,
     MinterZapBase_v1,
     FxUSDZapBase_v1,
     IMinterZapV4Common,
@@ -115,7 +116,6 @@ contract MinterUSDCZap_v4 is
     /// @param pendingOwner Address eligible to complete ownership transfer
     function initialize(address deployerOwner, address pendingOwner) external initializer {
         _initializeOwner(deployerOwner, pendingOwner);
-        __UUPSUpgradeable_init();
         __Context_init();
     }
 
@@ -700,7 +700,8 @@ contract MinterUSDCZap_v4 is
         override
         returns (uint256 wrappedCollateralAmount)
     {
-        IERC20(tokenIn).safeTransferFrom(_msgSender(), address(this), amountIn);
+        uint256 baseline = IERC20(tokenIn).balanceOf(address(this));
+        uint256 received = ZapIntake.pullExact(IERC20(tokenIn), _msgSender(), amountIn);
 
         wrappedCollateralAmount = _convertHeldTokenToWrappedCollateral(
             COLLATERAL_MANAGER,
@@ -708,9 +709,11 @@ contract MinterUSDCZap_v4 is
             WRAPPED_COLLATERAL_ASSET,
             CONVERT_SELECTOR,
             tokenIn,
-            amountIn,
+            received,
             minWrappedCollateralOut
         );
+
+        ZapIntake.refundLeftoverAbove(IERC20(tokenIn), baseline, _msgSender());
     }
 
     /// @notice Reset token allowances to zero
@@ -874,17 +877,24 @@ contract MinterUSDCZap_v4 is
     }
 
     function rescueNativeAsset() external onlyOwner {
-        payable(owner()).transfer(address(this).balance);
+        address to = owner();
+        uint256 amount = address(this).balance;
+        (bool success,) = payable(to).call{value: amount}("");
+        if (!success) revert IZapErrors.NativeTransferFailed();
     }
 
     function rescueToken(address token) external onlyOwner {
+        _sweep(token, IERC20(token).balanceOf(address(this)), owner());
+    }
+
+    function _sweep(address token, uint256 amount, address receiver) internal override {
         if (
             token == BASE_ASSET || token == COLLATERAL_ASSET || token == WRAPPED_COLLATERAL_ASSET
                 || token == MINTER
         ) {
             revert IZapErrors.CannotRescueProtectedToken(token);
         }
-        IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
+        super._sweep(token, amount, receiver);
     }
 
     // ============ Safety Functions ============

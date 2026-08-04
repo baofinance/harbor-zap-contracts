@@ -7,10 +7,11 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UnsafeUpgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
-import {GenesisUSDCZap_v5} from "@harborzap/GenesisUSDCZap_v5.sol";
-import {FxSAVEConstants} from "@harbor/constants/ethereum/FxSAVEConstants.sol";
-import {IZapErrors} from "@harbor/interfaces/IZapErrors.sol";
-import {Genesis_v1} from "@harbor/minter/Genesis_v1.sol";
+import {GenesisUSDCZap_v5} from "@harborzap/zap/upgradeable/GenesisUSDCZap_v5.sol";
+import {FxSAVEConstants} from "@harborzap/constants/ethereum/FxSAVEConstants.sol";
+import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
+import {Genesis_v1} from "@harborzap/minter/Genesis_v1.sol";
 import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
 
 import {TestMinterSetUp} from "test/Minter_base.t.sol";
@@ -245,7 +246,7 @@ contract GenesisUSDCZapV5ForkTest is TestMinterSetUp {
         address newImpl = address(new GenesisUSDCZap_v5(genesis));
 
         vm.prank(user1);
-        vm.expectRevert();
+        vm.expectRevert(IHarborOwnable.Unauthorized.selector);
         zap.upgradeToAndCall(newImpl, "");
     }
 
