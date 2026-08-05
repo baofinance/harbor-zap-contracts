@@ -28,6 +28,34 @@ interface IWstETHV2 {
     function getWstETHByStETH(uint256 stEthAmount) external view returns (uint256);
 }
 
+/// @dev Calls a selector with no implementation so the zap's `fallback` runs (revert propagates to test)
+interface ITriggerZapFallback {
+    function __zapFallbackProbe() external;
+}
+
+/// @notice Genesis stand-in reporting a wrapped collateral token the zap was not built for; exercises
+///         the constructor's `WrappedCollateralMismatch` guard.
+contract MockWrongTokenGenesis {
+    address public constant WRAPPED_COLLATERAL_TOKEN = address(0xBEEF);
+}
+
+/// @notice Genesis stand-in that consumes the wrapped collateral 1:1 but credits one share less than
+///         deposited; exercises the zap's `MintMismatchExpected` guard on the deposit path.
+contract MockShortMintGenesis {
+    address public immutable WRAPPED_COLLATERAL_TOKEN;
+    mapping(address => uint256) public balanceOf;
+
+    constructor(address wrappedCollateralToken_) {
+        WRAPPED_COLLATERAL_TOKEN = wrappedCollateralToken_;
+    }
+
+    function deposit(uint256 collateralIn, address receiver) external {
+        // forgefmt: disable-next-item
+        require(IERC20(WRAPPED_COLLATERAL_TOKEN).transferFrom(msg.sender, address(this), collateralIn), "transfer failed");
+        balanceOf[receiver] += collateralIn - 1;
+    }
+}
+
 contract GenesisETHZapV1ForkTest is TestMinterSetUp {
     GenesisETHZap_v1 zap;
     address zapImpl;
@@ -319,5 +347,116 @@ contract GenesisETHZapV1ForkTest is TestMinterSetUp {
         zap.rescueToken(address(token));
 
         assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
+    }
+
+    // ============ Constructor Guard Tests ============
+
+    function test_Constructor_ZeroGenesis() public {
+        // The zap refuses to be built against a zero Genesis address.
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        new GenesisETHZap_v1(address(0));
+    }
+
+    function test_Constructor_WrappedCollateralMismatch() public {
+        // The zap refuses to be built against a Genesis whose wrapped collateral token differs from
+        // the wstETH the zap's network config is compiled for.
+        address wrongGenesis = address(new MockWrongTokenGenesis());
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.WrappedCollateralMismatch.selector, address(0xBEEF), WSTETH));
+        new GenesisETHZap_v1(wrongGenesis);
+    }
+
+    // ============ Negative Path Tests ============
+
+    function test_ZapEth_ZeroAmount() public {
+        // Zapping with no ETH attached must fail closed instead of running the conversion with 0.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
+        zap.zapNativeAsset{value: 0}(receiver, 0, 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapEth_ZeroReceiver() public {
+        // Genesis shares must never be minted to the zero address.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        zap.zapNativeAsset{value: 1 ether}(address(0), 0, 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapEth_SlippageWrappedCollateral() public {
+        // An unsatisfiable wrapped-collateral min-out makes the zap revert rather than deposit less
+        // than the user demanded. The `received` argument derives from the live Lido share rate, so
+        // only the selector is pinned.
+        vm.startPrank(user1);
+        vm.expectPartialRevert(IZapErrors.SlippageTooHighWrappedCollateral.selector);
+        zap.zapNativeAsset{value: 1 ether}(receiver, type(uint256).max, 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapEth_SlippageBaseAssetValue() public {
+        // The independent ETH-equivalent value bound is enforced after the wrapped-collateral bound;
+        // an unsatisfiable value floor reverts even when the wrapped min-out passes.
+        vm.startPrank(user1);
+        vm.expectPartialRevert(IZapErrors.SlippageTooHighBaseAssetValue.selector);
+        zap.zapNativeAsset{value: 1 ether}(receiver, 0, type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function test_ZapStEth_ZeroAmount() public {
+        // A zero collateral amount is rejected before any token pull happens.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
+        zap.zapCollateral(0, 0, receiver);
+        vm.stopPrank();
+    }
+
+    function test_ZapStEth_ZeroReceiver() public {
+        // The receiver guard fires before the stETH pull, so no funds move.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        zap.zapCollateral(1 ether, 0, address(0));
+        vm.stopPrank();
+    }
+
+    function test_ZapStEth_SlippageWrappedCollateral() public {
+        // An unsatisfiable min-out on the stETH path reverts after the pull+wrap, undoing the zap.
+        vm.deal(user1, 10 ether);
+        vm.startPrank(user1);
+        ISTETHV2(STETH).submit{value: 5 ether}(address(0));
+        uint256 stEthAmount = IERC20(STETH).balanceOf(user1);
+        IERC20(STETH).approve(address(zap), stEthAmount);
+
+        vm.expectPartialRevert(IZapErrors.SlippageTooHighWrappedCollateral.selector);
+        zap.zapCollateral(stEthAmount, type(uint256).max, receiver);
+        vm.stopPrank();
+    }
+
+    function test_DepositToGenesis_MintMismatch() public {
+        // Genesis must credit shares exactly 1:1 with the wrapped collateral deposited; a Genesis
+        // that credits less must make the zap revert with MintMismatchExpected instead of silently
+        // shorting the receiver. The mismatch amounts derive from the live Lido wrap, so only the
+        // selector is pinned.
+        address shortGenesis = address(new MockShortMintGenesis(WSTETH));
+        address mismatchZapImpl = address(new GenesisETHZap_v1(shortGenesis));
+        address mismatchZapProxy = UnsafeUpgrades.deployUUPSProxy(
+            mismatchZapImpl,
+            abi.encodeCall(GenesisETHZap_v1.initialize, (address(this), zapOwner))
+        );
+
+        vm.deal(user1, 10 ether);
+        vm.startPrank(user1);
+        ISTETHV2(STETH).submit{value: 5 ether}(address(0));
+        uint256 stEthAmount = IERC20(STETH).balanceOf(user1);
+        IERC20(STETH).approve(mismatchZapProxy, stEthAmount);
+
+        vm.expectPartialRevert(IZapErrors.MintMismatchExpected.selector);
+        GenesisETHZap_v1(payable(mismatchZapProxy)).zapCollateral(stEthAmount, 0, receiver);
+        vm.stopPrank();
+    }
+
+    function test_Fallback_FunctionNotFound() public {
+        // Calls to unknown selectors revert with FunctionNotFound instead of silently succeeding.
+        vm.expectRevert(IZapErrors.FunctionNotFound.selector);
+        ITriggerZapFallback(address(zap)).__zapFallbackProbe();
     }
 }

@@ -60,12 +60,14 @@ abstract contract GenesisZapBase_v1 {
 
         uint256 sharesBefore = IGenesis(genesis).balanceOf(receiver);
 
-        uint256 currentAllowance = IERC20(wrapped).allowance(address(this), genesis);
-        if (currentAllowance < amount) {
-            IERC20(wrapped).forceApprove(genesis, type(uint256).max);
-        }
+        // Exact per-deposit approval (no standing max allowance): wrapped collateral is on the `_sweep`
+        // denylist, so the zap must never leave Genesis with spending power over stuck balances.
+        IERC20(wrapped).forceApprove(genesis, amount);
 
         IGenesis(genesis).deposit(amount, receiver);
+
+        // Genesis consumes the full approval (1:1 deposit); reset defensively in case it ever doesn't.
+        IERC20(wrapped).forceApprove(genesis, 0);
 
         uint256 sharesAfter = IGenesis(genesis).balanceOf(receiver);
         uint256 sharesReceived = sharesAfter - sharesBefore;

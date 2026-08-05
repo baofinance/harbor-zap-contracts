@@ -64,6 +64,9 @@ contract Deploy_Zaps is HarborZapDeployStack, Script {
         _saveState(state);
         vm.stopBroadcast();
 
-        console.log("Done. Multisig should confirm ownership where still pending.");
+        // Ownership is handed to HARBOR_MULTISIG in-run by _transferAllOwnerships (deployer confirms the
+        // pending transfer itself). If the broadcast was interrupted before that step, re-run within 1 hour
+        // of proxy init — the pending transfer expires after that and only a UUPS upgrade can hand off.
+        console.log("Done. Verify owner() == HARBOR_MULTISIG on each deployed proxy.");
     }
 }

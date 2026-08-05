@@ -14,7 +14,7 @@ import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
-import {MockStabilityPool} from "@harborzap-test/mock/MockStabilityPool.sol";
+import {MockStabilityPool, MockMisreportingStabilityPool} from "@harborzap-test/mock/MockStabilityPool.sol";
 
 /// @notice Interface for stETH submit function
 interface ISTETHV2 {
@@ -612,4 +612,87 @@ contract MinterETHZapV1ForkTest is TestMinterSetUp {
 
         assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
     }
+
+    // ============ Constructor Guard Tests ============
+
+    function test_Constructor_ZeroMinter() public {
+        // The zap refuses to be built against a zero Minter address.
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        new MinterETHZap_v1(address(0));
+    }
+
+    // ============ Negative Path Tests ============
+
+    function test_ZapEthToPegged_SlippageWrappedCollateral() public {
+        // An unsatisfiable wrapped-collateral min-out on the ETH→stETH→wrap leg reverts the zap
+        // before any pegged tokens are minted. `received` derives from the live Lido share rate, so
+        // only the selector is pinned.
+        vm.startPrank(user1);
+        vm.expectPartialRevert(IZapErrors.SlippageTooHighWrappedCollateral.selector);
+        zap.zapNativeAssetToPegged{value: 1 ether}(type(uint256).max, receiver, 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapStEthToPegged_ZeroAmount() public {
+        // A zero collateral amount is rejected before any token pull happens.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
+        zap.zapCollateralToPegged(0, 0, receiver, 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapEthToStabilityPool_CollateralMismatch() public {
+        // An allowlisted pool whose ASSET_TOKEN is not the minter's pegged token must be rejected
+        // with the exact expected/actual pair before any deposit is attempted.
+        MockStabilityPool wrongAssetPool = new MockStabilityPool(WSTETH);
+        vm.startPrank(zapOwner);
+        zap.setStabilityPoolAllowed(address(wrongAssetPool), true);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.CollateralMismatch.selector, peggedToken, WSTETH));
+        zap.zapNativeAssetToStabilityPool{value: 1 ether}(0, receiver, 0, address(wrongAssetPool), 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapEthToStabilityPool_DepositFailed_OnMisreportingPool() public {
+        // A pool that consumes the deposit but reports crediting less than 1:1 must make the zap
+        // fail closed with DepositFailed instead of silently shorting the receiver.
+        MockMisreportingStabilityPool misreportingPool = new MockMisreportingStabilityPool(peggedToken);
+        vm.startPrank(zapOwner);
+        zap.setStabilityPoolAllowed(address(misreportingPool), true);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.DepositFailed.selector);
+        zap.zapNativeAssetToStabilityPool{value: 1 ether}(0, receiver, 0, address(misreportingPool), 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapEthToStabilityPool_ZeroPoolAddress() public {
+        // A zero stability pool address is rejected before allowlist lookup or any conversion.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        zap.zapNativeAssetToStabilityPool{value: 1 ether}(0, receiver, 0, address(0), 0);
+        vm.stopPrank();
+    }
+
+    function test_SetStabilityPoolAllowed_ZeroAddress() public {
+        // The allowlist refuses the zero address so a zero entry can never be toggled on.
+        vm.startPrank(zapOwner);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        zap.setStabilityPoolAllowed(address(0), true);
+        vm.stopPrank();
+    }
+
+    function test_Fallback_FunctionNotFound() public {
+        // Calls to unknown selectors revert with FunctionNotFound instead of silently succeeding.
+        vm.expectRevert(IZapErrors.FunctionNotFound.selector);
+        ITriggerMinterZapFallback(address(zap)).__zapFallbackProbe();
+    }
+}
+
+/// @dev Calls a selector with no implementation so the zap's `fallback` runs (revert propagates to test)
+interface ITriggerMinterZapFallback {
+    function __zapFallbackProbe() external;
 }

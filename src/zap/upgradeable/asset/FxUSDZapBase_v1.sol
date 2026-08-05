@@ -14,11 +14,22 @@ abstract contract FxUSDZapBase_v1 {
     using SafeERC20 for IERC20;
 
     /// @dev `tokenIn` balance already in this contract; approves collateral manager (e.g. fxUSD diamond) then deposits to wrapped collateral.
+    ///
+    ///      Conversion short-circuit: we call `depositToFxSave(params, tokenOut = tokenIn, ...)`, and the diamond's
+    ///      `LibRouter.transferInAndConvert` returns before executing `params.target`/`params.data` whenever
+    ///      `params.tokenIn == tokenOut` (fxBASE accepts USDC and fxUSD directly). `params.data` is therefore never
+    ///      executed on any supported path and is left empty on purpose: if a future change ever routes a token where
+    ///      `tokenIn != tokenOut`, the empty calldata makes the router call revert loudly instead of executing a
+    ///      mistyped payload. Build a real `MultiPathConverter.convert(address,uint256,uint256,uint256[])` encoding
+    ///      (see `FxSAVEConstants.CONVERT_SELECTOR`) before enabling such a path.
+    ///
+    ///      `params.target` must still be the approved swap router: the diamond checks `approvedTargets` before the
+    ///      `tokenIn == tokenOut` short-circuit, so passing any other address reverts with `ErrorTargetNotApproved`.
     function _convertHeldTokenToWrappedCollateral(
         address collateralManager,
         address swapRouter,
         address wrappedCollateralAsset,
-        bytes4 convertSelector,
+        bytes4 /* convertSelector — kept for caller ABI parity; payload intentionally not built here */,
         address tokenIn,
         uint256 amountIn,
         uint256 minOut
@@ -26,18 +37,18 @@ abstract contract FxUSDZapBase_v1 {
         IERC20 token = IERC20(tokenIn);
         _safeApprove(token, collateralManager, amountIn);
 
-        bytes memory data = abi.encodeWithSelector(convertSelector, tokenIn, amountIn, minOut, bytes(""));
-
         IFxUSDDiamondV2.ConvertInParams memory params = IFxUSDDiamondV2.ConvertInParams({
             tokenIn: tokenIn,
             amount: amountIn,
             target: swapRouter,
-            data: data,
+            data: "",
             minOut: minOut,
             signature: ""
         });
 
         uint256 balanceBefore = IERC20(wrappedCollateralAsset).balanceOf(address(this));
+        // minShares = 0 is intentional: `params.minOut` and `minShares` are not enforced on the short-circuit path,
+        // so slippage is enforced below on the fxSAVE balance delta actually received by this zap.
         // slither-disable-next-line unused-return — output measured as fxSAVE balance delta
         IFxUSDDiamondV2(collateralManager).depositToFxSave{value: 0}(params, tokenIn, 0, address(this));
         wrappedCollateralReceived = IERC20(wrappedCollateralAsset).balanceOf(address(this)) - balanceBefore;

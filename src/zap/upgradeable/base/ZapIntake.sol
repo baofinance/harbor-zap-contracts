@@ -2,6 +2,7 @@
 pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
@@ -43,6 +44,28 @@ library ZapIntake {
         uint256 bal = token.balanceOf(address(this));
         if (bal > baseline) {
             token.safeTransfer(to, bal - baseline);
+        }
+    }
+
+    /// @notice Consume an ERC-2612 permit from `owner` to this contract, tolerating front-running.
+    /// @dev Permit signatures are public in the mempool; anyone can submit `token.permit` first, consuming
+    ///      the nonce so a bare `permit` call here reverts and the whole zap is griefed for free. Per
+    ///      OpenZeppelin's ERC-2612 guidance the failure is swallowed: if the allowance was in fact granted
+    ///      (front-run with the same signature) the zap proceeds normally, and if it was not, the subsequent
+    ///      `transferFrom` pull reverts with the token's own allowance error.
+    function tryPermit(
+        IERC20Permit token,
+        address owner,
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) internal {
+        try token.permit(owner, address(this), amount, deadline, v, r, s) {
+            return;
+        } catch {
+            // Front-run or already-consumed permit; the transferFrom that follows enforces the allowance.
         }
     }
 }

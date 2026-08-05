@@ -60,6 +60,12 @@ abstract contract MinterZapShared_v1 {
         }
     }
 
+    /// @dev Enforces a strict 1:1 crediting invariant on allowlisted pools: the pool must consume exactly
+    ///      `peggedAmount` and report `deposited == peggedAmount`, otherwise the zap reverts with
+    ///      `DepositFailed`. This is deliberate defense-in-depth — Harbor stability pools are 1:1, and a
+    ///      pool that ever fees/rounds (e.g. after an upgrade) should fail closed rather than silently
+    ///      short the receiver. `minStabilityPoolOut` is only forwarded to the pool's own deposit check;
+    ///      the user's outcome is already bounded by `minPeggedOut` upstream.
     function _sharedDepositToStabilityPool(
         address peggedToken,
         address stabilityPool,

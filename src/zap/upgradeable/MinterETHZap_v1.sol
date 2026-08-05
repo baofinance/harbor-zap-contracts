@@ -282,7 +282,7 @@ contract MinterETHZap_v1 is
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromBase with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
-    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
+    /// @param minStabilityPoolOut Forwarded to the pool's own `deposit` min-out check. The zap independently requires the pool to credit exactly 1:1 (no fees/rounding) and reverts with `DepositFailed` otherwise, so `minPeggedOut` already bounds the outcome; passing `minPeggedOut` (or 0) is sufficient.
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
     function zapNativeAssetToStabilityPool(
@@ -328,7 +328,7 @@ contract MinterETHZap_v1 is
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromCollateral with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
-    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
+    /// @param minStabilityPoolOut Forwarded to the pool's own `deposit` min-out check. The zap independently requires the pool to credit exactly 1:1 (no fees/rounding) and reverts with `DepositFailed` otherwise, so `minPeggedOut` already bounds the outcome; passing `minPeggedOut` (or 0) is sufficient.
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
     function zapCollateralToStabilityPool(
@@ -370,7 +370,7 @@ contract MinterETHZap_v1 is
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromWrappedCollateral with slippage buffer)
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
-    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
+    /// @param minStabilityPoolOut Forwarded to the pool's own `deposit` min-out check. The zap independently requires the pool to credit exactly 1:1 (no fees/rounding) and reverts with `DepositFailed` otherwise, so `minPeggedOut` already bounds the outcome; passing `minPeggedOut` (or 0) is sufficient.
     /// @return peggedOut Amount of pegged tokens minted
     /// @return deposited Amount deposited into StabilityPool
     function zapWrappedCollateralToStabilityPool(
@@ -500,7 +500,7 @@ contract MinterETHZap_v1 is
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
-    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
+    /// @param minStabilityPoolOut Forwarded to the pool's own `deposit` min-out check. The zap independently requires the pool to credit exactly 1:1 (no fees/rounding) and reverts with `DepositFailed` otherwise, so `minPeggedOut` already bounds the outcome; passing `minPeggedOut` (or 0) is sufficient.
     /// @param deadline Permit signature deadline
     /// @param v Permit signature v component
     /// @param r Permit signature r component
@@ -554,7 +554,7 @@ contract MinterETHZap_v1 is
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive
     /// @param stabilityPool StabilityPool address to deposit pegged tokens into
-    /// @param minStabilityPoolOut Minimum amount to deposit into StabilityPool (required by StabilityPool interface, but since stability pools don't incur fees, should equal peggedOut minus small rounding buffer ~0.1%)
+    /// @param minStabilityPoolOut Forwarded to the pool's own `deposit` min-out check. The zap independently requires the pool to credit exactly 1:1 (no fees/rounding) and reverts with `DepositFailed` otherwise, so `minPeggedOut` already bounds the outcome; passing `minPeggedOut` (or 0) is sufficient.
     /// @param deadline Permit signature deadline
     /// @param v Permit signature v component
     /// @param r Permit signature r component
@@ -622,7 +622,7 @@ contract MinterETHZap_v1 is
     /// @param r Permit signature r
     /// @param s Permit signature s
     function _permitWrappedCollateral(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
-        IERC20Permit(WRAPPED_COLLATERAL_ASSET).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+        ZapIntake.tryPermit(IERC20Permit(WRAPPED_COLLATERAL_ASSET), _msgSender(), amount, deadline, v, r, s);
     }
 
     /// @notice Convert base asset to wrapped collateral via collateral

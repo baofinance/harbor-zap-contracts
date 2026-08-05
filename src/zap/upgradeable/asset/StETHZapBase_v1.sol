@@ -7,6 +7,7 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {ISTETHV2, IStETHView} from "@harborzap/interfaces/IStETH.sol";
 import {IWstETHWrapV2, IWstETHView} from "@harborzap/interfaces/IWstETH.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
+import {ZapIntake} from "@harborzap/zap/upgradeable/base/ZapIntake.sol";
 
 /// @title StETHZapBase_v1
 /// @notice Internal helpers for Lido stETH → wstETH conversion paths (Genesis + Minter zaps).
@@ -53,7 +54,7 @@ abstract contract StETHZapBase_v1 {
         bytes32 r,
         bytes32 s
     ) internal {
-        IERC20Permit(collateral).permit(owner, address(this), amount, deadline, v, r, s);
+        ZapIntake.tryPermit(IERC20Permit(collateral), owner, amount, deadline, v, r, s);
     }
 
     /// @dev View-only: base asset amount → wrapped collateral if routed via collateral (Lido + wrap math).

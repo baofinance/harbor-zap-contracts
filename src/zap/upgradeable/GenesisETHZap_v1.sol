@@ -116,10 +116,14 @@ contract GenesisETHZap_v1 is
 
     /// @notice Zap native base asset (ETH) → collateral → wrapped collateral → Genesis in one transaction
     /// @dev Emits `ZappedBaseAsset` (see `GenesisZapBase_v1`) for indexer parity with `GenesisUSDCZap_v1`; there is no `zapBaseAsset` on this contract.
-    ///      Slippage protection against front-running/MEV.
+    ///      Note on the min-out checks: this path has no market execution (Lido `submit` credits stETH 1:1,
+    ///      wrap is rate-based), so there is nothing to sandwich. Both bounds only guard against stETH
+    ///      share-rate drift between preview and execution (typically a daily rebase, well under 0.1%) and
+    ///      act as sanity checks on the Lido/wstETH contracts; they derive from the same wrapped amount, so
+    ///      setting either one is sufficient.
     /// @param receiver Address receiving Genesis vault shares
-    /// @param minWrappedCollateralOut Minimum acceptable wrapped collateral (use preview for 0.1-0.5% buffer)
-    /// @param minBaseAssetEquivalentOut Minimum acceptable base asset value (slippage protection)
+    /// @param minWrappedCollateralOut Minimum acceptable wrapped collateral out (from preview; 0 skips)
+    /// @param minBaseAssetEquivalentOut Minimum ETH-equivalent value of the wrapped collateral (0 skips)
     /// @return sharesOut Exact amount of Genesis shares minted
     function zapNativeAsset(
         address receiver,

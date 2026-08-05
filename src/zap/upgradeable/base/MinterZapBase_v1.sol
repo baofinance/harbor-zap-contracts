@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {IMinter} from "@harbor/interfaces/IMinter.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 import {MinterZapShared_v1} from "@harborzap/zap/upgradeable/base/MinterZapShared_v1.sol";
@@ -12,8 +13,10 @@ import {ZapIntake} from "@harborzap/zap/upgradeable/base/ZapIntake.sol";
 /// @title MinterZapBase_v1
 /// @notice Storage-free template for minter zaps: shared zap pipeline + mint/stability helpers.
 /// @dev Child contracts supply conversion, asset checks, and allowance resets.
+///      Inherits `ContextUpgradeable` (stateless) so sender resolution uses `_msgSender()` consistently
+///      with the concrete zaps — a future trusted-forwarder override applies here too.
 // solhint-disable-next-line contract-name-capwords
-abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
+abstract contract MinterZapBase_v1 is ContextUpgradeable, MinterZapShared_v1 {
     using SafeERC20 for IERC20;
 
     // --- Shared events (ETH and USDC minter zaps emit identical topics) ---
@@ -143,7 +146,7 @@ abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
         uint256 inputBaseline;
         if (tokenIn == wrapped) {
             inputBaseline = IERC20(wrapped).balanceOf(address(this));
-            wrappedCollateralAmount = ZapIntake.pullExact(IERC20(wrapped), msg.sender, amountIn);
+            wrappedCollateralAmount = ZapIntake.pullExact(IERC20(wrapped), _msgSender(), amountIn);
             if (wrappedCollateralAmount < minWrappedCollateralOut) {
                 revert IZapErrors.SlippageTooHighWrappedCollateral(wrappedCollateralAmount, minWrappedCollateralOut);
             }
@@ -156,7 +159,7 @@ abstract contract MinterZapBase_v1 is MinterZapShared_v1 {
         deposited = _depositToStabilityPool(peggedToken, stabilityPool, peggedOut, receiver, minStabilityPoolOut);
         if (tokenIn == wrapped) {
             // Refund any unspent wrapped collateral (should be zero on the happy path).
-            ZapIntake.refundLeftoverAbove(IERC20(wrapped), inputBaseline, msg.sender);
+            ZapIntake.refundLeftoverAbove(IERC20(wrapped), inputBaseline, _msgSender());
         }
         _resetAllowances();
     }

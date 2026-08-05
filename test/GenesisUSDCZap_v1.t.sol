@@ -23,6 +23,12 @@ interface ITriggerZapFallback {
     function __zapFallbackProbe() external;
 }
 
+/// @notice Genesis stand-in reporting a wrapped collateral token the zap was not built for; exercises
+///         the constructor's `WrappedCollateralMismatch` guard.
+contract MockWrongTokenUsdcGenesis {
+    address public constant WRAPPED_COLLATERAL_TOKEN = address(0xBEEF);
+}
+
 contract GenesisUSDCZapV1ForkTest is TestMinterSetUp {
     GenesisUSDCZap_v1 zap;
     address zapImpl;
@@ -281,5 +287,62 @@ contract GenesisUSDCZapV1ForkTest is TestMinterSetUp {
         zap.rescueToken(address(token));
 
         assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
+    }
+
+    // ============ Constructor Guard Tests ============
+
+    function test_Constructor_ZeroGenesis() public {
+        // The zap refuses to be built against a zero Genesis address.
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        new GenesisUSDCZap_v1(address(0));
+    }
+
+    function test_Constructor_WrappedCollateralMismatch() public {
+        // The zap refuses to be built against a Genesis whose wrapped collateral token differs from
+        // the fxSAVE the zap's network config is compiled for.
+        address wrongGenesis = address(new MockWrongTokenUsdcGenesis());
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.WrappedCollateralMismatch.selector, address(0xBEEF), FXSAVE));
+        new GenesisUSDCZap_v1(wrongGenesis);
+    }
+
+    // ============ Negative Path Tests ============
+
+    function test_ZapUsdc_ZeroAmount() public {
+        // A zero base-asset amount is rejected before any token pull happens.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
+        zap.zapBaseAsset(0, 0, receiver);
+        vm.stopPrank();
+    }
+
+    function test_ZapUsdc_ZeroReceiver() public {
+        // Genesis shares must never be minted to the zero address; the guard fires before the pull.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        zap.zapBaseAsset(1000 * 1e6, 0, address(0));
+        vm.stopPrank();
+    }
+
+    function test_ZapUsdc_SlippageWrappedCollateral() public {
+        // An unsatisfiable fxSAVE min-out makes the zap revert after the diamond conversion rather
+        // than deposit less than the user demanded. `received` derives from the live fxSAVE share
+        // rate, so only the selector is pinned.
+        uint256 usdcAmount = 1000 * 1e6;
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+        vm.expectPartialRevert(IZapErrors.SlippageTooHighWrappedCollateral.selector);
+        zap.zapBaseAsset(usdcAmount, type(uint256).max, receiver);
+        vm.stopPrank();
+    }
+
+    function test_ZapFxUsd_SlippageWrappedCollateral() public {
+        // Same unsatisfiable min-out guard on the fxUSD collateral path.
+        deal(FXUSD, user1, 10000 * 1e18);
+        uint256 fxUsdAmount = 1000 * 1e18;
+        vm.startPrank(user1);
+        IERC20(FXUSD).approve(address(zap), fxUsdAmount);
+        vm.expectPartialRevert(IZapErrors.SlippageTooHighWrappedCollateral.selector);
+        zap.zapCollateral(fxUsdAmount, type(uint256).max, receiver);
+        vm.stopPrank();
     }
 }

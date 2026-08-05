@@ -173,6 +173,15 @@ Historical address manifests live under `deployments/<network>/` (including date
 - `mainnet` → `deployments/mainnet/zap-addresses.json` + `MAINNET_RPC_URL`
 - `megaeth` → `deployments/megaeth/zap-addresses.json` + `MEGAETH_RPC_URL`
 
+**New-chain requirement — EIP-1153 (Cancun):** the zaps' reentrancy guard (`TokenHolder_v2` → OZ `ReentrancyGuardTransient`) uses transient storage (`TSTORE`/`TLOAD`). On a chain without EIP-1153, **every `nonReentrant` function reverts unconditionally** and no test in this repo would catch it. Before adding a chain to the config libraries, probe the RPC:
+
+```bash
+# succeeds (returns 0x) iff TSTORE is supported; fails with invalid opcode otherwise
+cast call --rpc-url "$NEW_CHAIN_RPC_URL" --create 0x600160005d60006000f3
+```
+
+Mainnet and MegaETH are verified.
+
 ### One-liners
 
 ```bash
@@ -192,14 +201,14 @@ ETHERSCAN_API_KEY=... MEGAETH_RPC_URL=... ./script/verify-zaps-megaeth --salt me
 ## Post-Deployment
 
 Notes:
-- Proxies initialize with deployer + Harbor multisig pending owner; `_transferAllOwnerships()` runs in-script — multisig must confirm where still pending.
+- Proxies initialize with deployer as owner + Harbor multisig pending; `_transferAllOwnerships()` completes the handoff **in the same broadcast** (deployer confirms — the multisig never signs). Verify `owner()` on each proxy afterwards. If a run is interrupted before that step, resume **within 1 hour** of proxy init; the pending transfer expires after that and only a UUPS upgrade can hand off. Ownership is one-shot: after the handoff it can never be rotated.
 - Stability pool allowlists are **not** auto-applied; configure `setStabilityPoolAllowed` separately after deploy.
 - Re-runs skip proxies already recorded in state, so interrupted runs can be resumed safely.
 
 ## Security Considerations
 
 - **Deploy signer**: `script/deploy.sh` is **keystore-only** (`cast wallet import`, then `--account <name>`). `PRIVATE_KEY` is rejected. Never commit keys or keystore passwords.
-- **Ownership**: Transfer ownership to a multisig or secure address after deployment
+- **Ownership**: Handed to the Harbor multisig automatically during deploy (see Post-Deployment); one-shot — guard the multisig, it can never be rotated
 - **Intake**: `ZapIntake` rejects fee-on-transfer / zero pulls (`pullExact`); stETH uses `pullMeasured` (allows 1–2 wei Lido rounding). Unspent input is refunded after convert legs.
 - **Rescue**: Owner `sweep` / `rescueToken` via `TokenHolder_v2`; protected protocol tokens cannot be swept. Native rescue uses `call` (not `.transfer`).
 - **Lido referral (ETH zaps)**: Fixed referral from `StETHZapNetworkConfig` (immutable). Readable via `referral()` on native ETH zap interfaces; changing it requires a new implementation. See [docs/zap-referral-config.md](docs/zap-referral-config.md).

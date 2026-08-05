@@ -232,7 +232,7 @@ contract GenesisUSDCZap_v1 is
     }
 
     function _permitBaseAsset(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
-        IERC20Permit(BASE_ASSET).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+        ZapIntake.tryPermit(IERC20Permit(BASE_ASSET), _msgSender(), amount, deadline, v, r, s);
     }
 
     /// @notice Helper to handle collateral permit
@@ -242,7 +242,7 @@ contract GenesisUSDCZap_v1 is
     /// @param r Permit signature r
     /// @param s Permit signature s
     function _permitCollateral(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) internal {
-        IERC20Permit(COLLATERAL_ASSET).permit(_msgSender(), address(this), amount, deadline, v, r, s);
+        ZapIntake.tryPermit(IERC20Permit(COLLATERAL_ASSET), _msgSender(), amount, deadline, v, r, s);
     }
 
     /// @notice Convert an input token to wrapped collateral via the diamond

@@ -18,7 +18,7 @@ import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
 import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
-import {MockStabilityPool} from "@harborzap-test/mock/MockStabilityPool.sol";
+import {MockStabilityPool, MockMisreportingStabilityPool} from "@harborzap-test/mock/MockStabilityPool.sol";
 
 /// @dev Calls a selector with no implementation so the zap's `fallback` runs (revert propagates to test)
 interface ITriggerZapFallback {
@@ -574,5 +574,79 @@ contract MinterUSDCZapV1ForkTest is TestMinterSetUp {
         zap.rescueToken(address(token));
 
         assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
+    }
+
+    // ============ Constructor Guard Tests ============
+
+    function test_Constructor_ZeroMinter() public {
+        // The zap refuses to be built against a zero Minter address.
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        new MinterUSDCZap_v1(address(0));
+    }
+
+    // ============ Negative Path Tests ============
+
+    function test_ZapUsdcToPegged_SlippageWrappedCollateral() public {
+        // An unsatisfiable fxSAVE min-out on the USDC→fxSAVE leg reverts the zap before any pegged
+        // tokens are minted. `received` derives from the live fxSAVE share rate, so only the
+        // selector is pinned.
+        uint256 usdcAmount = 1000 * 1e6;
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+        vm.expectPartialRevert(IZapErrors.SlippageTooHighWrappedCollateral.selector);
+        zap.zapBaseAssetToPegged(usdcAmount, type(uint256).max, receiver, 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapFxSaveToStabilityPool_CollateralMismatch() public {
+        // An allowlisted pool whose ASSET_TOKEN is not the minter's pegged token must be rejected
+        // with the exact expected/actual pair before any deposit is attempted.
+        uint256 fxSaveAmount = 1000 * 1e18;
+        deal(FXSAVE, user1, fxSaveAmount);
+
+        MockStabilityPool wrongAssetPool = new MockStabilityPool(FXSAVE);
+        vm.startPrank(zapOwner);
+        zap.setStabilityPoolAllowed(address(wrongAssetPool), true);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        IERC20(FXSAVE).approve(address(zap), fxSaveAmount);
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.CollateralMismatch.selector, peggedToken, FXSAVE));
+        zap.zapWrappedCollateralToStabilityPool(fxSaveAmount, receiver, 0, address(wrongAssetPool), 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapFxSaveToStabilityPool_DepositFailed_OnMisreportingPool() public {
+        // A pool that consumes the deposit but reports crediting less than 1:1 must make the zap
+        // fail closed with DepositFailed instead of silently shorting the receiver.
+        uint256 fxSaveAmount = 1000 * 1e18;
+        deal(FXSAVE, user1, fxSaveAmount);
+
+        MockMisreportingStabilityPool misreportingPool = new MockMisreportingStabilityPool(peggedToken);
+        vm.startPrank(zapOwner);
+        zap.setStabilityPoolAllowed(address(misreportingPool), true);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        IERC20(FXSAVE).approve(address(zap), fxSaveAmount);
+        vm.expectRevert(IZapErrors.DepositFailed.selector);
+        zap.zapWrappedCollateralToStabilityPool(fxSaveAmount, receiver, 0, address(misreportingPool), 0);
+        vm.stopPrank();
+    }
+
+    function test_ZapFxSaveToStabilityPool_ZeroPoolAddress() public {
+        // A zero stability pool address is rejected before allowlist lookup or any conversion.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        zap.zapWrappedCollateralToStabilityPool(1000 * 1e18, receiver, 0, address(0), 0);
+        vm.stopPrank();
+    }
+
+    function test_SetStabilityPoolAllowed_ZeroAddress() public {
+        // The allowlist refuses the zero address so a zero entry can never be toggled on.
+        vm.startPrank(zapOwner);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        zap.setStabilityPoolAllowed(address(0), true);
+        vm.stopPrank();
     }
 }
