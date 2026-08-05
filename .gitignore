@@ -17,6 +17,11 @@ node_modules/
 .yarn/
 yarn-error.log
 
+# Coverage / CI run artifacts (baselines under regression/*.txt stay tracked)
+lcov.info
+*.log
+tmp/
+
 # IDE
 .vscode/
 .idea/

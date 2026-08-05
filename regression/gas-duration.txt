@@ -7,6 +7,6 @@ suite CPU (milliseconds)
 | test/GenesisUSDCZap_v1.t.sol:GenesisUSDCZapV1ForkTest                     |          35900 | 35.90s |
 | test/MinterETHZap_v1.t.sol:MinterETHZapV1ForkTest                         |           1230 | 1.23s  |
 | test/MinterMarketForkIntegration.t.sol:MinterBtcMarketForkIntegrationTest |          79960 | 79.96s |
-| test/MinterUSDCZap_v1.t.sol:MinterUSDCZapV1ForkTest                       |          24400 | 24.40s |
+| test/MinterUSDCZap_v1.t.sol:MinterUSDCZapV1ForkTest                       |             34 | 0.03s  |
 | test/Minter_base.t.sol:TestMinterBasics                                   |             18 | 0.02s  |
 | test/Minter_base.t.sol:TestMinterInit                                     |             10 | 0.01s  |

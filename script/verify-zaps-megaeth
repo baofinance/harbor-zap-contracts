@@ -178,9 +178,12 @@ verify_contract() {
     else
       temp_json=$(mktemp)
       echo "$json_content" > "$temp_json"
+      # Keep apikey out of the URL (query logs / referrers). curl still sees it in argv — operator-local only;
+      # Etherscan's API has no stdin auth for this endpoint.
       if [[ -n "$constructor_args" ]]; then
         ctor_hex=${constructor_args#0x}
-        response=$(curl -s -X POST "${ETHERSCAN_API_URL}?apikey=${ETHERSCAN_KEY}&chainid=${CHAIN_ID}&module=contract&action=verifysourcecode" \
+        response=$(curl -s -X POST "${ETHERSCAN_API_URL}?chainid=${CHAIN_ID}&module=contract&action=verifysourcecode" \
+          --data-urlencode "apikey=${ETHERSCAN_KEY}" \
           --data-urlencode "contractaddress=$address" \
           --data-urlencode "sourceCode@$temp_json" \
           --data-urlencode "codeformat=solidity-standard-json-input" \
@@ -192,7 +195,8 @@ verify_contract() {
           --data-urlencode "licenseType=3" \
           --data-urlencode "constructorArguments=$ctor_hex" 2>/dev/null || true)
       else
-        response=$(curl -s -X POST "${ETHERSCAN_API_URL}?apikey=${ETHERSCAN_KEY}&chainid=${CHAIN_ID}&module=contract&action=verifysourcecode" \
+        response=$(curl -s -X POST "${ETHERSCAN_API_URL}?chainid=${CHAIN_ID}&module=contract&action=verifysourcecode" \
+          --data-urlencode "apikey=${ETHERSCAN_KEY}" \
           --data-urlencode "contractaddress=$address" \
           --data-urlencode "sourceCode@$temp_json" \
           --data-urlencode "codeformat=solidity-standard-json-input" \

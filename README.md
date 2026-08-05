@@ -57,6 +57,8 @@ Zaps use declarative network config libraries: `src/zap/upgradeable/config/StETH
 - Access to RPC endpoints for any target networks you deploy to (mainnet and/or megaeth)
 - Private key with sufficient ETH for gas fees
 
+Optional local helpers `yarn foundryup` / `yarn uv:install` pipe the official Foundry/uv installers — run only on a trusted machine (same as upstream docs). CI uses the pinned Foundry action, not those scripts.
+
 ## Installation
 
 1. Clone the repository (with submodules):
@@ -157,50 +159,25 @@ Use this when supporting a **new chain or market** (example sketch: **MegaETH**,
 
 ## Deployment
 
-**Recommended (FactoryDeployer / CREATE3):**
+**FactoryDeployer / CREATE3** (`yarn deploy` / `script/deploy.sh`):
 ```bash
 script/deploy.sh --network mainnet --market GOLD --genesis-usdc 0x...
 # or: yarn deploy --network mainnet --market GOLD --genesis-usdc 0x...
 ```
 Requires `--network`, `--market`, and at least one of `--genesis-eth` / `--genesis-usdc` / `--minter-eth` / `--minter-usdc`. Uses `script/Deploy_Zaps.s.sol` + `HarborZapDeployStack` (bao-base FactoryDeployer). Deployer must be a BaoFactory operator. State lands in `deployments/state-<chainId>-<MARKET>.json` (salt prefix `harbor_zap_v1_<MARKET>`).
 
-**Also available:**
-- `script/deploy-zaps-salted` — older CREATE3 bash orchestration (still state-driven; can post-config minter allowlists)
-- `script/deploy-*-zap-unsalted.sh` — one-off per-zap deploys under `deployments/<network>/<date>/`
-- `script/verify-zaps.sh` / `script/verify-zaps-megaeth` — verification helpers
-
-Legacy implementation scripts live in `script/archive/`; the `*-salted` / `*-unsalted` entrypoints wrap them.
+Historical address manifests live under `deployments/<network>/` (including dated JSON). Verification helpers: `script/verify-zaps.sh`, `script/verify-zaps-megaeth`.
 
 ### Network Config
 
-Deploy flows are network-aware:
 - `mainnet` → `deployments/mainnet/zap-addresses.json` + `MAINNET_RPC_URL`
 - `megaeth` → `deployments/megaeth/zap-addresses.json` + `MEGAETH_RPC_URL`
 
-Unsalted scripts use `script/_zap-deploy-env.sh` and support `ZAP_NETWORK`, `ZAP_CONFIG_FILE`, `ZAP_RPC_URL`.
-
-### FactoryDeployer one-liners
+### One-liners
 
 ```bash
 # Prefer --account <keystore>; PRIVATE_KEY shown only as a short example
 PRIVATE_KEY=0x... MAINNET_RPC_URL=... yarn deploy --network mainnet --market GOLD --genesis-usdc 0x... --minter-usdc 0x...
-```
-
-### Alternate: `deploy-zaps-salted`
-
-`script/deploy-zaps-salted` supports `--deploy`, `--deploy-impl`, `--check`, `--verify` / `--verify-impl`.
-
-Useful options: `--network`, `--market`, `--salt`, `--config`, `--account` (preferred over `PRIVATE_KEY`).
-
-Salt format: `<salt-prefix>::<zap-key>::zap` (market suffix when `--market` is set).
-
-State files:
-- default salt (`harbor_v1`): `deployments/<network>/zaps.json`
-- custom salt: `deployments/<network>/zaps-<salt>.json`
-
-```bash
-PRIVATE_KEY=0x... MAINNET_RPC_URL=... ./script/deploy-zaps-salted --network mainnet --market GOLD --deploy
-MEGAETH_RPC_URL=... ./script/deploy-zaps-salted --network megaeth --market BTC --salt mega_test_v1 --check
 ```
 
 ### Verification
@@ -211,20 +188,11 @@ ETHERSCAN_API_KEY=... MEGAETH_RPC_URL=... ./script/verify-zaps-megaeth --salt me
 MEGAETH_RPC_URL=... ./script/verify-zaps-megaeth --salt mega_test_v1 --verifier blockscout
 ```
 
-### Unsalted Per-Zap Deploys
-
-One-off deploys under `deployments/<network>/<YYYY-MM-DD>/`:
-
-```bash
-ZAP_NETWORK=mainnet MARKET=GOLD PRIVATE_KEY=0x... ./script/deploy-genesiseth-zap-unsalted.sh
-ZAP_NETWORK=megaeth MARKET=BTC PRIVATE_KEY=0x... ./script/deploy-minterusdc-zap-unsalted.sh
-```
-
 ## Post-Deployment
 
 Notes:
-- **`yarn deploy` / `deploy.sh`**: proxies initialize with deployer + Harbor multisig pending owner; `_transferAllOwnerships()` runs in-script — multisig must confirm where still pending. Stability pool allowlists are **not** auto-applied; configure `setStabilityPoolAllowed` separately after deploy.
-- **`deploy-zaps-salted --market`**: applies minter stability pool allowlist + ownership transfer using config `.owner`.
+- Proxies initialize with deployer + Harbor multisig pending owner; `_transferAllOwnerships()` runs in-script — multisig must confirm where still pending.
+- Stability pool allowlists are **not** auto-applied; configure `setStabilityPoolAllowed` separately after deploy.
 - Re-runs skip proxies already recorded in state, so interrupted runs can be resumed safely.
 
 ## Security Considerations
@@ -252,7 +220,7 @@ harbor-zap-contracts/
 ├── test/                # @harborzap-test/… and @harbor/minter/… imports
 ├── docs/                # Storage layout + integrator migration notes
 ├── remappings.txt       # @harborzap/, @harbor/, harbor bare src/… → lib/harbor
-├── script/              # deploy.sh (FactoryDeployer) + salted/unsalted helpers
+├── script/              # deploy.sh (FactoryDeployer) + verify helpers
 ├── package.json         # yarn CI / lint / slither / coverage / validate
 └── foundry.toml
 ```

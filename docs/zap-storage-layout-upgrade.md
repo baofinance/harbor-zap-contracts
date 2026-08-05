@@ -6,12 +6,13 @@ Use this document before any UUPS implementation swap. Run `script/dump-zap-stor
 
 ## Why in-place upgrade is unsafe
 
-1. **Removed `referral` storage** on ETH zaps — v3 Minter and v4 Genesis stored `address referral` at slot 0 (after ERC-7201 namespaced `BaoOwnable`). Branch v1 removes that slot and adds `__gap`, shifting layout.
-2. **New `__gap` arrays** — branch v1 concrete contracts declare explicit gaps; production v3/v4 had none.
-3. **Constants → constructor immutables** — network addresses moved from compile-time constants to constructor-set immutables (new implementation bytecode; not a storage migration by itself, but confirms this is a new implementation family).
-4. **Inheritance change** — shared bases (`MinterZapBase_v1`, `GenesisZapBase_v1`, asset bases) alter the compiled contract; immutables and namespaced owner storage differ from monolithic v3/v4.
+1. **Removed `referral` storage** on ETH zaps — production v3 Minter and v4 Genesis stored `address referral` at root slot 0. Branch v1 makes referral an **immutable** from `StETHZapNetworkConfig` (no root slot).
+2. **Allowlist moved to ERC-7201** — production Minter zaps kept `allowedStabilityPools` at a root slot. Branch v1 stores it only under `harborzap.storage.Minter*Zap_v1` (no root slots). An in-place upgrade would leave old root-slot data orphaned and the namespaced mapping empty.
+3. **No `__gap` on branch v1 concrete zaps** — Genesis v1 is immutables-only; Minter v1 contract-specific state is namespaced only.
+4. **Constants → constructor immutables** — network addresses moved to constructor-set immutables (new implementation bytecode; confirms a new family).
+5. **Inheritance change** — shared bases (`MinterZapBase_v1`, `GenesisZapBase_v1`, asset bases) alter the compiled contract versus monolithic v3/v4.
 
-`BaoOwnable` uses ERC-7201 namespaced storage and is unchanged between versions. The incompatibility is in **contract-specific state** below.
+`HarborOwnable` / prior `BaoOwnable` use ERC-7201 namespaced owner storage. The incompatibility is in **contract-specific state** below.
 
 ## Production baseline (git `9f31d46^`)
 
@@ -31,22 +32,23 @@ Use this document before any UUPS implementation swap. Run `script/dump-zap-stor
 | `GenesisETHZap_v1` | *(none — immutables only)* |
 | `GenesisUSDCZap_v1` | *(none — immutables only)* |
 
-### MinterETHZap: slot collision example
+### MinterETHZap: why in-place upgrade fails
 
-| Slot | v3 (production) | v4 (branch) |
-|------|-----------------|-------------|
-| 0 | `referral` | `allowedStabilityPools` |
-| 1 | `allowedStabilityPools` | `__gap[0]` |
+| Location | v3 (production) | v1 (branch) |
+|----------|-----------------|-------------|
+| Root slot 0 | `referral` | *(unused / empty)* |
+| Root slot 1 | `allowedStabilityPools` | *(unused / empty)* |
+| ERC-7201 `harborzap.storage.MinterETHZap_v1` | *(absent)* | `allowedStabilityPools` |
 
-Upgrading a live v3 proxy would map the old `referral` address into the `allowedStabilityPools` mapping seed (corrupt allowlist) and shift the mapping root.
+Upgrading a live v3 proxy to v1 would **orphan** the old root-slot `referral` and allowlist. The namespaced allowlist reads as empty (all pools denied) until reconfigured. Old root values are not mapped into the ERC-7201 namespace.
 
-### GenesisETHZap: slot collision example
+### GenesisETHZap: why in-place upgrade fails
 
-| Slot | v4 (production) | v5 (branch) |
-|------|-----------------|-------------|
-| 0 | `referral` | `__gap[0]` |
+| Location | v4 (production) | v1 (branch) |
+|----------|-----------------|-------------|
+| Root slot 0 | `referral` | *(unused / empty — referral is immutable)* |
 
-Upgrading would orphan the stored referral and repurpose slot 0 for gap padding.
+Upgrading would orphan the stored referral; the new implementation ignores root slot 0 and uses the immutable from config instead.
 
 ## Safe upgrade path (same major version only)
 
@@ -64,4 +66,4 @@ forge inspect <Contract> storageLayout --json > layout-new.json
 1. Deploy new implementation + new UUPS proxy per market.
 2. Point frontends/indexers to new proxy addresses.
 3. Retire or freeze old proxies after migration window.
-4. Do **not** call `upgradeTo` on production v3/v4 proxies with v4/v5 implementation addresses.
+4. Do **not** call `upgradeTo` on production v3/v4 proxies with branch `_v1` implementation addresses.

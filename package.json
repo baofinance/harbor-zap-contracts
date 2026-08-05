@@ -2,7 +2,7 @@
   "name": "harbor-zap-contracts",
   "license": "MIT",
   "scripts": {
-    "uv": "uv sync; echo \"to enable vyper builds, run:\\n   source ./.venv/bin/activate\"",
+    "uv": "uv sync && echo \"to enable vyper builds, run:\\n   source ./.venv/bin/activate\"",
     "uv:install": "curl -LsSf https://astral.sh/uv/install.sh | sh",
     "uv:upgrade": "uv self update",
     "foundryup": "curl -L https://foundry.paradigm.xyz | bash && foundryup",
@@ -25,7 +25,7 @@
     "disabled": "echo 'disabled tests:' && grep -n -e '^\\s*function\\s*test.*(.*).*private' test/**/*.t.sol",
     "doc": "forge doc",
     "deploy": "script/deploy.sh",
-    "deploy:local": "yarn deploy --network local",
+    "deploy:local": "script/deploy.sh --network local --market LOCAL",
     "contracts": "awk '/gas_reports *=/ {flag=1; next} /]/ {flag=0} flag {gsub(/\"|,/, \"\"); print $1}' foundry.toml",
     "contracts:regexp": "yarn contracts | paste -sd '|'",
     "sizes": "./lib/bao-base/run regression-of sizes",
@@ -33,7 +33,7 @@
     "lint": "./lib/bao-base/run lint-sol",
     "lint:test": "./lib/bao-base/run lint-sol --test",
     "lint:bash": "./lib/bao-base/run lint-bash --lint script",
-    "regression": "yarn sizes; yarn gas; yarn coverage"
+    "regression": "yarn sizes && yarn gas && yarn coverage"
   },
   "prettier": "./lib/bao-base/prettier.config.js",
   "dependencies": {

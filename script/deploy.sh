@@ -3,7 +3,6 @@ set -euo pipefail
 
 # Salted (CREATE3 via BaoFactory) deploy of Harbor zap proxies — canonical address-stable path.
 # Wraps script/Deploy_Zaps.s.sol. Requires the deployer to be a BaoFactory operator.
-# Legacy unsalted bash wrappers under script/*-unsalted.sh remain available as a fallback.
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT_DIR"
@@ -97,6 +96,8 @@ resolve_rpc_url() {
   esac
 }
 
+# Foundry requires --private-key / --password on argv for non-interactive forge/cast.
+# Prefer a keystore (`--account`) over PRIVATE_KEY; run only on a trusted operator machine.
 SIGNER=()
 if [[ -n "${PRIVATE_KEY:-}" ]]; then
   SIGNER=(--private-key "$PRIVATE_KEY")
@@ -117,6 +118,31 @@ if [[ "$VERIFY" == true ]] && [[ -z "${ETHERSCAN_API_KEY:-}" ]]; then
 fi
 
 RPC_URL=$(resolve_rpc_url "$NETWORK")
+
+# Fail closed when the RPC is not the network the operator named (skip for local / unknown aliases).
+expected_chain_id() {
+  case "$1" in
+    mainnet) echo 1 ;;
+    megaeth) echo 4326 ;;
+    *) echo "" ;;
+  esac
+}
+EXPECTED_CHAIN_ID=$(expected_chain_id "$NETWORK")
+if [[ -n "$EXPECTED_CHAIN_ID" ]]; then
+  CHAIN_ID=$("$CAST" chain-id --rpc-url "$RPC_URL" 2>/dev/null || echo "")
+  if [[ -z "$CHAIN_ID" ]]; then
+    echo "❌ Cannot determine chain ID from RPC: $RPC_URL" >&2
+    exit 1
+  fi
+  if [[ "$CHAIN_ID" =~ ^0[xX] ]]; then
+    CHAIN_ID=$((16#${CHAIN_ID:2}))
+  fi
+  if [[ "$CHAIN_ID" != "$EXPECTED_CHAIN_ID" ]]; then
+    echo "❌ Chain ID mismatch for --network $NETWORK: expected $EXPECTED_CHAIN_ID, RPC reports $CHAIN_ID" >&2
+    exit 1
+  fi
+fi
+
 export MARKET
 [[ -n "${GENESIS_ETH:-}" ]] && export GENESIS_ETH
 [[ -n "${GENESIS_USDC:-}" ]] && export GENESIS_USDC

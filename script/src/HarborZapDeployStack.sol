@@ -15,12 +15,16 @@ import {HarborZapFactoryDeployer} from "@harborzap-script/src/HarborZapFactoryDe
 
 /// @title HarborZapDeployStack
 /// @notice Idempotent CREATE3 deploy helpers for the four production zap proxies.
+/// @dev Existence checks run before `new <Zap>_v1(...)` so re-runs do not orphan implementations.
 abstract contract HarborZapDeployStack is HarborZapFactoryDeployer {
     function deployGenesisEthZap(
         DeploymentTypes.State memory stateData,
         address genesis,
         address deployer
     ) internal returns (address proxy) {
+        if (_skipIfProxyExists(stateData, "genesisEthZap")) {
+            return _predictAddress("genesisEthZap");
+        }
         return
             _deployZap({
                 stateData: stateData,
@@ -37,6 +41,9 @@ abstract contract HarborZapDeployStack is HarborZapFactoryDeployer {
         address genesis,
         address deployer
     ) internal returns (address proxy) {
+        if (_skipIfProxyExists(stateData, "genesisUsdcZap")) {
+            return _predictAddress("genesisUsdcZap");
+        }
         return
             _deployZap({
                 stateData: stateData,
@@ -53,6 +60,9 @@ abstract contract HarborZapDeployStack is HarborZapFactoryDeployer {
         address minter,
         address deployer
     ) internal returns (address proxy) {
+        if (_skipIfProxyExists(stateData, "minterEthZap")) {
+            return _predictAddress("minterEthZap");
+        }
         return
             _deployZap({
                 stateData: stateData,
@@ -69,6 +79,9 @@ abstract contract HarborZapDeployStack is HarborZapFactoryDeployer {
         address minter,
         address deployer
     ) internal returns (address proxy) {
+        if (_skipIfProxyExists(stateData, "minterUsdcZap")) {
+            return _predictAddress("minterUsdcZap");
+        }
         return
             _deployZap({
                 stateData: stateData,
@@ -80,6 +93,18 @@ abstract contract HarborZapDeployStack is HarborZapFactoryDeployer {
             });
     }
 
+    function _skipIfProxyExists(
+        DeploymentTypes.State memory stateData,
+        string memory proxyId
+    ) private returns (bool skip) {
+        if (!DeploymentState.hasProxy(stateData, proxyId)) {
+            return false;
+        }
+        console.log(string.concat("    > ", proxyId));
+        console.log("        already in state -> %s (skipping)", _predictAddress(proxyId));
+        return true;
+    }
+
     function _deployZap(
         DeploymentTypes.State memory stateData,
         string memory proxyId,
@@ -89,6 +114,7 @@ abstract contract HarborZapDeployStack is HarborZapFactoryDeployer {
         bytes memory initData
     ) private returns (address proxy) {
         console.log(string.concat("    > ", proxyId));
+        // Dual-check: callers already skip when recorded; keep for safety if invoked directly.
         if (DeploymentState.hasProxy(stateData, proxyId)) {
             proxy = _predictAddress(proxyId);
             console.log("        already in state -> %s (skipping)", proxy);

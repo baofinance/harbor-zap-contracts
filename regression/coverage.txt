@@ -1,11 +1,11 @@
 | File                                                 | % Lines           | % Statements      | % Branches      | % Funcs          |
 |------------------------------------------------------|-------------------|-------------------|-----------------|------------------|
-| script/src/HarborZapDeployStack.sol                  | X   0% (0/22)     | X   0% (0/17)     | X   0% (0/1)    | X   0% (0/5)     |
+| script/src/HarborZapDeployStack.sol                  | X   0% (0/36)     | X   0% (0/34)     | X   0% (0/6)    | X   0% (0/6)     |
 | script/src/HarborZapFactoryDeployer.sol              | X   0% (0/35)     | X   0% (0/30)     | X   0% (0/3)    | X   0% (0/12)    |
 | src/zap/upgradeable/GenesisETHZap_v1.sol             | X  80% (98/122)   | X  76% (100/132)  | X  17% (3/18)   | X  85% (23/27)   |
 | src/zap/upgradeable/GenesisUSDCZap_v1.sol            | X  77% (81/105)   | X  75% (73/97)    | X  27% (3/11)   | X  81% (25/31)   |
 | src/zap/upgradeable/MinterETHZap_v1.sol              | X  77% (149/193)  | X  72% (130/181)  | X  20% (5/25)   | X  84% (37/44)   |
-| src/zap/upgradeable/MinterUSDCZap_v1.sol             | X  68% (122/179)  | X  67% (103/154)  | X  33% (3/9)    | X  76% (34/45)   |
+| src/zap/upgradeable/MinterUSDCZap_v1.sol             | X  70% (126/179)  | X  69% (106/154)  | X  33% (3/9)    | X  78% (35/45)   |
 | src/zap/upgradeable/asset/FxUSDZapBase_v1.sol        | X  92% (22/24)    | X  83% (25/30)    | X  29% (2/7)    | ✓ 100% (4/4)     |
 | src/zap/upgradeable/asset/StETHZapBase_v1.sol        | X  89% (16/18)    | X  85% (17/20)    | X   0% (0/2)    | X  75% (3/4)     |
 | src/zap/upgradeable/base/GenesisZapBase_v1.sol       | X  95% (20/21)    | X  86% (25/29)    | X  20% (1/5)    | ✓ 100% (3/3)     |
@@ -14,4 +14,4 @@
 | src/zap/upgradeable/base/ZapIntake.sol               | X  88% (14/16)    | X  89% (16/18)    | X  33% (1/3)    | ✓ 100% (3/3)     |
 | src/zap/upgradeable/config/FxUSDZapNetworkConfig.sol | ✓ 100% (8/8)      | ✓ 100% (7/7)      | ✓ 100% (1/1)    | ✓ 100% (1/1)     |
 | src/zap/upgradeable/config/StETHZapNetworkConfig.sol | X  38% (12/32)    | X  35% (11/31)    | X  50% (1/2)    | ✓ 100% (1/1)     |
-| Total                                                | X  54% (930/1711) | X  54% (878/1630) | X  21% (33/158) | X  60% (209/349) |
+| Total                                                | X  54% (934/1725) | X  53% (881/1647) | X  20% (33/163) | X  60% (210/350) |

@@ -42,9 +42,10 @@ DEPLOYMENT_FILES=()
 if [[ -n "${DEPLOYMENT_FILE:-}" ]]; then
   DEPLOYMENT_FILES=("$DEPLOYMENT_FILE")
 else
-  shopt -s nullglob
-  DEPLOYMENT_FILES=(deployments/mainnet/*-zap-*.json)
-  shopt -u nullglob
+  # Dated deploy folders live under deployments/mainnet/<YYYY-MM-DD>/
+  while IFS= read -r -d '' f; do
+    DEPLOYMENT_FILES+=("$f")
+  done < <(find deployments/mainnet -type f -name '*-zap-*.json' -print0 2>/dev/null)
 fi
 
 if [[ ${#DEPLOYMENT_FILES[@]} -eq 0 ]]; then

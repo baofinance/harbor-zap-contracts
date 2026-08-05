@@ -1,0 +1,16 @@
+# https://docs.coderabbit.ai/reference/configuration
+language: en-US
+
+reviews:
+  profile: chill
+  pre_merge_checks:
+    docstrings:
+      # Soft floor only — percent-of-all-functions NatSpec is a poor fit for Solidity
+      # (many internal overrides / trivial getters). Prefer NatSpec on public/external APIs.
+      mode: "warning"
+      threshold: 15
+    title:
+      mode: "warning"
+      requirements: >-
+        Prefer a specific title that names the v1 zap family and/or deploy path
+        (e.g. "Add upgradeable v1 Genesis and Minter zaps").

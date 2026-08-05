@@ -40,9 +40,11 @@ contract MinterUSDCZapV1ForkTest is TestMinterSetUp {
     address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address constant FXUSD = 0x085780639CC2cACd35E474e71f4d000e2405d8f6;
     address constant FXSAVE = 0x7743e50F534a7f9F1791DdE7dCD89F7783Eefc39;
+    /// @dev Pin after fxSAVE + fxUSD diamond deployments so CI is deterministic (not tip).
+    uint256 constant MAINNET_FORK_BLOCK = 22_800_000;
 
     function setUpFork() internal override {
-        vm.createSelectFork(vm.rpcUrl("mainnet"));
+        vm.createSelectFork(vm.rpcUrl("mainnet"), MAINNET_FORK_BLOCK);
 
         feeReceiver = makeAddr("feeReceiver");
         owner = makeAddr("owner");
@@ -224,8 +226,7 @@ contract MinterUSDCZapV1ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(USDC).approve(address(zap), usdcAmount);
 
-        uint256 fxSaveAmount = 900 * 1e18; // Approximate
-        uint256 previewPegged = zap.previewPeggedFromWrappedCollateral(fxSaveAmount);
+        (uint256 previewPegged, ) = zap.previewPeggedFromBase(usdcAmount);
         uint256 minPeggedOut = (previewPegged * 99) / 100;
         uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100;
 
@@ -268,8 +269,7 @@ contract MinterUSDCZapV1ForkTest is TestMinterSetUp {
         vm.startPrank(user1);
         IERC20(FXUSD).approve(address(zap), fxUsdAmount);
 
-        uint256 fxSaveAmount = 900 * 1e18;
-        uint256 previewPegged = zap.previewPeggedFromWrappedCollateral(fxSaveAmount);
+        (uint256 previewPegged, ) = zap.previewPeggedFromCollateral(fxUsdAmount);
         uint256 minPeggedOut = (previewPegged * 99) / 100;
         uint256 minStabilityPoolOut = (minPeggedOut * 99) / 100;
 

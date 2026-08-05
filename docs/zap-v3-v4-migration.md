@@ -144,16 +144,9 @@ v5 adds `baseAssetValueNow = 0` and `collateralValueNow = 0` to USDC zap events 
 
 ---
 
-## Deployment scripts
+## Deployment
 
-Update deploy scripts and env to target v4/v5 contract names:
-
-| Script | Contract |
-|--------|----------|
-| `script/deploy-mintereth-zap-unsalted.sh` | `MinterETHZap_v1` |
-| `script/deploy-minterusdc-zap-unsalted.sh` | `MinterUSDCZap_v1` |
-| `script/deploy-genesiseth-zap-unsalted.sh` | `GenesisETHZap_v1` |
-| `script/deploy-genesisusdc-zap-unsalted.sh` | `GenesisUSDCZap_v1` |
+Use `yarn deploy` / `script/deploy.sh` (FactoryDeployer) against the `_v1` contracts. Historical manifests under `deployments/` remain for address lookup / verify helpers.
 
 Constructor args:
 

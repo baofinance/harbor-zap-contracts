@@ -1,6 +1,9 @@
 {
   "schemaVersion": 1,
   "version": "zaps",
+  "historical": true,
+  "skipVerify": true,
+  "note": "HISTORICAL MegaETH test deploy (pre-_v1 rename). contractIds are GenesisETHZap_v5 / MinterETHZap_v4 with old 2-arg minter ctor encoding. Do not verify against current _v1 sources; regenerate after a fresh _v1 deploy.",
   "network": "megaeth",
   "chainId": 4326,
   "baoFactory": "0xD696E56b3A054734d4C6DCBD32E11a278b0EC458",
