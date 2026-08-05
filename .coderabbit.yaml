@@ -3,6 +3,37 @@ language: en-US
 
 reviews:
   profile: chill
+  path_instructions:
+    - path: ".github/workflows/CI-test-foundry-stable.yml"
+      instructions: >-
+        Do not flag ALCHEMY_KEY / MAINNET_RPC_URL as insufficiently protected credentials
+        or demand stripping secrets from all pull_request runs. GitHub withholds secrets
+        from fork PRs; same-repo PR access is intentional so fork tests can use Alchemy.
+        Empty MAINNET_RPC_URL when the secret is missing is the intended fail-closed
+        behavior. Do not require protected environments for this RPC-only key.
+    - path: "script/deploy.sh"
+      instructions: >-
+        Deploy is Foundry keystore-only (`--account`); PRIVATE_KEY is intentionally rejected.
+        Interactive password unlock is preferred; DEPLOYER_ACCOUNT_PASSWORD on argv is only
+        for non-interactive automation on a trusted host (Foundry limitation). Using the
+        foundry.toml RPC alias (`--rpc-url mainnet` etc.) is intentional so provider URLs
+        are not expanded into argv. Do not demand an alternate non-argv signer API.
+    - path: "deployments/megaeth/**"
+      instructions: >-
+        MegaETH manifests may be partial/historical test fixtures. `note` / `historical` /
+        `skipVerify` fields document provenance; empty owner and external sourceState are
+        intentional. Do not require regenerating against current `_v1` sources unless the
+        operator is doing a fresh MegaETH deploy.
+    - path: "src/interfaces/IGenesisZapV1Native.sol"
+      instructions: >-
+        `zapNativeAsset` putting `receiver` first (vs ERC-20 zaps putting it last) is an
+        intentional frozen `_v1` ABI. Do not request reordering for consistency; NatSpec
+        already documents the asymmetry.
+    - path: "package.json"
+      instructions: >-
+        `yarn foundryup` / `yarn uv:install` match upstream Foundry/uv installers and are
+        operator-local only; CI uses the pinned Foundry action. Do not require checksum-pinned
+        installers for these helper scripts.
   pre_merge_checks:
     docstrings:
       # Soft floor only — percent-of-all-functions NatSpec is a poor fit for Solidity

@@ -120,7 +120,7 @@ contract GenesisETHZapV1ForkTest is TestMinterSetUp {
         uint256 genesisBalAfter = IGenesis(genesis).balanceOf(receiver);
         uint256 wstEthBalAfter = IERC20(WSTETH).balanceOf(genesis);
 
-        console.log("=== ETH Zap v4 Success ===");
+        console.log("=== ETH Zap v1 Success ===");
         console.log("ETH Deposited:", ethAmount);
         console.log("wstETH Received:", sharesOut);
         console.log("Genesis Shares Minted:", genesisBalAfter - genesisBalBefore);

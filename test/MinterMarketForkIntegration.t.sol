@@ -16,7 +16,7 @@ interface ISTETHV2 {
     function submit(address referral) external payable returns (uint256);
 }
 
-/// @notice Shared setup: fork mainnet, load market from zap-addresses.json, deploy v4 zaps wired to production minters.
+/// @notice Shared setup: fork mainnet, load market from zap-addresses.json, deploy v1 zaps wired to production minters.
 abstract contract MinterMarketForkBase is Test {
     using stdJson for string;
 
@@ -115,7 +115,7 @@ abstract contract MinterMarketForkBase is Test {
     }
 }
 
-/// @notice Integration fork tests: production BTC minters + real stability pools, v4 zaps on both rails.
+/// @notice Integration fork tests: production BTC minters + real stability pools, v1 zaps on both rails.
 contract MinterBtcMarketForkIntegrationTest is MinterMarketForkBase {
     function _marketKey() internal pure override returns (string memory) {
         return "BTC";

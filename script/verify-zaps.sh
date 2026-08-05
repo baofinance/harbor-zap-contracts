@@ -40,17 +40,31 @@ echo ""
 
 DEPLOYMENT_FILES=()
 if [[ -n "${DEPLOYMENT_FILE:-}" ]]; then
+  # Explicit override may target a historical v3/v4 manifest (verify from a matching git revision).
   DEPLOYMENT_FILES=("$DEPLOYMENT_FILE")
 else
-  # Dated deploy folders live under deployments/mainnet/<YYYY-MM-DD>/
+  # Dated deploy folders live under deployments/mainnet/<YYYY-MM-DD>/.
+  # Default: only current-tree _v1 records. Pre-rename v3/v4 manifests are skipped
+  # (they fail against this source tree); pass DEPLOYMENT_FILE=... to verify one explicitly.
   while IFS= read -r -d '' f; do
-    DEPLOYMENT_FILES+=("$f")
+    contract=$(jq -r '.contract // empty' "$f" 2>/dev/null || echo "")
+    case "$contract" in
+      GenesisETHZap_v1 | GenesisUSDCZap_v1 | MinterETHZap_v1 | MinterUSDCZap_v1)
+        DEPLOYMENT_FILES+=("$f")
+        ;;
+    esac
   done < <(find deployments/mainnet -type f -name '*-zap-*.json' -print0 2>/dev/null)
 fi
 
 if [[ ${#DEPLOYMENT_FILES[@]} -eq 0 ]]; then
-  echo "❌ No deployment files found."
-  exit 1
+  if [[ -n "${DEPLOYMENT_FILE:-}" ]]; then
+    echo "❌ Deployment file not found: $DEPLOYMENT_FILE"
+    exit 1
+  fi
+  echo "ℹ️  No _v1 deployment manifests under deployments/mainnet/."
+  echo "   Historical v3/v4 records are skipped by default."
+  echo "   Set DEPLOYMENT_FILE=<path> to verify a specific manifest (from a matching source revision)."
+  exit 0
 fi
 
 verify_contract() {
@@ -131,10 +145,11 @@ for file in "${DEPLOYMENT_FILES[@]}"; do
   fi
 
   case "$contract" in
-    GenesisETHZap_v4|GenesisUSDCZap_v4|MinterETHZap_v3|MinterUSDCZap_v3)
+    GenesisETHZap_v4 | GenesisUSDCZap_v4 | MinterETHZap_v3 | MinterETHZap_v4 | MinterUSDCZap_v3 | MinterUSDCZap_v4)
+      # Reached only via DEPLOYMENT_FILE=... (default discovery excludes these).
       echo "❌ Deployment JSON uses a pre-rename contract label ($contract). This tree ships"
       echo "   GenesisETHZap_v1, GenesisUSDCZap_v1, MinterETHZap_v1, and MinterUSDCZap_v1."
-      echo "   Either verify from an older git revision, update the JSON after re-deploying, or use the matching sources."
+      echo "   Verify from an older git revision, or re-deploy _v1 and update the JSON."
       failed=$((failed + 1))
       continue
       ;;

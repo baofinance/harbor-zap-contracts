@@ -100,6 +100,15 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+# Historical / pre-_v1 manifests set skipVerify so backup verification does not
+# submit removed contractIds against current sources. Primary verify is deploy.sh --verify.
+if [[ "$(jq -r '.skipVerify // false' "$STATE_FILE")" == "true" ]]; then
+  note=$(jq -r '.note // "skipVerify=true"' "$STATE_FILE")
+  echo "⏭  Skipping verification for $STATE_FILE"
+  echo "   $note"
+  exit 0
+fi
+
 case "$VERIFIER" in
   etherscan|blockscout) ;;
   *)
@@ -269,12 +278,13 @@ if [[ "$VERIFY_IMPL" == true ]]; then
   while IFS= read -r addr; do
     [[ -z "$addr" ]] && continue
     contract_id=$(jq -r --arg a "$addr" '.implementations[$a].contractId // empty' "$STATE_FILE")
+    constructor_args=$(jq -r --arg a "$addr" '.implementations[$a].constructorArgsEncoded // empty' "$STATE_FILE")
     if [[ -z "$contract_id" ]]; then
       echo "⏭  Skip implementation $addr: missing contractId in state"
       skip=$((skip + 1))
       continue
     fi
-    if verify_contract "$addr" "$contract_id" "" "implementation"; then
+    if verify_contract "$addr" "$contract_id" "$constructor_args" "implementation"; then
       ok=$((ok + 1))
     else
       rc=$?

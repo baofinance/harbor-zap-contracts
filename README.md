@@ -98,7 +98,7 @@ Full bao-base CI (fmt, lint, slither, tests, coverage, sizes, validate):
 yarn CI
 ```
 
-**Market integration (production minters + stability pools):** `test/MinterMarketForkIntegration.t.sol` forks mainnet, loads `deployments/mainnet/zap-addresses.json` (default market `BTC`), deploys **v1** zaps against production minters, and zaps into each configured stability pool on both rails (ETH/stETH/wstETH and USDC/fxUSD/fxSAVE). Requires `MAINNET_RPC_URL`; runtime ~50s for the BTC suite.
+**Market integration (production minters + stability pools):** `test/MinterMarketForkIntegration.t.sol` forks mainnet, loads `deployments/mainnet/zap-addresses.json` (default market `BTC`), deploys **v1** zaps against production minters, and zaps into each configured stability pool on both rails (ETH/stETH/wstETH and USDC/fxUSD/fxSAVE). Requires `MAINNET_RPC_URL`; suite CPU ~80s for the BTC suite (see `regression/gas-duration.txt`).
 
 ## Zap preview semantics
 
@@ -166,7 +166,7 @@ script/deploy.sh --network mainnet --market GOLD --genesis-usdc 0x...
 ```
 Requires `--network`, `--market`, and at least one of `--genesis-eth` / `--genesis-usdc` / `--minter-eth` / `--minter-usdc`. Uses `script/Deploy_Zaps.s.sol` + `HarborZapDeployStack` (bao-base FactoryDeployer). Deployer must be a BaoFactory operator. State lands in `deployments/state-<chainId>-<MARKET>.json` (salt prefix `harbor_zap_v1_<MARKET>`).
 
-Historical address manifests live under `deployments/<network>/` (including dated JSON). Verification helpers: `script/verify-zaps.sh`, `script/verify-zaps-megaeth`.
+Historical address manifests live under `deployments/<network>/` (including dated JSON). **Verification:** `yarn deploy` / `script/deploy.sh` runs forge `--verify` by default (`--no-verify` to skip). `script/verify-zaps.sh` / `script/verify-zaps-megaeth` are backup re-verify helpers; manifests with `"skipVerify": true` exit successfully without submitting.
 
 ### Network Config
 
@@ -176,16 +176,17 @@ Historical address manifests live under `deployments/<network>/` (including date
 ### One-liners
 
 ```bash
-# Prefer --account <keystore>; PRIVATE_KEY shown only as a short example
-PRIVATE_KEY=0x... MAINNET_RPC_URL=... yarn deploy --network mainnet --market GOLD --genesis-usdc 0x... --minter-usdc 0x...
+# Keystore required: cast wallet import deployer --interactive
+MAINNET_RPC_URL=... yarn deploy --network mainnet --market GOLD --account deployer \
+  --genesis-usdc 0x... --minter-usdc 0x...
 ```
 
 ### Verification
 
 ```bash
 ETHERSCAN_API_KEY=... MAINNET_RPC_URL=... ./script/verify-zaps.sh
+# mega_test_v1 is historical (skipVerify=true) — exits 0 with note; use a fresh state file for real re-verify
 ETHERSCAN_API_KEY=... MEGAETH_RPC_URL=... ./script/verify-zaps-megaeth --salt mega_test_v1
-MEGAETH_RPC_URL=... ./script/verify-zaps-megaeth --salt mega_test_v1 --verifier blockscout
 ```
 
 ## Post-Deployment
@@ -197,7 +198,7 @@ Notes:
 
 ## Security Considerations
 
-- **Private Keys**: Never commit private keys to version control. Prefer a **keystore** (`cast wallet import`, then `--account <name>` on `forge` / `cast` and in these scripts where supported) instead of exporting `PRIVATE_KEY` in your shell.
+- **Deploy signer**: `script/deploy.sh` is **keystore-only** (`cast wallet import`, then `--account <name>`). `PRIVATE_KEY` is rejected. Never commit keys or keystore passwords.
 - **Ownership**: Transfer ownership to a multisig or secure address after deployment
 - **Intake**: `ZapIntake` rejects fee-on-transfer / zero pulls (`pullExact`); stETH uses `pullMeasured` (allows 1–2 wei Lido rounding). Unspent input is refunded after convert legs.
 - **Rescue**: Owner `sweep` / `rescueToken` via `TokenHolder_v2`; protected protocol tokens cannot be swept. Native rescue uses `call` (not `.transfer`).
@@ -219,7 +220,7 @@ harbor-zap-contracts/
 │   └── bao-base/        # HarborOwnable, TokenHolder_v2, FactoryDeployer, CI scripts
 ├── test/                # @harborzap-test/… and @harbor/minter/… imports
 ├── docs/                # Storage layout + integrator migration notes
-├── remappings.txt       # @harborzap/, @harbor/, harbor bare src/… → lib/harbor
+├── remappings.txt       # @harborzap/→src/; @harbor/→lib/harbor; bare src/minter|util→harbor
 ├── script/              # deploy.sh (FactoryDeployer) + verify helpers
 ├── package.json         # yarn CI / lint / slither / coverage / validate
 └── foundry.toml

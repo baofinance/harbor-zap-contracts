@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Salted (CREATE3 via BaoFactory) deploy of Harbor zap proxies — canonical address-stable path.
 # Wraps script/Deploy_Zaps.s.sol. Requires the deployer to be a BaoFactory operator.
+# Signer: Foundry keystore only (`--account` / DEPLOYER_ACCOUNT). PRIVATE_KEY is not accepted.
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT_DIR"
@@ -34,11 +35,15 @@ Zap targets (at least one; also accepted as env vars):
   --minter-usdc <addr> / MINTER_USDC
 
 Options:
-  --account <name>   Foundry keystore account (default: $DEPLOYER_ACCOUNT or "deployer"). Or set PRIVATE_KEY.
-  --sender <addr>    Deployer EOA (default: derived from the keystore / private key).
+  --account <name>   Foundry keystore account (default: $DEPLOYER_ACCOUNT or "deployer").
+  --sender <addr>    Deployer EOA (default: derived from the keystore).
   --no-verify        Skip Etherscan verification.
   --resume           Pass --resume to forge.
   -h, --help         Show help.
+
+Signer is keystore-only. Import with: cast wallet import <name> --interactive
+PRIVATE_KEY is legacy and rejected. Password: interactive prompt, or set
+DEPLOYER_ACCOUNT_PASSWORD for non-interactive runs on a trusted host.
 EOF
 }
 
@@ -75,41 +80,44 @@ if [[ -z "${GENESIS_ETH:-}${GENESIS_USDC:-}${MINTER_ETH:-}${MINTER_USDC:-}" ]]; 
   exit 1
 fi
 
-resolve_rpc_url() {
+if [[ -n "${PRIVATE_KEY:-}" ]]; then
+  echo "❌ PRIVATE_KEY is legacy and not accepted. Use a Foundry keystore:" >&2
+  echo "   cast wallet import $ACCOUNT --interactive" >&2
+  echo "   yarn deploy --network $NETWORK --market $MARKET --account $ACCOUNT ..." >&2
+  exit 1
+fi
+
+# Ensure the foundry.toml rpc alias has an underlying URL (without putting it on forge argv).
+ensure_rpc_configured() {
   local network=$1
   case "$network" in
-    mainnet) echo "${MAINNET_RPC_URL:?MAINNET_RPC_URL required}" ;;
-    megaeth) echo "${MEGAETH_RPC_URL:?MEGAETH_RPC_URL required}" ;;
-    local) echo "${LOCAL_URL:-http://127.0.0.1:8545}" ;;
-    sepolia) echo "${SEPOLIA_RPC_URL:?SEPOLIA_RPC_URL required}" ;;
-    *)
-      # Fall back to forge's rpc_endpoints resolution via env name convention
-      local upper
-      upper=$(echo "$network" | tr '[:lower:]' '[:upper:]')
-      local var="${upper}_RPC_URL"
-      if [[ -n "${!var:-}" ]]; then
-        echo "${!var}"
-      else
-        echo "$network"
-      fi
+    mainnet) [[ -n "${MAINNET_RPC_URL:-}" ]] || {
+      echo "❌ MAINNET_RPC_URL required for --network mainnet" >&2
+      exit 1
+    } ;;
+    megaeth) [[ -n "${MEGAETH_RPC_URL:-}" ]] || {
+      echo "❌ MEGAETH_RPC_URL required for --network megaeth" >&2
+      exit 1
+    } ;;
+    local) : "${LOCAL_URL:=http://127.0.0.1:8545}"
+      export LOCAL_URL
       ;;
+    sepolia) [[ -n "${SEPOLIA_RPC_URL:-}" ]] || {
+      echo "❌ SEPOLIA_RPC_URL required for --network sepolia" >&2
+      exit 1
+    } ;;
   esac
 }
+ensure_rpc_configured "$NETWORK"
 
-# Foundry requires --private-key / --password on argv for non-interactive forge/cast.
-# Prefer a keystore (`--account`) over PRIVATE_KEY; run only on a trusted operator machine.
-SIGNER=()
-if [[ -n "${PRIVATE_KEY:-}" ]]; then
-  SIGNER=(--private-key "$PRIVATE_KEY")
-  [[ -n "$SENDER" ]] || SENDER=$("$CAST" wallet address --private-key "$PRIVATE_KEY")
-else
-  if [[ -z "${DEPLOYER_ACCOUNT_PASSWORD:-}" ]]; then
-    read -r -s -p "Keystore password for \"$ACCOUNT\" (hidden): " DEPLOYER_ACCOUNT_PASSWORD
-    echo ""
-    export DEPLOYER_ACCOUNT_PASSWORD
-  fi
-  SIGNER=(--account "$ACCOUNT" --password "$DEPLOYER_ACCOUNT_PASSWORD")
-  [[ -n "$SENDER" ]] || SENDER=$("$CAST" wallet address "${SIGNER[@]}")
+# Keystore signer. Prefer interactive password unlock (keeps passphrase out of argv).
+# DEPLOYER_ACCOUNT_PASSWORD is optional for non-interactive automation on a trusted host.
+SIGNER=(--account "$ACCOUNT")
+if [[ -n "${DEPLOYER_ACCOUNT_PASSWORD:-}" ]]; then
+  SIGNER+=(--password "$DEPLOYER_ACCOUNT_PASSWORD")
+fi
+if [[ -z "$SENDER" ]]; then
+  SENDER=$("$CAST" wallet address "${SIGNER[@]}")
 fi
 
 if [[ "$VERIFY" == true ]] && [[ -z "${ETHERSCAN_API_KEY:-}" ]]; then
@@ -117,7 +125,8 @@ if [[ "$VERIFY" == true ]] && [[ -z "${ETHERSCAN_API_KEY:-}" ]]; then
   VERIFY=false
 fi
 
-RPC_URL=$(resolve_rpc_url "$NETWORK")
+# Use foundry.toml rpc alias so provider URLs/credentials are not expanded into argv.
+RPC_ALIAS=$NETWORK
 
 # Fail closed when the RPC is not the network the operator named (skip for local / unknown aliases).
 expected_chain_id() {
@@ -129,9 +138,9 @@ expected_chain_id() {
 }
 EXPECTED_CHAIN_ID=$(expected_chain_id "$NETWORK")
 if [[ -n "$EXPECTED_CHAIN_ID" ]]; then
-  CHAIN_ID=$("$CAST" chain-id --rpc-url "$RPC_URL" 2>/dev/null || echo "")
+  CHAIN_ID=$("$CAST" chain-id --rpc-url "$RPC_ALIAS" 2>/dev/null || echo "")
   if [[ -z "$CHAIN_ID" ]]; then
-    echo "❌ Cannot determine chain ID from RPC: $RPC_URL" >&2
+    echo "❌ Cannot determine chain ID from RPC alias: $RPC_ALIAS" >&2
     exit 1
   fi
   if [[ "$CHAIN_ID" =~ ^0[xX] ]]; then
@@ -150,10 +159,10 @@ export MARKET
 [[ -n "${MINTER_USDC:-}" ]] && export MINTER_USDC
 
 echo "=== Harbor Zap deploy (salted / CREATE3) — $NETWORK / $MARKET ==="
-echo "  sender: $SENDER   verify: $VERIFY"
+echo "  account: $ACCOUNT   sender: $SENDER   verify: $VERIFY"
 
 cmd=("$FORGE" script script/Deploy_Zaps.s.sol:Deploy_Zaps
-  --rpc-url "$RPC_URL" --broadcast --slow --timeout "$TIMEOUT" --sender "$SENDER" "${SIGNER[@]}")
+  --rpc-url "$RPC_ALIAS" --broadcast --slow --timeout "$TIMEOUT" --sender "$SENDER" "${SIGNER[@]}")
 [[ "$NETWORK" == "megaeth" ]] && cmd+=(--skip-simulation)
 [[ "$VERIFY" == true ]] && cmd+=(--verify --retries "$VERIFY_RETRIES" --delay "$VERIFY_DELAY")
 [[ "$RESUME" == true ]] && cmd+=(--resume)

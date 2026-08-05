@@ -61,8 +61,6 @@ contract GenesisUSDCZap_v1 is
     // ========== Events ==========
     /// @dev `ZappedBaseAsset` / `ZappedCollateral` are declared on `GenesisZapBase_v1`.
 
-    event Upgraded(address indexed implementation);
-
     // ========== Constructor ==========
     /// @notice Constructor sets the Genesis address
     /// @param genesis_ Address of the Genesis contract (must accept wrapped collateral)
@@ -102,9 +100,7 @@ contract GenesisUSDCZap_v1 is
     /// @notice The check that allows this contract to be upgraded
     /// @dev In UUPS proxies the implementation is responsible for upgrading itself
     /// @dev Only owners can upgrade this contract
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
-        emit Upgraded(newImplementation);
-    } // solhint-disable-line no-empty-blocks
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {} // solhint-disable-line no-empty-blocks
 
     // =============================================================
     // MAIN ZAP FUNCTIONS

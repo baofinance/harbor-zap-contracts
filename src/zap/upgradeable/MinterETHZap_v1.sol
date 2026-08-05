@@ -94,8 +94,6 @@ contract MinterETHZap_v1 is
     /// @dev Zap lifecycle events (`BaseAssetZappedTo*`, etc.) live on `MinterZapBase_v1`.
 
     event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
-    event Upgraded(address indexed implementation);
-
     // ============ Constructor ============
 
     /// @notice In UUPS proxies the constructor is used only to stop the implementation being initialized to any version
@@ -139,9 +137,7 @@ contract MinterETHZap_v1 is
     /// @notice The check that allows this contract to be upgraded
     /// @dev In UUPS proxies the implementation is responsible for upgrading itself
     /// @dev Only owners can upgrade this contract
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
-        emit Upgraded(newImplementation);
-    } // solhint-disable-line no-empty-blocks
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {} // solhint-disable-line no-empty-blocks
 
     // ============ External Functions ============
 

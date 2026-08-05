@@ -1,4 +1,4 @@
-# Lido referral config verification (v4/v5 ETH zaps)
+# Lido referral config verification (branch `_v1` ETH zaps)
 
 Production **MinterETHZap_v3** and **GenesisETHZap_v4** used mutable `referral` storage with deploy-time override:
 
@@ -10,9 +10,9 @@ Production **MinterETHZap_v3** and **GenesisETHZap_v4** used mutable `referral` 
 
 All sampled mainnet deployment JSONs pass `referral: "0x0000000000000000000000000000000000000000"` (constructor and init). That resolves to the Harbor default at runtime.
 
-## Branch v4/v5 behavior
+## Branch `_v1` behavior
 
-[`StETHZapNetworkConfig`](src/zap/upgradeable/config/StETHZapNetworkConfig.sol) sets on mainnet (`chainId == 1`):
+[`StETHZapNetworkConfig`](../src/zap/upgradeable/config/StETHZapNetworkConfig.sol) sets on mainnet (`chainId == 1`):
 
 ```solidity
 cfg.defaultReferral = WstETHConstants.DEFAULT_REFERRAL;
@@ -28,7 +28,7 @@ cfg.defaultReferral = WstETHConstants.DEFAULT_REFERRAL;
 
 ## Conclusion
 
-**Verified:** Branch v4/v5 mainnet referral matches production behavior for all known deployments (zero deploy arg → Harbor default `0x3dFc...c35`).
+**Verified:** Branch `_v1` mainnet referral matches production behavior for all known deployments (zero deploy arg → Harbor default `0x3dFc...c35`).
 
 **Operational change:** If Lido referral must change, deploy a new implementation with updated `WstETHConstants.DEFAULT_REFERRAL` / `StETHZapNetworkConfig` — there is no on-chain hot-fix.
 

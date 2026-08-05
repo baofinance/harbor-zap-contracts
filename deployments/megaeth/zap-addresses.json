@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "chainId": 4326,
   "chainName": "MegaETH",
+  "note": "Partial MegaETH test fixture; sourceState is external provenance only. owner unused by FactoryDeployer.",
   "chainTokens": {
     "wstETH": "0x601aC63637933D88285A025C685AC4e9a92a98dA"
   },

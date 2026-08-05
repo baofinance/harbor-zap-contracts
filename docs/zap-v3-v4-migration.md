@@ -45,7 +45,7 @@ All `zapCollateralTo*` and collateral `*WithPermit` functions gain `minWrappedCo
 | Mutable `referral` storage | `referral()` view returns `DEFAULT_REFERRAL` immutable |
 | `ReferralUpdated` event | None |
 
-Production deployments passed `referral = address(0)` at deploy, which resolved to `WstETHConstants.DEFAULT_REFERRAL` (`0x3dFc49e5112005179Da613BdE5973229082dAc35`). v4 uses the same address via config. See [zap-referral-config.md](./zap-referral-config.md).
+Production deployments passed `referral = address(0)` at deploy, which resolved to `WstETHConstants.DEFAULT_REFERRAL` (`0x3dFc49e5112005179Da613BdE5973229082dAc35`). Branch `_v1` uses the same address via config. See [zap-referral-config.md](./zap-referral-config.md).
 
 ### Events
 
@@ -83,7 +83,7 @@ All `zapBaseAssetTo*`, `zapCollateralTo*`, permit variants, previews, rescue, an
 
 ### Previews (behavioral change)
 
-v3 stubbed eight preview functions with `FunctionNotFound()`. v4 returns ERC4626 + minter dry-run model values. **Previews are hints, not quotes** — live diamond `convert` can diverge (~2% per fork tests). Always set `minWrappedCollateralOut` on zaps.
+v3 stubbed eight preview functions with `FunctionNotFound()`. Branch `_v1` returns ERC4626 + minter dry-run model values. **Previews are hints, not quotes** — live diamond `convert` can diverge (~2% per fork tests). Always set `minWrappedCollateralOut` on zaps.
 
 ### Events / errors
 
@@ -101,8 +101,8 @@ Same changes as Minter ETH (`BaseAssetZappedToLeveraged`, `MintMismatchExpected`
 
 ### Param reorder (collateral)
 
-| v4 ETH | v5 (unified with USDC) |
-|--------|------------------------|
+| production v4 ETH | branch `_v1` (unified with USDC) |
+|-------------------|----------------------------------|
 | `zapCollateral(amount, receiver, minWst)` | `zapCollateral(amount, minWst, receiver)` |
 | `zapCollateralWithPermit(amount, receiver, minWst, ...)` | `zapCollateralWithPermit(amount, minWst, receiver, ...)` |
 
@@ -112,19 +112,19 @@ Same pattern as Minter ETH: `initialize` drops `referral_`; `setReferral` remove
 
 ### Events (breaking for indexers)
 
-**v4 ETH** (6 data fields, no `genesis` topic):
+**production v4 ETH** (6 data fields, no `genesis` topic):
 
 ```solidity
 event ZappedBaseAsset(address indexed user, address indexed receiver, uint256 baseAssetIn, uint256 genesisSharesOut, uint256 baseAssetValueNow, uint256 collateralValueNow);
 ```
 
-**v5** (8 fields, `genesis` indexed, explicit wrapped + shares):
+**branch `_v1`** (`GenesisETHZap_v1` — 8 fields, `genesis` indexed, explicit wrapped + shares):
 
 ```solidity
 event ZappedBaseAsset(address indexed user, address indexed genesis, address indexed receiver, uint256 baseAssetIn, uint256 wrappedCollateralOut, uint256 sharesOut, uint256 baseAssetValueNow, uint256 collateralValueNow);
 ```
 
-`ZappedCollateral` follows the same v5 shape. Update subgraph topic handlers and field decoders.
+`ZappedCollateral` follows the same `_v1` shape. Update subgraph topic handlers and field decoders.
 
 ---
 
@@ -136,11 +136,11 @@ event ZappedBaseAsset(address indexed user, address indexed genesis, address ind
 
 ### Previews
 
-v4 stubbed balance/TVL views and most previews with `FunctionNotFound()`. v5 implements previews; unsupported balance views revert `PreviewNotSupported()` instead.
+Production v4 stubbed balance/TVL views and most previews with `FunctionNotFound()`. Branch `_v1` implements previews; unsupported balance views revert `PreviewNotSupported()` instead.
 
 ### Events
 
-v5 adds `baseAssetValueNow = 0` and `collateralValueNow = 0` to USDC zap events for parity with the ETH zap event shape.
+Branch `_v1` adds `baseAssetValueNow = 0` and `collateralValueNow = 0` to USDC zap events for parity with the ETH zap event shape.
 
 ---
 
@@ -170,7 +170,7 @@ Initialize with two args: `initialize(deployerOwner, pendingOwner)`.
 ## Indexer checklist
 
 - [ ] Subscribe to `BaseAssetZappedToLeveraged` (not `BaseAssetZappedToLeverage`).
-- [ ] Migrate Genesis ETH `ZappedBaseAsset` / `ZappedCollateral` handlers to v5 8-field layout.
+- [ ] Migrate Genesis ETH `ZappedBaseAsset` / `ZappedCollateral` handlers to `_v1` 8-field layout.
 - [ ] Drop `ReferralUpdated` subscription.
 - [ ] Handle Genesis USDC events with two additional trailing uint fields (zeros).
 

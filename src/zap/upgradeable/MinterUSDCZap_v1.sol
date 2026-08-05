@@ -90,8 +90,6 @@ contract MinterUSDCZap_v1 is
     /// @dev Zap lifecycle events (`BaseAssetZappedTo*`, etc.) live on `MinterZapBase_v1`.
 
     event StabilityPoolAllowlistUpdated(address indexed stabilityPool, bool allowed);
-    event Upgraded(address indexed implementation);
-
     // ============ Constructor ============
 
     /// @notice In UUPS proxies the constructor is used only to stop the implementation being initialized to any version
@@ -133,9 +131,7 @@ contract MinterUSDCZap_v1 is
     /// @notice The check that allows this contract to be upgraded
     /// @dev In UUPS proxies the implementation is responsible for upgrading itself
     /// @dev Only owners can upgrade this contract
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
-        emit Upgraded(newImplementation);
-    } // solhint-disable-line no-empty-blocks
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {} // solhint-disable-line no-empty-blocks
 
     // ============ External Functions ============
 
@@ -274,6 +270,7 @@ contract MinterUSDCZap_v1 is
     /// @notice Zap base asset into StabilityPool in one transaction
     /// @dev Flow: base asset → wrapped collateral → Minter mint pegged → StabilityPool deposit
     /// @dev Use previewStabilityPoolFromWrappedCollateral() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param baseAssetAmount Amount of base asset to zap
     /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromWrappedCollateral with slippage buffer)
@@ -316,6 +313,7 @@ contract MinterUSDCZap_v1 is
     /// @notice Zap collateral into StabilityPool in one transaction
     /// @dev Flow: collateral → wrapped collateral → Minter mint pegged → StabilityPool deposit
     /// @dev Use previewStabilityPoolFromWrappedCollateral() to calculate expected output, then apply a slippage buffer (0.5-1%)
+    /// @param collateralAmount Amount of collateral to zap
     /// @param minWrappedCollateralOut Minimum wrapped collateral to receive (slippage protection)
     /// @param receiver Address that will receive the StabilityPool deposit
     /// @param minPeggedOut Minimum amount of pegged tokens to receive (use previewStabilityPoolFromWrappedCollateral with slippage buffer)

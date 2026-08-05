@@ -101,7 +101,7 @@ contract GenesisUSDCZapV1ForkTest is TestMinterSetUp {
         uint256 genBalAfter = IGenesis(genesis).balanceOf(receiver);
         uint256 fxBalAfter = IERC20(FXSAVE).balanceOf(genesis);
 
-        console.log("=== USDC Zap v4 Success ===");
+        console.log("=== USDC Zap v1 Success ===");
         console.log("USDC Deposited:", usdcAmount);
         console.log("fxSAVE Received:", collateralAmount);
         console.log("Genesis Shares Minted:", genBalAfter - genBalBefore);
