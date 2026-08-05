@@ -64,8 +64,6 @@ library ZapIntake {
     ) internal {
         try token.permit(owner, address(this), amount, deadline, v, r, s) {
             return;
-        } catch {
-            // Front-run or already-consumed permit; the transferFrom that follows enforces the allowance.
-        }
+        } catch {} // solhint-disable-line no-empty-blocks
     }
 }

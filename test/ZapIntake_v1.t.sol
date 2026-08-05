@@ -112,8 +112,9 @@ contract MockPermitERC20 is ERC20, ERC20Permit {
 ///         all zaps. Covers the guards that are unreachable through the zaps' public API on a mainnet
 ///         fork because the production tokens (USDC, wstETH, fxSAVE) are well-behaved.
 contract ZapIntakeV1Test is Test {
-    bytes32 private constant PERMIT_TYPEHASH =
-        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+    bytes32 private constant PERMIT_TYPEHASH = keccak256(
+        "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+    );
 
     ZapIntakeHarness harness;
     address user;

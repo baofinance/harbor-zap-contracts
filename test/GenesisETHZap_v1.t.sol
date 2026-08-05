@@ -51,7 +51,10 @@ contract MockShortMintGenesis {
 
     function deposit(uint256 collateralIn, address receiver) external {
         // forgefmt: disable-next-item
-        require(IERC20(WRAPPED_COLLATERAL_TOKEN).transferFrom(msg.sender, address(this), collateralIn), "transfer failed");
+        require(
+            IERC20(WRAPPED_COLLATERAL_TOKEN).transferFrom(msg.sender, address(this), collateralIn),
+            "transfer failed"
+        );
         balanceOf[receiver] += collateralIn - 1;
     }
 }
