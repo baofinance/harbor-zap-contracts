@@ -18,7 +18,7 @@ src/zap/upgradeable/GenesisETHZap_v1.sol:GenesisETHZap_v1
 | rescueToken                            |  38085 | 3.808e+04 |
 | totalValueBaseAsset                    |  45763 | 4.576e+04 |
 | transferOwnership                      |  12583 | 1.258e+04 |
-| upgradeToAndCall                       |  11932 | 1.193e+04 |
+| upgradeToAndCall                       |  10799 | 1.080e+04 |
 | zapCollateral                          | 321336 | 3.213e+05 |
 | zapName                                |  14756 | 1.476e+04 |
 | zapNativeAsset                         | 306348 | 3.063e+05 |
@@ -41,7 +41,7 @@ src/zap/upgradeable/GenesisUSDCZap_v1.sol:GenesisUSDCZap_v1
 | rescueToken                            |  38058 | 3.806e+04 |
 | totalValueBaseAsset                    |    400 | 4.000e+02 |
 | transferOwnership                      |  12517 | 1.252e+04 |
-| upgradeToAndCall                       |  11821 | 1.182e+04 |
+| upgradeToAndCall                       |  10687 | 1.069e+04 |
 | zapBaseAsset                           | 763858 | 7.639e+05 |
 | zapCollateral                          | 775773 | 7.758e+05 |
 | zapName                                |  14693 | 1.469e+04 |
@@ -68,7 +68,7 @@ src/zap/upgradeable/MinterETHZap_v1.sol:MinterETHZap_v1
 | rescueToken                                   |  38261 | 3.826e+04 |
 | setStabilityPoolAllowed                       |  26932 | 2.693e+04 |
 | transferOwnership                             |  12809 | 1.281e+04 |
-| upgradeToAndCall                              |  12284 | 1.228e+04 |
+| upgradeToAndCall                              |  11151 | 1.115e+04 |
 | zapCollateralToLeveraged                      | 382159 | 3.822e+05 |
 | zapCollateralToPegged                         | 373168 | 3.732e+05 |
 | zapCollateralToStabilityPool                  | 677702 | 6.777e+05 |
@@ -105,7 +105,7 @@ src/zap/upgradeable/MinterUSDCZap_v1.sol:MinterUSDCZap_v1
 | rescueToken                                   |   38300 | 3.830e+04 |
 | setStabilityPoolAllowed                       |   26932 | 2.693e+04 |
 | transferOwnership                             |   12809 | 1.281e+04 |
-| upgradeToAndCall                              |   12284 | 1.228e+04 |
+| upgradeToAndCall                              |   11151 | 1.115e+04 |
 | zapBaseAssetToLeveraged                       |  835725 | 8.357e+05 |
 | zapBaseAssetToPegged                          |  826764 | 8.268e+05 |
 | zapBaseAssetToStabilityPool                   | 1076819 | 1.077e+06 |
