@@ -47,8 +47,8 @@ src/zap/upgradeable/GenesisUSDCZap_v1.sol:GenesisUSDCZap_v1
 | totalValueBaseAsset                    |    390 | 3.900e+02 |
 | transferOwnership                      |  12508 | 1.251e+04 |
 | upgradeToAndCall                       |  10657 | 1.066e+04 |
-| zapBaseAsset                           | 766508 | 7.665e+05 |
-| zapCollateral                          | 778423 | 7.784e+05 |
+| zapBaseAsset                           | 748948 | 7.489e+05 |
+| zapCollateral                          | 760863 | 7.609e+05 |
 | zapName                                |  14652 | 1.465e+04 |
 
 src/zap/upgradeable/MinterETHZap_v1.sol:MinterETHZap_v1
@@ -118,10 +118,10 @@ src/zap/upgradeable/MinterUSDCZap_v1.sol:MinterUSDCZap_v1
 | upgradeToAndCall                              |   11141 | 1.114e+04 |
 | zapBaseAssetToLeveraged                       |  835191 | 8.352e+05 |
 | zapBaseAssetToPegged                          |  826230 | 8.262e+05 |
-| zapBaseAssetToStabilityPool                   | 1076720 | 1.077e+06 |
+| zapBaseAssetToStabilityPool                   | 1119675 | 1.120e+06 |
 | zapCollateralToLeveraged                      |  838770 | 8.388e+05 |
 | zapCollateralToPegged                         |  829273 | 8.293e+05 |
-| zapCollateralToStabilityPool                  | 1076685 | 1.077e+06 |
+| zapCollateralToStabilityPool                  | 1119613 | 1.120e+06 |
 | zapName                                       |   15146 | 1.515e+04 |
 | zapWrappedCollateralToStabilityPool           |  562708 | 5.627e+05 |
 | zapWrappedCollateralToStabilityPoolWithPermit |  380740 | 3.807e+05 |
