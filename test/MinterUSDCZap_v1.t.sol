@@ -16,6 +16,7 @@ import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
 import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {ForkConstants} from "@harborzap-test/ForkConstants.sol";
 import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
 import {MockStabilityPool, MockMisreportingStabilityPool} from "@harborzap-test/mock/MockStabilityPool.sol";
@@ -23,6 +24,11 @@ import {MockStabilityPool, MockMisreportingStabilityPool} from "@harborzap-test/
 /// @dev Calls a selector with no implementation so the zap's `fallback` runs (revert propagates to test)
 interface ITriggerZapFallback {
     function __zapFallbackProbe() external;
+}
+
+/// @notice Minter stand-in reporting a wrapped collateral the USDC zap was not built for.
+contract MockWrongTokenMinterUsdc {
+    address public constant WRAPPED_COLLATERAL_TOKEN = address(0xBEEF);
 }
 
 contract MinterUSDCZapV1ForkTest is TestMinterSetUp {
@@ -41,10 +47,8 @@ contract MinterUSDCZapV1ForkTest is TestMinterSetUp {
     address constant FXUSD = 0x085780639CC2cACd35E474e71f4d000e2405d8f6;
     address constant FXSAVE = 0x7743e50F534a7f9F1791DdE7dCD89F7783Eefc39;
     /// @dev Pin after fxSAVE + fxUSD diamond deployments so CI is deterministic (not tip).
-    uint256 constant MAINNET_FORK_BLOCK = 22_800_000;
-
     function setUpFork() internal override {
-        vm.createSelectFork(vm.rpcUrl("mainnet"), MAINNET_FORK_BLOCK);
+        vm.createSelectFork(vm.rpcUrl("mainnet"), ForkConstants.MAINNET_FORK_BLOCK);
 
         feeReceiver = makeAddr("feeReceiver");
         owner = makeAddr("owner");
@@ -582,6 +586,13 @@ contract MinterUSDCZapV1ForkTest is TestMinterSetUp {
         // The zap refuses to be built against a zero Minter address.
         vm.expectRevert(IZapErrors.ZeroAddress.selector);
         new MinterUSDCZap_v1(address(0));
+    }
+
+    function test_Constructor_WrappedCollateralMismatch() public {
+        // Minter reporting a wrapped collateral other than fxSAVE must be rejected at construction.
+        address wrongMinter = address(new MockWrongTokenMinterUsdc());
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.WrappedCollateralMismatch.selector, address(0xBEEF), FXSAVE));
+        new MinterUSDCZap_v1(wrongMinter);
     }
 
     // ============ Negative Path Tests ============

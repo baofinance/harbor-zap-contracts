@@ -12,6 +12,7 @@ import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
 import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
 
 import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {ForkConstants} from "@harborzap-test/ForkConstants.sol";
 import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
 import {MockStabilityPool, MockMisreportingStabilityPool} from "@harborzap-test/mock/MockStabilityPool.sol";
@@ -23,6 +24,11 @@ interface ISTETHV2 {
 
 interface IWstETHWrapV2 {
     function wrap(uint256 stEthAmount) external returns (uint256);
+}
+
+/// @notice Minter stand-in reporting a wrapped collateral the ETH zap was not built for.
+contract MockWrongTokenMinter {
+    address public constant WRAPPED_COLLATERAL_TOKEN = address(0xBEEF);
 }
 
 contract MinterETHZapV1ForkTest is TestMinterSetUp {
@@ -41,7 +47,7 @@ contract MinterETHZapV1ForkTest is TestMinterSetUp {
     address constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
     function setUpFork() internal override {
-        vm.createSelectFork(vm.rpcUrl("mainnet"));
+        vm.createSelectFork(vm.rpcUrl("mainnet"), ForkConstants.MAINNET_FORK_BLOCK);
 
         feeReceiver = makeAddr("feeReceiver");
         owner = makeAddr("owner");
@@ -619,6 +625,13 @@ contract MinterETHZapV1ForkTest is TestMinterSetUp {
         // The zap refuses to be built against a zero Minter address.
         vm.expectRevert(IZapErrors.ZeroAddress.selector);
         new MinterETHZap_v1(address(0));
+    }
+
+    function test_Constructor_WrappedCollateralMismatch() public {
+        // Minter reporting a wrapped collateral other than wstETH must be rejected at construction.
+        address wrongMinter = address(new MockWrongTokenMinter());
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.WrappedCollateralMismatch.selector, address(0xBEEF), WSTETH));
+        new MinterETHZap_v1(wrongMinter);
     }
 
     // ============ Negative Path Tests ============

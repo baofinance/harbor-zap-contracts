@@ -13,6 +13,7 @@ import {Genesis_v1} from "@harbor/minter/Genesis_v1.sol";
 import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
 
 import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {ForkConstants} from "@harborzap-test/ForkConstants.sol";
 import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
 
@@ -74,7 +75,7 @@ contract GenesisETHZapV1ForkTest is TestMinterSetUp {
     address constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
     function setUpFork() internal override {
-        vm.createSelectFork(vm.rpcUrl("mainnet"));
+        vm.createSelectFork(vm.rpcUrl("mainnet"), ForkConstants.MAINNET_FORK_BLOCK);
 
         feeReceiver = makeAddr("feeReceiver");
         owner = makeAddr("owner");

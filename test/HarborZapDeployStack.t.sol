@@ -17,8 +17,10 @@ import {MinterETHZap_v1} from "@harborzap/zap/upgradeable/MinterETHZap_v1.sol";
 import {MinterUSDCZap_v1} from "@harborzap/zap/upgradeable/MinterUSDCZap_v1.sol";
 
 import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {ForkConstants} from "@harborzap-test/ForkConstants.sol";
 import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
+import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
 
 /// @notice Concrete harness over the abstract `HarborZapDeployStack`, exposing the internal deploy
 ///         functions so the real CREATE3 deploy path (predict → deploy impl → deploy proxy → record →
@@ -140,7 +142,7 @@ contract HarborZapDeployStackEthForkTest is TestMinterSetUp {
     address genesis;
 
     function setUpFork() internal override {
-        vm.createSelectFork(vm.rpcUrl("mainnet"));
+        vm.createSelectFork(vm.rpcUrl("mainnet"), ForkConstants.MAINNET_FORK_BLOCK);
 
         feeReceiver = makeAddr("feeReceiver");
         owner = makeAddr("owner");
@@ -202,6 +204,25 @@ contract HarborZapDeployStackEthForkTest is TestMinterSetUp {
         assertEq(IHarborOwnable(minterZap).owner(), HARBOR_MULTISIG, "multisig owns minter zap");
         assertEq(harness.pendingCount(), 0, "handoff queue cleared");
     }
+
+    function test_DeployEthZaps_SmokeZapNativeIntoGenesis() public {
+        // After CREATE3 deploy, the genesis zap proxy must be executable against the wired Genesis.
+        (address genesisZap, , , ) = harness.deployEthZapsTwice(genesis, minter, address(harness));
+
+        address user = makeAddr("stackUser");
+        address receiver = makeAddr("stackReceiver");
+        uint256 ethAmount = 0.02 ether;
+        (, uint256 previewWrapped) = GenesisETHZap_v1(payable(genesisZap)).previewSharesFromBase(ethAmount);
+
+        vm.deal(user, ethAmount);
+        vm.prank(user);
+        uint256 sharesOut = GenesisETHZap_v1(payable(genesisZap)).zapNativeAsset{value: ethAmount}(
+            receiver, (previewWrapped * 98) / 100, 0
+        );
+
+        assertGt(sharesOut, 0, "sharesOut");
+        assertEq(IGenesis(genesis).balanceOf(receiver), sharesOut, "receiver genesis shares");
+    }
 }
 
 /// @notice Mainnet-fork tests driving `HarborZapDeployStack` for the USDC market (fxSAVE wrapped
@@ -216,7 +237,7 @@ contract HarborZapDeployStackUsdcForkTest is TestMinterSetUp {
     address genesis;
 
     function setUpFork() internal override {
-        vm.createSelectFork(vm.rpcUrl("mainnet"));
+        vm.createSelectFork(vm.rpcUrl("mainnet"), ForkConstants.MAINNET_FORK_BLOCK);
 
         feeReceiver = makeAddr("feeReceiver");
         owner = makeAddr("owner");

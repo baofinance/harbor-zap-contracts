@@ -16,6 +16,15 @@
         "0x438B29EC7a1770dDbA37D792F1A6e76231Ef8E06"
       ]
     },
+    "USD": {
+      "addresses": {
+        "genesisEth": "0x40ff767FF4055D53b1BC1B0141221a37B25905fD",
+        "genesisUsdc": "",
+        "minterEth": "0xC14837C30BEdF3081cBa2cDeB067fA6F0381e69b",
+        "minterUsdc": ""
+      },
+      "stabilityPools": []
+    },
     "BTC": {
       "addresses": {
         "genesisEth": "",

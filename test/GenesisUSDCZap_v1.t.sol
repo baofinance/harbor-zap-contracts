@@ -15,6 +15,7 @@ import {Genesis_v1} from "@harbor/minter/Genesis_v1.sol";
 import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
 
 import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {ForkConstants} from "@harborzap-test/ForkConstants.sol";
 import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
 import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
 
@@ -45,7 +46,7 @@ contract GenesisUSDCZapV1ForkTest is TestMinterSetUp {
     address constant FXSAVE = 0x7743e50F534a7f9F1791DdE7dCD89F7783Eefc39;
 
     function setUpFork() internal override {
-        vm.createSelectFork(vm.rpcUrl("mainnet"));
+        vm.createSelectFork(vm.rpcUrl("mainnet"), ForkConstants.MAINNET_FORK_BLOCK);
 
         feeReceiver = makeAddr("feeReceiver");
         owner = makeAddr("owner");
