@@ -161,10 +161,10 @@ Use this when supporting a **new chain or market** (example sketch: **MegaETH**,
 
 **FactoryDeployer / CREATE3** (`yarn deploy` / `script/deploy.sh`):
 ```bash
-script/deploy.sh --network mainnet --market GOLD --genesis-usdc 0x...
-# or: yarn deploy --network mainnet --market GOLD --genesis-usdc 0x...
+script/deploy.sh --network mainnet --market GOLD --account deployer --genesis-usdc 0x...
+# or: yarn deploy --network mainnet --market GOLD --account deployer --genesis-usdc 0x...
 ```
-Requires `--network`, `--market`, and at least one of `--genesis-eth` / `--genesis-usdc` / `--minter-eth` / `--minter-usdc`. Uses `script/Deploy_Zaps.s.sol` + `HarborZapDeployStack` (bao-base FactoryDeployer). Deployer must be a BaoFactory operator. State lands in `deployments/state-<chainId>-<MARKET>.json` (salt prefix `harbor_zap_v1_<MARKET>`).
+Requires `--network`, `--market`, `--account` (Foundry keystore; defaults to `deployer` if omitted / `$DEPLOYER_ACCOUNT`), and at least one of `--genesis-eth` / `--genesis-usdc` / `--minter-eth` / `--minter-usdc`. Uses `script/Deploy_Zaps.s.sol` + `HarborZapDeployStack` (bao-base FactoryDeployer). Deployer must be a BaoFactory operator. State lands in `deployments/state-<chainId>-<MARKET>.json` (salt prefix `harbor_zap_v1_<MARKET>`).
 
 Historical address manifests live under `deployments/<network>/` (including dated JSON). **Verification:** `yarn deploy` / `script/deploy.sh` runs forge `--verify` by default (`--no-verify` to skip). `script/verify-zaps.sh` / `script/verify-zaps-megaeth` are backup re-verify helpers; manifests with `"skipVerify": true` exit successfully without submitting.
 
