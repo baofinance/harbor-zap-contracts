@@ -27,8 +27,9 @@ contract GenesisHausdForkIntegrationTest is Test {
     address internal constant STETH = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
     address internal constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
-    bytes32 internal constant PERMIT_TYPEHASH =
-        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+    bytes32 internal constant PERMIT_TYPEHASH = keccak256(
+        "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+    );
 
     uint256 internal constant SLIPPAGE_BPS = 200;
 
@@ -73,7 +74,8 @@ contract GenesisHausdForkIntegrationTest is Test {
     function _deployZap() internal {
         address impl = address(new GenesisETHZap_v1(genesis));
         address proxy = UnsafeUpgrades.deployUUPSProxy(
-            impl, abi.encodeCall(GenesisETHZap_v1.initialize, (address(this), zapOwner))
+            impl,
+            abi.encodeCall(GenesisETHZap_v1.initialize, (address(this), zapOwner))
         );
         zap = GenesisETHZap_v1(payable(proxy));
         vm.label(address(zap), "GenesisETHZap_v1_haUSD");
@@ -164,15 +166,21 @@ contract GenesisHausdForkIntegrationTest is Test {
 
         uint256 nonce = IERC20Permit(STETH).nonces(user);
         uint256 deadline = block.timestamp + 1 hours;
-        bytes32 structHash =
-            keccak256(abi.encode(PERMIT_TYPEHASH, user, address(zap), stEthAmount, nonce, deadline));
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, user, address(zap), stEthAmount, nonce, deadline));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(STETH).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
 
         uint256 sharesBefore = IGenesis(genesis).balanceOf(receiver);
         vm.prank(user);
-        uint256 sharesOut =
-            zap.zapCollateralWithPermit(stEthAmount, _minOut(previewWrapped), receiver, deadline, v, r, s);
+        uint256 sharesOut = zap.zapCollateralWithPermit(
+            stEthAmount,
+            _minOut(previewWrapped),
+            receiver,
+            deadline,
+            v,
+            r,
+            s
+        );
 
         assertGt(sharesOut, 0, "sharesOut");
         assertEq(IGenesis(genesis).balanceOf(receiver), sharesBefore + sharesOut, "receiver shares");
@@ -184,8 +192,7 @@ contract GenesisHausdForkIntegrationTest is Test {
 
         uint256 nonce = IERC20Permit(STETH).nonces(user);
         uint256 deadline = block.timestamp + 1 hours;
-        bytes32 structHash =
-            keccak256(abi.encode(PERMIT_TYPEHASH, user, address(zap), stEthAmount, nonce, deadline));
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, user, address(zap), stEthAmount, nonce, deadline));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IERC20Permit(STETH).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPk, digest);
 
@@ -195,8 +202,15 @@ contract GenesisHausdForkIntegrationTest is Test {
         assertEq(IERC20(STETH).allowance(user, address(zap)), stEthAmount, "allowance from front-run permit");
 
         vm.prank(user);
-        uint256 sharesOut =
-            zap.zapCollateralWithPermit(stEthAmount, _minOut(previewWrapped), receiver, deadline, v, r, s);
+        uint256 sharesOut = zap.zapCollateralWithPermit(
+            stEthAmount,
+            _minOut(previewWrapped),
+            receiver,
+            deadline,
+            v,
+            r,
+            s
+        );
         assertGt(sharesOut, 0, "zap proceeds despite consumed permit nonce");
     }
 }

@@ -7,8 +7,9 @@ evm_version = "cancun"
 extra_output = ["storageLayout"]
 
 # Cap parallel test workers so fork suites (mainnet RPC) do not stampede Alchemy.
+# 5 still 429'd on a typical Alchemy key; keep this low for fork-heavy suites.
 # Override locally with `forge test --jobs N` if needed.
-threads = 5
+threads = 2
 
 auto_detect_remappings = false # remappings seem to cause problems
 optimizer = true
@@ -62,7 +63,8 @@ mainnet = { key = "${ETHERSCAN_KEY}" }
 
 [rpc_endpoints]
 sepolia = "${SEPOLIA_RPC_URL}"
-mainnet = "${MAINNET_RPC_URL}"
+# Self-throttle + retry on 429 (Alchemy / istio). Lower CUPS = forge paces requests more.
+mainnet = { endpoint = "${MAINNET_RPC_URL}", retries = 12, retry_backoff = 1500, compute_units_per_second = 100 }
 megaeth = "${MEGAETH_RPC_URL}"
 local = "${LOCAL_URL}"
 

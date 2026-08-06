@@ -217,7 +217,9 @@ contract HarborZapDeployStackEthForkTest is TestMinterSetUp {
         vm.deal(user, ethAmount);
         vm.prank(user);
         uint256 sharesOut = GenesisETHZap_v1(payable(genesisZap)).zapNativeAsset{value: ethAmount}(
-            receiver, (previewWrapped * 98) / 100, 0
+            receiver,
+            (previewWrapped * 98) / 100,
+            0
         );
 
         assertGt(sharesOut, 0, "sharesOut");

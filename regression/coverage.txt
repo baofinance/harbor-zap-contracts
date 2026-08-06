@@ -2,16 +2,16 @@
 |------------------------------------------------------|--------------------|--------------------|-----------------|------------------|
 | script/src/HarborZapDeployStack.sol                  | X  92% (33/36)     | X  91% (31/34)     | X  83% (5/6)    | ✓ 100% (6/6)     |
 | script/src/HarborZapFactoryDeployer.sol              | X  57% (20/35)     | X  53% (16/30)     | X  67% (2/3)    | X  58% (7/12)    |
-| src/zap/upgradeable/GenesisETHZap_v1.sol             | X  85% (103/121)   | X  83% (109/131)   | X  67% (12/18)  | X  89% (24/27)   |
+| src/zap/upgradeable/GenesisETHZap_v1.sol             | X  94% (114/121)   | X  92% (120/131)   | X  67% (12/18)  | X  96% (26/27)   |
 | src/zap/upgradeable/GenesisUSDCZap_v1.sol            | X  78% (81/104)    | X  79% (76/96)     | X  64% (7/11)   | X  81% (25/31)   |
-| src/zap/upgradeable/MinterETHZap_v1.sol              | X  79% (151/192)   | X  74% (134/180)   | X  36% (9/25)   | X  86% (38/44)   |
-| src/zap/upgradeable/MinterUSDCZap_v1.sol             | X  70% (125/178)   | X  70% (107/153)   | X  56% (5/9)    | X  78% (35/45)   |
+| src/zap/upgradeable/MinterETHZap_v1.sol              | X  79% (152/192)   | X  75% (135/180)   | X  40% (10/25)  | X  86% (38/44)   |
+| src/zap/upgradeable/MinterUSDCZap_v1.sol             | X  71% (126/178)   | X  71% (108/153)   | X  67% (6/9)    | X  78% (35/45)   |
 | src/zap/upgradeable/asset/FxUSDZapBase_v1.sol        | X  96% (22/23)     | X  86% (24/28)     | X  43% (3/7)    | ✓ 100% (4/4)     |
-| src/zap/upgradeable/asset/StETHZapBase_v1.sol        | X  89% (16/18)     | X  85% (17/20)     | X   0% (0/2)    | X  75% (3/4)     |
+| src/zap/upgradeable/asset/StETHZapBase_v1.sol        | ✓ 100% (18/18)     | X  90% (18/20)     | X   0% (0/2)    | ✓ 100% (4/4)     |
 | src/zap/upgradeable/base/GenesisZapBase_v1.sol       | ✓ 100% (20/20)     | X  89% (24/27)     | X  25% (1/4)    | ✓ 100% (3/3)     |
 | src/zap/upgradeable/base/MinterZapBase_v1.sol        | X  86% (31/36)     | X  81% (34/42)     | X  55% (6/11)   | ✓ 100% (6/6)     |
 | src/zap/upgradeable/base/MinterZapShared_v1.sol      | X  92% (35/38)     | X  95% (54/57)     | X  57% (4/7)    | ✓ 100% (3/3)     |
 | src/zap/upgradeable/base/ZapIntake.sol               | ✓ 100% (19/19)     | ✓ 100% (20/20)     | ✓ 100% (4/4)    | ✓ 100% (4/4)     |
 | src/zap/upgradeable/config/FxUSDZapNetworkConfig.sol | ✓ 100% (8/8)       | ✓ 100% (7/7)       | ✓ 100% (1/1)    | ✓ 100% (1/1)     |
 | src/zap/upgradeable/config/StETHZapNetworkConfig.sol | X  38% (12/32)     | X  35% (11/31)     | X  50% (1/2)    | ✓ 100% (1/1)     |
-| Total                                                | X  59% (1068/1797) | X  59% (1005/1701) | X  40% (68/168) | X  66% (250/377) |
+| Total                                                | X  60% (1091/1805) | X  60% (1027/1709) | X  42% (70/168) | X  67% (254/378) |
