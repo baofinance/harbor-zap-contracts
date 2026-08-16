@@ -1,3 +1,19 @@
+<p align="center">
+  <a href="https://www.harborfinance.io/">
+    <img src="https://github.com/baofinance/harbor-app/raw/main/public/logo.svg"
+         alt="Harbor Protocol - A Safer Harbor For Leverage, Uncharted Waters For Yield"
+         width="480"
+         style="max-width:100%; height:auto;">
+  </a>
+</p>
+
+<p align="center">
+  <br>
+  <i>A Safer Harbor For Leverage, Uncharted Waters For Yield.</i><br>
+</p>
+
+<br>
+
 # Harbor Zap Contracts
 
 One-click zapper contracts for depositing collateral into Harbor Genesis and Minter contracts.
@@ -9,35 +25,53 @@ This repository contains zap contracts that enable users to deposit collateral i
 - **ETH/wstETH Zaps**: Convert ETH or stETH to wstETH and deposit into Genesis/Minter contracts
 - **USDC/fxSAVE Zaps**: Convert USDC or fxUSD to fxSAVE and deposit into Genesis/Minter contracts
 
+See **Zap preview semantics** and **Adding a new zapper** below for integrator expectations and how to extend the tree (e.g. a new chain such as MegaETH).
+
 ## Contracts
 
 ### ETH/wstETH Zap Contracts
 
-- `GenesisETHZap_v2`: Zap ETH or stETH into Genesis contracts
-- `MinterETHZap_v2`: Zap ETH or stETH to mint pegged or leveraged tokens
+- `GenesisETHZap_v1`: Zap ETH or stETH into Genesis contracts (upgradeable)
+- `MinterETHZap_v1`: Zap ETH or stETH to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
 
 ### USDC/fxSAVE Zap Contracts
 
-- `GenesisUSDCZap_v2`: Zap USDC or fxUSD into Genesis contracts
-- `MinterUSDCZap_v2`: Zap USDC or fxUSD to mint pegged or leveraged tokens
+- `GenesisUSDCZap_v1`: Zap USDC or fxUSD into Genesis contracts (upgradeable)
+- `MinterUSDCZap_v1`: Zap USDC or fxUSD to mint pegged or leveraged tokens, or deposit into Stability Pools (upgradeable)
+
+## Operator notes
+
+Current zap set (`GenesisETHZap_v1`, `GenesisUSDCZap_v1`, `MinterETHZap_v1`, `MinterUSDCZap_v1`) is a **new `_v1` implementation family** — deploy **new proxies**; do not UUPS-upgrade production v3/v4 proxies onto these implementations.
+
+Safety envelope (aligned with harbor-swap executor hardening): `ZapIntake` exact/measured pulls + leftover refund, balance-delta mint checks, `TokenHolder_v2` owner sweep, reentrancy protection, allowlisted stability pools, and mint/share validation. Minter allowlists use ERC-7201 namespaced storage (no root slots).
+
+For upgrade prep within the same `_v1` line, use `script/dump-zap-storage-layout.sh` plus `extra_output = ["storageLayout"]` in `foundry.toml`. See [docs/zap-storage-layout-upgrade.md](docs/zap-storage-layout-upgrade.md) and [docs/zap-v3-v4-migration.md](docs/zap-v3-v4-migration.md) for production v3/v4 → branch v1 migration.
+
+### Network-config refactor (maintainability)
+
+Zaps use declarative network config libraries: `src/zap/upgradeable/config/StETHZapNetworkConfig.sol` for stETH / wstETH paths (`GenesisETHZap_v1`, `MinterETHZap_v1`) and `src/zap/upgradeable/config/FxUSDZapNetworkConfig.sol` for fxSAVE paths (`GenesisUSDCZap_v1`, `MinterUSDCZap_v1`). This keeps shared constants out of the concrete contracts while allowing chain-specific behavior (for example wrapped-collateral-only environments).
 
 ## Prerequisites
 
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) installed
-- Access to an Ethereum RPC endpoint (for mainnet deployments)
+- Access to RPC endpoints for any target networks you deploy to (mainnet and/or megaeth)
 - Private key with sufficient ETH for gas fees
+
+Optional local helpers `yarn foundryup` / `yarn uv:install` pipe the official Foundry/uv installers — run only on a trusted machine (same as upstream docs). CI uses the pinned Foundry action, not those scripts.
 
 ## Installation
 
-1. Clone the repository:
+1. Clone the repository (with submodules):
 ```bash
-git clone <repository-url>
+git clone --recurse-submodules <repository-url>
 cd harbor-zap-contracts
 ```
 
-2. Install dependencies:
+2. Install Foundry libs and JS tooling (Yarn 4 via Corepack — needed for `yarn CI` / lint / slither):
 ```bash
 forge install
+corepack enable
+yarn install
 ```
 
 3. Build the contracts:
@@ -47,205 +81,138 @@ forge build
 
 ## Testing
 
-Run the test suite:
 ```bash
 forge test
+# or: yarn test
 ```
 
-For fork tests, set the `MAINNET_RPC_URL` environment variable:
+For fork tests, set `MAINNET_RPC_URL` (e.g. in `.env.local`):
 ```bash
 export MAINNET_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
 forge test
 ```
 
+Full bao-base CI (fmt, lint, slither, tests, coverage, sizes, validate):
+```bash
+# Bash 5+ on PATH (Homebrew bash on macOS)
+yarn CI
+```
+
+**Market integration (production minters + stability pools):** `test/MinterMarketForkIntegration.t.sol` forks mainnet, loads `deployments/mainnet/zap-addresses.json` (default market `BTC`), deploys **v1** zaps against production minters, and zaps into each configured stability pool on both rails (ETH/stETH/wstETH and USDC/fxUSD/fxSAVE). Requires `MAINNET_RPC_URL`; suite CPU ~80s for the BTC suite (see `regression/gas-duration.txt`).
+
+## Zap preview semantics
+
+Integrators should treat **previews as hints**, not guaranteed execution results, unless documented otherwise per function.
+
+| Zap | Previews (wrapped / shares) | Notes |
+|-----|----------------------------|--------|
+| `GenesisETHZap_v1` | Lido + wstETH view math for ETH/stETH paths | On-chain views for balances / TVL where implemented |
+| `GenesisUSDCZap_v1` | `IERC4626(fxSAVE).convertToShares` after **USDC→fxUSD $1 peg scaling** (base path) or nominal fxUSD amount (collateral path) | **Not** a static replay of the fxUSD diamond + router `convert` calldata. Live output can differ; always set `minWrappedCollateralOut`. fxSAVE’s ERC4626 `asset()` is the vault’s accounting asset (e.g. fxSP), not necessarily the zap’s `COLLATERAL_ASSET` address. |
+| `MinterETHZap_v1` | Same family as Genesis ETH + minter `*DryRun` for mint / pool previews | — |
+| `MinterUSDCZap_v1` | Same **convertToShares** model as Genesis USDC for the wrapped leg + minter dry-runs for pegged / leveraged / stability pool previews | Same diamond vs model caveat; use slippage parameters on zaps |
+
+**Fork regression:** `test/GenesisUSDCZap_v1.t.sol` and `test/MinterUSDCZap_v1.t.sol` → `test_PreviewVsActualZap_WithinBpsTolerance` compare preview to **actual** zap wrapped-collateral output within **200 bps** (2%) relative tolerance (diamond path vs ERC4626 + peg model).
+
+## Adding a new zapper (checklist)
+
+Use this when supporting a **new chain or market** (example sketch: **MegaETH**, no native base asset, **USDM** collateral, **USDMY** wrapped collateral, **haUSD** pegged token). Names are illustrative; wire your real addresses and decimals.
+
+### 1. Constants and network config
+
+- Add or extend a library under `src/constants/<chain>/` (e.g. `MegaETHUsdmConstants.sol`) with token/router/diamond addresses and any chain-specific literals.
+- Add or extend `src/zap/upgradeable/config/*ZapNetworkConfig.sol` (pattern: `StETHZapNetworkConfig`, `FxUSDZapNetworkConfig`):
+  - `struct Config` with immutables the zaps need (base, collateral, wrapped, flags like `supportsBaseAsset`, router addresses, `bytes4` selectors if applicable).
+  - `load(uint256 chainId)` **fail-closed** (return zeroed config or explicit unsupported) for unknown chains.
+
+### 2. Conversion helpers (optional but recommended)
+
+- If the asset path is shared across two zaps, add `src/zap/upgradeable/asset/<Flavor>ZapBase_v1.sol` (like `StETHZapBase_v1`, `FxUSDZapBase_v1`) with **internal** `_convert*` / `_preview*` / `_safeApprove` helpers and NatSpec on preview assumptions.
+
+### 3. Concrete zap contracts
+
+- Add `src/zap/upgradeable/<Name>Zap_v<N>.sol` (Genesis and Minter are separate products):
+  - Inherit `GenesisZapBase_v1` and/or `MinterZapBase_v1` / `MinterZapShared_v1` where the deposit/mint pipeline matches existing zaps.
+  - Constructor: load config, set **immutables**, assert `IGenesis(genesis).WRAPPED_COLLATERAL_TOKEN()` or `IMinter(minter).WRAPPED_COLLATERAL_TOKEN()` matches your wrapped token.
+  - `_requireSupportedAsset`: allow only **base**, **collateral**, and **wrapped** addresses your zap supports (see `GenesisUSDCZap_v1` / `MinterETHZap_v1` for patterns).
+  - Implement previews honestly: revert `PreviewNotSupported` if you cannot model the path, or document model vs diamond.
+
+### 4. Interfaces
+
+- Extend or add `src/interfaces/I<Your>Zap*.sol` so ABI consumers and tests share one surface.
+- Document preview behavior in the interface `@dev` blocks (see `IGenesisZapV1Common`).
+
+### 5. Tests
+
+- Add `test/<Your>Zap_v<N>.t.sol` with `TestMinterSetUp` (or your harness), `vm.createSelectFork` using the RPC alias from `foundry.toml` (e.g. `megaeth`).
+- Cover: happy-path zaps, preview vs actual (with tolerance if the model ≠ router), upgrade, rescue, fallback.
+
+### 6. Scripts and deployments
+
+- `deployments/<network>/zap-addresses.json` (and optional `zaps-<salt>.json` when using CREATE3).
+- Wire **verify** paths in `script/verify-zaps.sh` / `script/verify-zaps-megaeth` (or a new script) with `impl_path` and constructor ABI matching your new contract.
+- Add the contract name to `script/dump-zap-storage-layout.sh` when you need storage diffs for UUPS upgrades.
+
+### 7. README and operators
+
+- Link the new zapper in this file under **Contracts** / **Overview**.
+- Document any new RPC env var in **Testing** and **Deployment** (already uses `MEGAETH_RPC_URL` for MegaETH examples).
+
 ## Deployment
 
-### Quick Deployment
-
-Deploy ETH/wstETH zap contracts (uses default Genesis/Minter addresses):
+**FactoryDeployer / CREATE3** (`yarn deploy` / `script/deploy.sh`):
 ```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-bash script/deploy-eth-zaps.sh
+script/deploy.sh --network mainnet --market GOLD --account deployer --genesis-usdc 0x...
+# or: yarn deploy --network mainnet --market GOLD --account deployer --genesis-usdc 0x...
+```
+Requires `--network`, `--market`, `--account` (Foundry keystore; defaults to `deployer` if omitted / `$DEPLOYER_ACCOUNT`), and at least one of `--genesis-eth` / `--genesis-usdc` / `--minter-eth` / `--minter-usdc`. Uses `script/Deploy_Zaps.s.sol` + `HarborZapDeployStack` (bao-base FactoryDeployer). Deployer must be a BaoFactory operator. State lands in `deployments/state-<chainId>-<MARKET>.json` (salt prefix `harbor_zap_v1_<MARKET>`).
+
+Historical address manifests live under `deployments/<network>/` (including dated JSON). **Verification:** `yarn deploy` / `script/deploy.sh` runs forge `--verify` by default (`--no-verify` to skip). `script/verify-zaps.sh` / `script/verify-zaps-megaeth` are backup re-verify helpers; manifests with `"skipVerify": true` exit successfully without submitting.
+
+### Network Config
+
+- `mainnet` → `deployments/mainnet/zap-addresses.json` + `MAINNET_RPC_URL`
+- `megaeth` → `deployments/megaeth/zap-addresses.json` + `MEGAETH_RPC_URL`
+
+**New-chain requirement — EIP-1153 (Cancun):** the zaps' reentrancy guard (`TokenHolder_v2` → OZ `ReentrancyGuardTransient`) uses transient storage (`TSTORE`/`TLOAD`). On a chain without EIP-1153, **every `nonReentrant` function reverts unconditionally** and no test in this repo would catch it. Before adding a chain to the config libraries, probe the RPC:
+
+```bash
+# succeeds (returns 0x) iff TSTORE is supported; fails with invalid opcode otherwise
+cast call --rpc-url "$NEW_CHAIN_RPC_URL" --create 0x600160005d60006000f3
 ```
 
-To use different Genesis/Minter addresses for ETH/wstETH:
+Mainnet and MegaETH are verified.
+
+### One-liners
+
 ```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-export GENESIS_ETH="0xYOUR_GENESIS_ETH_ADDRESS"    # Optional: override default
-export MINTER_ETH="0xYOUR_MINTER_ETH_ADDRESS"      # Optional: override default
-export REFERRAL_ETH="0xYOUR_REFERRAL_ADDRESS"      # Optional: override default
-bash script/deploy-eth-zaps.sh
+# Keystore required: cast wallet import deployer --interactive
+MAINNET_RPC_URL=... yarn deploy --network mainnet --market GOLD --account deployer \
+  --genesis-usdc 0x... --minter-usdc 0x...
 ```
 
-Deploy USDC/fxSAVE zap contracts (requires Genesis/Minter addresses):
+### Verification
+
 ```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-export GENESIS_USDC="0xYOUR_GENESIS_USDC_ADDRESS"  # Required
-export MINTER_USDC="0xYOUR_MINTER_USDC_ADDRESS"    # Required
-bash script/deploy-usdc-zaps.sh
-```
-
-### Deployment Scripts
-
-#### ETH/wstETH Deployment (`script/deploy-eth-zaps.sh`)
-
-Deploys:
-- `GenesisETHZap_v2`
-- `MinterETHZap_v2`
-
-**Default Configuration:**
-- Genesis: `0x59C2776E88fF80841c88138a2CD0f375F544EeaE`
-- Minter: `0x6d64EC8B95Eeab780745d3bDF5BB06D08e38cC29`
-- Referral: `0x3dFc49e5112005179Da613BdE5973229082dAc35` (Harbor's Lido referral)
-
-**Environment Variables:**
-- `RPC_URL`: Ethereum RPC endpoint (default: `http://127.0.0.1:8545`)
-- `PRIVATE_KEY`: Deployer private key (required)
-- `GENESIS_ETH`: Genesis contract address (optional, has default: `0x59C2776E88fF80841c88138a2CD0f375F544EeaE`)
-- `MINTER_ETH`: Minter contract address (optional, has default: `0x6d64EC8B95Eeab780745d3bDF5BB06D08e38cC29`)
-- `REFERRAL_ETH`: Lido referral address (optional, has default: `0x3dFc49e5112005179Da613BdE5973229082dAc35`)
-
-**Usage (with defaults):**
-```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-bash script/deploy-eth-zaps.sh
-```
-
-**Usage (with custom addresses):**
-```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-export GENESIS_ETH="0xYOUR_CUSTOM_GENESIS_ADDRESS"
-export MINTER_ETH="0xYOUR_CUSTOM_MINTER_ADDRESS"
-export REFERRAL_ETH="0xYOUR_CUSTOM_REFERRAL_ADDRESS"  # Optional
-bash script/deploy-eth-zaps.sh
-```
-
-#### USDC/fxSAVE Deployment (`script/deploy-usdc-zaps.sh`)
-
-Deploys:
-- `GenesisUSDCZap_v2`
-- `MinterUSDCZap_v2`
-
-**Required Environment Variables:**
-- `RPC_URL`: Ethereum RPC endpoint
-- `PRIVATE_KEY`: Deployer private key
-- `GENESIS_USDC`: Genesis contract address (must accept fxSAVE as collateral)
-- `MINTER_USDC`: Minter contract address (must accept fxSAVE as collateral)
-
-**Usage:**
-```bash
-export RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
-export PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-export GENESIS_USDC="0xYOUR_GENESIS_USDC_ADDRESS"
-export MINTER_USDC="0xYOUR_MINTER_USDC_ADDRESS"
-bash script/deploy-usdc-zaps.sh
-```
-
-### Manual Deployment
-
-You can also deploy contracts manually using `forge create`:
-
-**GenesisETHZap_v2:**
-```bash
-forge create src/minter/GenesisETHZap_v2.sol:GenesisETHZapV2 \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --constructor-args <GENESIS_ADDRESS> <REFERRAL_ADDRESS>
-```
-
-**MinterETHZap_v2:**
-```bash
-forge create src/minter/MinterETHZap_v2.sol:MinterETHZapV2 \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --constructor-args <MINTER_ADDRESS> <REFERRAL_ADDRESS>
-```
-
-**GenesisUSDCZap_v2:**
-```bash
-forge create src/minter/GenesisUSDCZap_v2.sol:GenesisUSDCZapV2 \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --constructor-args <GENESIS_ADDRESS>
-```
-
-**MinterUSDCZap_v2:**
-```bash
-forge create src/minter/MinterUSDCZap_v2.sol:MinterUSDCZapV2 \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --constructor-args <MINTER_ADDRESS>
-```
-
-### Deployment to Anvil Fork (Local Testing)
-
-For local testing with an Anvil fork:
-
-1. Start Anvil with a mainnet fork:
-```bash
-anvil --fork-url https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY --host 0.0.0.0 --port 8546
-```
-
-2. Deploy to the fork:
-```bash
-export RPC_URL="http://127.0.0.1:8546"
-export PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"  # Anvil default
-bash script/deploy-eth-zaps.sh
+ETHERSCAN_API_KEY=... MAINNET_RPC_URL=... ./script/verify-zaps.sh
+# mega_test_v1 is historical (skipVerify=true) — exits 0 with note; use a fresh state file for real re-verify
+ETHERSCAN_API_KEY=... MEGAETH_RPC_URL=... ./script/verify-zaps-megaeth --salt mega_test_v1
 ```
 
 ## Post-Deployment
 
-After deployment, you should:
-
-1. **Transfer Ownership**: Transfer ownership of the zap contracts to your desired owner address:
-```bash
-cast send <ZAP_ADDRESS> "transferOwnership(address)" <NEW_OWNER> \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY
-```
-
-2. **Verify Contracts** (optional): Verify contracts on Etherscan:
-```bash
-forge verify-contract <CONTRACT_ADDRESS> \
-  src/minter/<ContractName>.sol:<ContractName> \
-  --etherscan-api-key $ETHERSCAN_API_KEY \
-  --chain-id 1
-```
-
-3. **Update Referral** (ETH zaps only, optional): Update Lido referral address if needed:
-```bash
-cast send <ZAP_ADDRESS> "setReferral(address)" <NEW_REFERRAL> \
-  --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY
-```
-
-## Contract Addresses
-
-### Mainnet (when deployed)
-
-ETH/wstETH Zaps:
-- GenesisETHZap_v2: TBD
-- MinterETHZap_v2: TBD
-
-USDC/fxSAVE Zaps:
-- GenesisUSDCZap_v2: TBD
-- MinterUSDCZap_v2: TBD
+Notes:
+- Proxies initialize with deployer as owner + Harbor multisig pending; `_transferAllOwnerships()` completes the handoff **in the same broadcast** (deployer confirms — the multisig never signs). Verify `owner()` on each proxy afterwards. If a run is interrupted before that step, resume **within 1 hour** of proxy init; the pending transfer expires after that and only a UUPS upgrade can hand off. Ownership is one-shot: after the handoff it can never be rotated.
+- Stability pool allowlists are **not** auto-applied; configure `setStabilityPoolAllowed` separately after deploy.
+- Re-runs skip proxies already recorded in state, so interrupted runs can be resumed safely.
 
 ## Security Considerations
 
-- **Private Keys**: Never commit private keys to version control
-- **Ownership**: Transfer ownership to a multisig or secure address after deployment
-- **Referral**: The referral address receives rewards from Lido for ETH deposits
-- **Access Control**: Zap contracts have owner-only functions for rescue operations
+- **Deploy signer**: `script/deploy.sh` is **keystore-only** (`cast wallet import`, then `--account <name>`). `PRIVATE_KEY` is rejected. Never commit keys or keystore passwords.
+- **Ownership**: Handed to the Harbor multisig automatically during deploy (see Post-Deployment); one-shot — guard the multisig, it can never be rotated
+- **Intake**: `ZapIntake` rejects fee-on-transfer / zero pulls (`pullExact`); stETH uses `pullMeasured` (allows 1–2 wei Lido rounding). Unspent input is refunded after convert legs.
+- **Rescue**: Owner `sweep` / `rescueToken` via `TokenHolder_v2`; protected protocol tokens cannot be swept. Native rescue uses `call` (not `.transfer`).
+- **Lido referral (ETH zaps)**: Fixed referral from `StETHZapNetworkConfig` (immutable). Readable via `referral()` on native ETH zap interfaces; changing it requires a new implementation. See [docs/zap-referral-config.md](docs/zap-referral-config.md).
+- **Access Control**: Owner-only allowlist / rescue / UUPS upgrade
 
 ## Development
 
@@ -254,25 +221,31 @@ USDC/fxSAVE Zaps:
 ```
 harbor-zap-contracts/
 ├── src/
-│   ├── interfaces/      # Interface definitions
-│   ├── minter/          # Zap contract implementations
-│   └── util/            # Utility contracts (ReentrancyGuard, etc.)
-├── test/                # Test files
-├── script/              # Deployment scripts
-└── foundry.toml         # Foundry configuration
+│   ├── interfaces/      # Zap-local interfaces (IGenesisZapV1*, IMinterZapV1*, …)
+│   ├── zap/upgradeable/ # UUPS zaps + asset/base/config helpers + ZapIntake
+│   └── constants/       # Chain address constants
+├── lib/
+│   ├── harbor/          # baofinance/harbor (test fixtures + shared interfaces)
+│   └── bao-base/        # HarborOwnable, TokenHolder_v2, FactoryDeployer, CI scripts
+├── test/                # @harborzap-test/… and @harbor/minter/… imports
+├── docs/                # Storage layout + integrator migration notes
+├── remappings.txt       # @harborzap/→src/; @harbor/→lib/harbor; bare src/minter|util→harbor
+├── script/              # deploy.sh (FactoryDeployer) + verify helpers
+├── package.json         # yarn CI / lint / slither / coverage / validate
+└── foundry.toml
 ```
 
 ### Key Dependencies
 
-- OpenZeppelin Contracts (upgradeable)
-- Bao Base Contracts
+- OpenZeppelin Contracts (upgradeable; via bao-base nested OZ for UUPS init / ReentrancyGuard compat)
+- Bao Base (`HarborOwnable`, `TokenHolder_v2`, FactoryDeployer)
+- `baofinance/harbor` (Genesis/Minter fixtures for tests)
 - Forge Standard Library
 
-## License
+### Where to find function-level examples
 
-[Add your license here]
-
-## Support
-
-For issues or questions, please open an issue on GitHub.
+For integration examples and behavior coverage, use:
+- `test/` (end-to-end and function-level expectations)
+- zap interfaces in `src/interfaces/`
+- deployment state outputs under `deployments/<network>/`
 

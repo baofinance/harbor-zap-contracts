@@ -1,0 +1,130 @@
+# regression: better=lower abs=500 rel=0.001 display={:.3e} ratchet=on
+
+src/zap/upgradeable/GenesisETHZap_v1.sol:GenesisETHZap_v1
+| function name                          |    max |   display |
+|----------------------------------------|--------|-----------|
+| COLLATERAL_MANAGER                     |    523 | 5.230e+02 |
+| CONVERT_SELECTOR                       |    778 | 7.780e+02 |
+| GENESIS                                |    721 | 7.210e+02 |
+| SWAP_ROUTER                            |    765 | 7.650e+02 |
+| balanceOfBaseAsset                     |  53094 | 5.309e+04 |
+| balanceOfCollateral                    |  46960 | 4.696e+04 |
+| fallback                               |    838 | 8.380e+02 |
+| initialize                             |  69969 | 6.997e+04 |
+| owner                                  |   2699 | 2.699e+03 |
+| previewSharesFromBase                  |  48436 | 4.844e+04 |
+| previewSharesFromCollateral            |  35967 | 3.597e+04 |
+| previewSharesFromWrappedCollateral     |    641 | 6.410e+02 |
+| previewWrappedCollateralFromBase       |  48066 | 4.807e+04 |
+| previewWrappedCollateralFromCollateral |  36213 | 3.621e+04 |
+| proxiableUUID                          |    412 | 4.120e+02 |
+| rescueNativeAsset                      |   9671 | 9.671e+03 |
+| rescueToken                            |  38080 | 3.808e+04 |
+| totalValueBaseAsset                    |  45755 | 4.576e+04 |
+| transferOwnership                      |  12574 | 1.257e+04 |
+| upgradeToAndCall                       |  10789 | 1.079e+04 |
+| zapCollateral                          | 323638 | 3.236e+05 |
+| zapCollateralWithPermit                | 382822 | 3.828e+05 |
+| zapName                                |  14715 | 1.472e+04 |
+| zapNativeAsset                         | 308655 | 3.087e+05 |
+
+src/zap/upgradeable/GenesisUSDCZap_v1.sol:GenesisUSDCZap_v1
+| function name                          |    max |   display |
+|----------------------------------------|--------|-----------|
+| COLLATERAL_MANAGER                     |    457 | 4.570e+02 |
+| CONVERT_SELECTOR                       |    690 | 6.900e+02 |
+| GENESIS                                |    633 | 6.330e+02 |
+| SWAP_ROUTER                            |    677 | 6.770e+02 |
+| balanceOfBaseAsset                     |    280 | 2.800e+02 |
+| balanceOfCollateral                    |    676 | 6.760e+02 |
+| fallback                               |    772 | 7.720e+02 |
+| initialize                             |  69903 | 6.990e+04 |
+| owner                                  |   2633 | 2.633e+03 |
+| previewSharesFromWrappedCollateral     |    553 | 5.530e+02 |
+| previewWrappedCollateralFromBase       |  41537 | 4.154e+04 |
+| previewWrappedCollateralFromCollateral |  41842 | 4.184e+04 |
+| proxiableUUID                          |    346 | 3.460e+02 |
+| rescueNativeAsset                      |   9605 | 9.605e+03 |
+| rescueToken                            |  38053 | 3.805e+04 |
+| totalValueBaseAsset                    |    390 | 3.900e+02 |
+| transferOwnership                      |  12508 | 1.251e+04 |
+| upgradeToAndCall                       |  10657 | 1.066e+04 |
+| zapBaseAsset                           | 766508 | 7.665e+05 |
+| zapCollateral                          | 778423 | 7.784e+05 |
+| zapName                                |  14652 | 1.465e+04 |
+
+src/zap/upgradeable/MinterETHZap_v1.sol:MinterETHZap_v1
+| function name                                 |    max |   display |
+|-----------------------------------------------|--------|-----------|
+| COLLATERAL_MANAGER                            |    743 | 7.430e+02 |
+| CONVERT_SELECTOR                              |    976 | 9.760e+02 |
+| MINTER                                        |   1158 | 1.158e+03 |
+| SWAP_ROUTER                                   |    963 | 9.630e+02 |
+| WRAPPED_COLLATERAL_ASSET                      |    259 | 2.590e+02 |
+| allowedStabilityPools                         |   2440 | 2.440e+03 |
+| fallback                                      |   1124 | 1.124e+03 |
+| initialize                                    |  70172 | 7.017e+04 |
+| owner                                         |   2919 | 2.919e+03 |
+| previewLeveragedFromBase                      | 101439 | 1.014e+05 |
+| previewLeveragedFromCollateral                |  89055 | 8.906e+04 |
+| previewPeggedFromBase                         | 129187 | 1.292e+05 |
+| previewPeggedFromCollateral                   |  75880 | 7.588e+04 |
+| previewStabilityPoolFromBase                  | 129041 | 1.290e+05 |
+| previewStabilityPoolFromCollateral            | 117206 | 1.172e+05 |
+| previewStabilityPoolFromWrappedCollateral     | 110728 | 1.107e+05 |
+| previewWrappedCollateralFromBase              |  48245 | 4.824e+04 |
+| previewWrappedCollateralFromCollateral        |  36461 | 3.646e+04 |
+| proxiableUUID                                 |    588 | 5.880e+02 |
+| rescueNativeAsset                             |   9869 | 9.869e+03 |
+| rescueToken                                   |  38256 | 3.826e+04 |
+| setStabilityPoolAllowed                       |  26920 | 2.692e+04 |
+| transferOwnership                             |  12797 | 1.280e+04 |
+| upgradeToAndCall                              |  11141 | 1.114e+04 |
+| zapCollateralToLeveraged                      | 382056 | 3.821e+05 |
+| zapCollateralToPegged                         | 373076 | 3.731e+05 |
+| zapCollateralToStabilityPool                  | 677610 | 6.776e+05 |
+| zapName                                       |  15142 | 1.514e+04 |
+| zapNativeAssetToLeveraged                     | 367621 | 3.676e+05 |
+| zapNativeAssetToPegged                        | 390432 | 3.904e+05 |
+| zapNativeAssetToStabilityPool                 | 663150 | 6.632e+05 |
+| zapWrappedCollateralToStabilityPool           | 556305 | 5.563e+05 |
+| zapWrappedCollateralToStabilityPoolWithPermit | 560427 | 5.604e+05 |
+
+src/zap/upgradeable/MinterUSDCZap_v1.sol:MinterUSDCZap_v1
+| function name                                 |     max |   display |
+|-----------------------------------------------|---------|-----------|
+| BASE_ASSET                                    |     941 | 9.410e+02 |
+| COLLATERAL_ASSET                              |     809 | 8.090e+02 |
+| COLLATERAL_MANAGER                            |     743 | 7.430e+02 |
+| CONVERT_SELECTOR                              |     976 | 9.760e+02 |
+| MINTER                                        |    1136 | 1.136e+03 |
+| SWAP_ROUTER                                   |     963 | 9.630e+02 |
+| WRAPPED_COLLATERAL_ASSET                      |     215 | 2.150e+02 |
+| allowedStabilityPools                         |    2440 | 2.440e+03 |
+| fallback                                      |    1102 | 1.102e+03 |
+| initialize                                    |   70150 | 7.015e+04 |
+| owner                                         |    2919 | 2.919e+03 |
+| previewLeveragedFromWrappedCollateral         |   63564 | 6.356e+04 |
+| previewPeggedFromBase                         |  102168 | 1.022e+05 |
+| previewPeggedFromCollateral                   |   81542 | 8.154e+04 |
+| previewPeggedFromWrappedCollateral            |   40537 | 4.054e+04 |
+| previewStabilityPoolFromBase                  |  101987 | 1.020e+05 |
+| previewStabilityPoolFromCollateral            |  102322 | 1.023e+05 |
+| previewStabilityPoolFromWrappedCollateral     |   96647 | 9.665e+04 |
+| previewWrappedCollateralFromBase              |   41767 | 4.177e+04 |
+| previewWrappedCollateralFromCollateral        |   42146 | 4.215e+04 |
+| proxiableUUID                                 |     588 | 5.880e+02 |
+| rescueNativeAsset                             |    9869 | 9.869e+03 |
+| rescueToken                                   |   38295 | 3.830e+04 |
+| setStabilityPoolAllowed                       |   26920 | 2.692e+04 |
+| transferOwnership                             |   12797 | 1.280e+04 |
+| upgradeToAndCall                              |   11141 | 1.114e+04 |
+| zapBaseAssetToLeveraged                       |  844953 | 8.450e+05 |
+| zapBaseAssetToPegged                          |  835984 | 8.360e+05 |
+| zapBaseAssetToStabilityPool                   | 1076733 | 1.077e+06 |
+| zapCollateralToLeveraged                      |  848516 | 8.485e+05 |
+| zapCollateralToPegged                         |  839027 | 8.390e+05 |
+| zapCollateralToStabilityPool                  | 1076685 | 1.077e+06 |
+| zapName                                       |   15146 | 1.515e+04 |
+| zapWrappedCollateralToStabilityPool           |  562708 | 5.627e+05 |
+| zapWrappedCollateralToStabilityPoolWithPermit |  573911 | 5.739e+05 |

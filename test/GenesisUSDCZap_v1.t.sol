@@ -1,0 +1,349 @@
+// SPDX-License-Identifier: MIT
+pragma solidity >=0.8.28 <0.9.0;
+
+import {console} from "forge-std/console.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {UnsafeUpgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
+
+import {GenesisUSDCZap_v1} from "@harborzap/zap/upgradeable/GenesisUSDCZap_v1.sol";
+import {FxSAVEConstants} from "@harborzap/constants/ethereum/FxSAVEConstants.sol";
+import {IHarborOwnable} from "@bao/interfaces/IHarborOwnable.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
+import {Genesis_v1} from "@harbor/minter/Genesis_v1.sol";
+import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
+
+import {TestMinterSetUp} from "@harborzap-test/Minter_base.t.sol";
+import {ForkConstants} from "@harborzap-test/ForkConstants.sol";
+import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
+import {MockERC20} from "@harborzap-test/mock/MockERC20.sol";
+
+/// @dev Calls a selector with no implementation so the zap's `fallback` runs (revert propagates to test)
+interface ITriggerZapFallback {
+    function __zapFallbackProbe() external;
+}
+
+/// @notice Genesis stand-in reporting a wrapped collateral token the zap was not built for; exercises
+///         the constructor's `WrappedCollateralMismatch` guard.
+contract MockWrongTokenUsdcGenesis {
+    address public constant WRAPPED_COLLATERAL_TOKEN = address(0xBEEF);
+}
+
+contract GenesisUSDCZapV1ForkTest is TestMinterSetUp {
+    GenesisUSDCZap_v1 zap;
+    address zapImpl;
+    address zapProxy;
+    address genesis;
+    address genesisImpl;
+    address user1;
+    address receiver;
+    address zapOwner;
+
+    // Mainnet addresses
+    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address constant FXUSD = 0x085780639CC2cACd35E474e71f4d000e2405d8f6;
+    address constant FXSAVE = 0x7743e50F534a7f9F1791DdE7dCD89F7783Eefc39;
+
+    function setUpFork() internal override {
+        vm.createSelectFork(vm.rpcUrl("mainnet"), ForkConstants.MAINNET_FORK_BLOCK);
+
+        feeReceiver = makeAddr("feeReceiver");
+        owner = makeAddr("owner");
+
+        priceOracle = address(new MockWrappedPriceOracle());
+        vm.label(priceOracle, "priceOracle");
+
+        setUp_leveragedToken();
+        peggedToken = address(new MockERC20("BaoUSD", "BAOUSD", 18));
+        vm.label(peggedToken, "pegged");
+        peggedTokenBurnSig = "burnFrom(address,uint256)";
+
+        wrappedCollateralToken = FXSAVE;
+        collateralToken = USDC;
+
+        setUp_reservePool();
+    }
+
+    function setUp() public override {
+        super.setUp();
+
+        // Deploy Genesis
+        genesisImpl = address(new Genesis_v1(minter));
+        genesis = UnsafeUpgrades.deployUUPSProxy(genesisImpl, abi.encodeCall(Genesis_v1.initialize, owner));
+        vm.label(genesis, "Genesis");
+
+        // Deploy upgradeable zap
+        zapOwner = makeAddr("zapOwner");
+        zapImpl = address(new GenesisUSDCZap_v1(genesis));
+        zapProxy = UnsafeUpgrades.deployUUPSProxy(
+            zapImpl,
+            abi.encodeCall(GenesisUSDCZap_v1.initialize, (address(this), zapOwner))
+        );
+        zap = GenesisUSDCZap_v1(payable(zapProxy));
+        vm.label(address(zap), "GenesisUSDCZapV1");
+
+        // Complete ownership transfer from deployer to zapOwner
+        zap.transferOwnership(zapOwner);
+
+        user1 = makeAddr("user1");
+        receiver = makeAddr("receiver");
+
+        deal(USDC, user1, 10000 * 1e6);
+    }
+
+    function test_ZapUsdcToGenesis_Success() public {
+        uint256 usdcAmount = 1000 * 1e6;
+
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+
+        uint256 genBalBefore = IGenesis(genesis).balanceOf(receiver);
+        uint256 fxBalBefore = IERC20(FXSAVE).balanceOf(genesis);
+
+        uint256 collateralAmount = zap.zapBaseAsset(usdcAmount, 0, receiver);
+
+        vm.stopPrank();
+
+        uint256 genBalAfter = IGenesis(genesis).balanceOf(receiver);
+        uint256 fxBalAfter = IERC20(FXSAVE).balanceOf(genesis);
+
+        console.log("=== USDC Zap v1 Success ===");
+        console.log("USDC Deposited:", usdcAmount);
+        console.log("fxSAVE Received:", collateralAmount);
+        console.log("Genesis Shares Minted:", genBalAfter - genBalBefore);
+        console.log("==========================");
+
+        assertGt(collateralAmount, 0, "Should receive fxSAVE");
+        assertEq(genBalAfter, genBalBefore + collateralAmount, "Shares mismatch");
+        assertEq(fxBalAfter, fxBalBefore + collateralAmount, "fxSAVE not deposited");
+    }
+
+    function test_ZapFxUsdToGenesis_Success() public {
+        deal(FXUSD, user1, 10000 * 1e18);
+        uint256 fxUsdAmount = 1000 * 1e18;
+
+        vm.startPrank(user1);
+        IERC20(FXUSD).approve(address(zap), fxUsdAmount);
+
+        uint256 genBalBefore = IGenesis(genesis).balanceOf(receiver);
+        uint256 collateralAmount = zap.zapCollateral(fxUsdAmount, 0, receiver);
+        vm.stopPrank();
+
+        uint256 genBalAfter = IGenesis(genesis).balanceOf(receiver);
+
+        assertGt(collateralAmount, 0, "Should receive fxSAVE");
+        assertEq(genBalAfter, genBalBefore + collateralAmount, "Shares mismatch");
+    }
+
+    function test_ZapName() public view {
+        string memory expectedName = string(
+            abi.encodePacked("Genesis zap ", IERC20Metadata(IGenesis(genesis).PEGGED_TOKEN()).name())
+        );
+        string memory name = zap.zapName();
+
+        console.log("Genesis zap name:", name);
+
+        assertEq(name, expectedName, "Zap name mismatch");
+    }
+
+    function test_CollateralManagerAndRouterMatchConstants() public view {
+        assertEq(zap.COLLATERAL_MANAGER(), FxSAVEConstants.FXUSD_DIAMOND);
+        assertEq(zap.SWAP_ROUTER(), FxSAVEConstants.FXUSD_SWAP_ROUTER);
+        assertEq(zap.CONVERT_SELECTOR(), FxSAVEConstants.CONVERT_SELECTOR);
+    }
+
+    // ============ Preview Function Tests ============
+
+    function test_PreviewGenesisFromFxSave() public view {
+        uint256 fxSaveAmount = 1000 * 1e18;
+        uint256 previewShares = zap.previewSharesFromWrappedCollateral(fxSaveAmount);
+
+        // Genesis uses 1:1 mapping
+        assertEq(previewShares, fxSaveAmount, "Preview should return 1:1 shares");
+    }
+
+    function test_PreviewGenesisFromFxSave_Zero() public view {
+        uint256 previewShares = zap.previewSharesFromWrappedCollateral(0);
+        assertEq(previewShares, 0, "Preview should return 0 for zero input");
+    }
+
+    /// @dev Balance / TVL views remain unsupported on this zap (no oracle); previews use fxSAVE `convertToShares`.
+    function test_PreviewNotSupported_OnStubViews() public {
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.balanceOfBaseAsset(user1);
+
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.balanceOfCollateral(user1);
+
+        vm.expectRevert(IZapErrors.PreviewNotSupported.selector);
+        zap.totalValueBaseAsset();
+    }
+
+    function test_PreviewWrappedCollateralFromBase_MatchesFxSaveConvertToShares() public view {
+        uint256 usdcAmount = 1000 * 1e6;
+        uint256 expected = IERC4626(FXSAVE).convertToShares(usdcAmount * 1e12);
+        assertEq(zap.previewWrappedCollateralFromBase(usdcAmount), expected);
+    }
+
+    function test_PreviewWrappedCollateralFromCollateral_MatchesFxSaveConvertToShares() public view {
+        uint256 fxUsdAmount = 1000 * 1e18;
+        uint256 expected = IERC4626(FXSAVE).convertToShares(fxUsdAmount);
+        assertEq(zap.previewWrappedCollateralFromCollateral(fxUsdAmount), expected);
+    }
+
+    /// @dev Preview uses ERC4626 + peg model; live zap uses the diamond — expect small drift (tolerance in bps).
+    function test_PreviewVsActualZap_WithinBpsTolerance() public {
+        uint256 usdcAmount = 1000 * 1e6;
+        uint256 previewUsdc = zap.previewWrappedCollateralFromBase(usdcAmount);
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+        uint256 actualUsdc = zap.zapBaseAsset(usdcAmount, 0, receiver);
+        vm.stopPrank();
+        _assertRelativeDiffBps(previewUsdc, actualUsdc, 200);
+
+        uint256 fxUsdAmount = 500 * 1e18;
+        deal(FXUSD, user1, fxUsdAmount);
+        uint256 previewFx = zap.previewWrappedCollateralFromCollateral(fxUsdAmount);
+        vm.startPrank(user1);
+        IERC20(FXUSD).approve(address(zap), fxUsdAmount);
+        uint256 actualFx = zap.zapCollateral(fxUsdAmount, 0, receiver);
+        vm.stopPrank();
+        _assertRelativeDiffBps(previewFx, actualFx, 200);
+    }
+
+    function _assertRelativeDiffBps(uint256 a, uint256 b, uint256 maxBps) internal pure {
+        uint256 diff = a > b ? a - b : b - a;
+        uint256 basis = b > 0 ? b : a;
+        if (basis == 0) {
+            assertEq(diff, 0);
+            return;
+        }
+        assertLe((diff * 10_000) / basis, maxBps, "preview vs actual relative diff");
+    }
+
+    /// @dev Unknown selectors use `FunctionNotFound`, distinct from unsupported previews
+    function test_Fallback_FunctionNotFound() public {
+        vm.expectRevert(IZapErrors.FunctionNotFound.selector);
+        ITriggerZapFallback(address(zap)).__zapFallbackProbe();
+    }
+
+    // ============ Upgrade Tests ============
+
+    function test_Upgrade() public {
+        // Deploy new implementation
+        address newImpl = address(new GenesisUSDCZap_v1(genesis));
+
+        // Upgrade proxy
+        vm.prank(zapOwner);
+        zap.upgradeToAndCall(newImpl, "");
+
+        // Verify upgrade worked
+        assertEq(UnsafeUpgrades.getImplementationAddress(address(zap)), newImpl, "Implementation should be upgraded");
+
+        // Verify functionality still works
+        uint256 usdcAmount = 1000 * 1e6;
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+        uint256 collateralAmount = zap.zapBaseAsset(usdcAmount, 0, receiver);
+        vm.stopPrank();
+
+        assertGt(collateralAmount, 0, "Should still work after upgrade");
+    }
+
+    function test_Upgrade_OnlyOwner() public {
+        address newImpl = address(new GenesisUSDCZap_v1(genesis));
+
+        vm.prank(user1);
+        vm.expectRevert(IHarborOwnable.Unauthorized.selector);
+        zap.upgradeToAndCall(newImpl, "");
+    }
+
+    // ============ Owner Function Tests ============
+
+    function test_RescueNativeAsset() public {
+        vm.deal(address(zap), 1 ether);
+
+        uint256 ownerBalanceBefore = zapOwner.balance;
+        vm.prank(zapOwner);
+        zap.rescueNativeAsset();
+
+        assertEq(zapOwner.balance, ownerBalanceBefore + 1 ether, "ETH should be rescued");
+    }
+
+    function test_RescueToken_ProtectedToken() public {
+        deal(USDC, address(zap), 1000 * 1e6);
+
+        vm.prank(zapOwner);
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.CannotRescueProtectedToken.selector, USDC));
+        zap.rescueToken(USDC);
+    }
+
+    function test_RescueToken_UnprotectedToken() public {
+        MockERC20 token = new MockERC20("Mock", "MOCK", 18);
+        deal(address(token), address(zap), 1000 ether);
+
+        uint256 ownerBalanceBefore = token.balanceOf(zapOwner);
+        vm.prank(zapOwner);
+        zap.rescueToken(address(token));
+
+        assertEq(token.balanceOf(zapOwner), ownerBalanceBefore + 1000 ether, "Token should be rescued");
+    }
+
+    // ============ Constructor Guard Tests ============
+
+    function test_Constructor_ZeroGenesis() public {
+        // The zap refuses to be built against a zero Genesis address.
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        new GenesisUSDCZap_v1(address(0));
+    }
+
+    function test_Constructor_WrappedCollateralMismatch() public {
+        // The zap refuses to be built against a Genesis whose wrapped collateral token differs from
+        // the fxSAVE the zap's network config is compiled for.
+        address wrongGenesis = address(new MockWrongTokenUsdcGenesis());
+        vm.expectRevert(abi.encodeWithSelector(IZapErrors.WrappedCollateralMismatch.selector, address(0xBEEF), FXSAVE));
+        new GenesisUSDCZap_v1(wrongGenesis);
+    }
+
+    // ============ Negative Path Tests ============
+
+    function test_ZapUsdc_ZeroAmount() public {
+        // A zero base-asset amount is rejected before any token pull happens.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAmount.selector);
+        zap.zapBaseAsset(0, 0, receiver);
+        vm.stopPrank();
+    }
+
+    function test_ZapUsdc_ZeroReceiver() public {
+        // Genesis shares must never be minted to the zero address; the guard fires before the pull.
+        vm.startPrank(user1);
+        vm.expectRevert(IZapErrors.ZeroAddress.selector);
+        zap.zapBaseAsset(1000 * 1e6, 0, address(0));
+        vm.stopPrank();
+    }
+
+    function test_ZapUsdc_SlippageWrappedCollateral() public {
+        // An unsatisfiable fxSAVE min-out makes the zap revert after the diamond conversion rather
+        // than deposit less than the user demanded. `received` derives from the live fxSAVE share
+        // rate, so only the selector is pinned.
+        uint256 usdcAmount = 1000 * 1e6;
+        vm.startPrank(user1);
+        IERC20(USDC).approve(address(zap), usdcAmount);
+        vm.expectPartialRevert(IZapErrors.SlippageTooHighWrappedCollateral.selector);
+        zap.zapBaseAsset(usdcAmount, type(uint256).max, receiver);
+        vm.stopPrank();
+    }
+
+    function test_ZapFxUsd_SlippageWrappedCollateral() public {
+        // Same unsatisfiable min-out guard on the fxUSD collateral path.
+        deal(FXUSD, user1, 10000 * 1e18);
+        uint256 fxUsdAmount = 1000 * 1e18;
+        vm.startPrank(user1);
+        IERC20(FXUSD).approve(address(zap), fxUsdAmount);
+        vm.expectPartialRevert(IZapErrors.SlippageTooHighWrappedCollateral.selector);
+        zap.zapCollateral(fxUsdAmount, type(uint256).max, receiver);
+        vm.stopPrank();
+    }
+}

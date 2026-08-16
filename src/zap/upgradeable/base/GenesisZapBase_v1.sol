@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: MIT
+
+pragma solidity 0.8.30;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IGenesis} from "@harbor/interfaces/IGenesis.sol";
+import {IZapErrors} from "@harborzap/interfaces/IZapErrors.sol";
+
+/// @title GenesisZapBase_v1
+/// @notice Storage-free shared Genesis deposit + share validation for ETH and USDC genesis zaps.
+// solhint-disable-next-line contract-name-capwords
+abstract contract GenesisZapBase_v1 {
+    using SafeERC20 for IERC20;
+    /// @notice Emitted when base asset is zapped into Genesis (same shape on ETH and USDC zaps for indexers)
+    /// @dev Native ETH zaps use `zapNativeAsset` (payable); they emit this event—not `zapBaseAsset`—for topic parity
+    ///      with ERC20 genesis zaps.
+    /// @param baseAssetValueNow ETH zap: valuation; USDC zap: 0
+    /// @param collateralValueNow ETH zap: valuation; USDC zap: 0
+    event ZappedBaseAsset(
+        address indexed user,
+        address indexed genesis,
+        address indexed receiver,
+        uint256 baseAssetIn,
+        uint256 wrappedCollateralOut,
+        uint256 sharesOut,
+        uint256 baseAssetValueNow,
+        uint256 collateralValueNow
+    );
+
+    /// @notice Emitted when collateral is zapped into Genesis (same shape on ETH and USDC zaps)
+    event ZappedCollateral(
+        address indexed user,
+        address indexed genesis,
+        address indexed receiver,
+        uint256 collateralIn,
+        uint256 wrappedCollateralOut,
+        uint256 sharesOut,
+        uint256 baseAssetValueNow,
+        uint256 collateralValueNow
+    );
+
+    function _genesisAddress() internal view virtual returns (address);
+
+    /// @dev Name aligns with `MinterZapShared_v1._wrappedCollateralAssetAddress`.
+    function _wrappedCollateralAssetAddress() internal view virtual returns (address);
+
+    /// @notice Deposit wrapped collateral into Genesis and validate shares (1:1 expected).
+    function _depositToGenesis(uint256 amount, address receiver) internal {
+        address genesis = _genesisAddress();
+        address wrapped = _wrappedCollateralAssetAddress();
+
+        // slither-disable-next-line incorrect-equality — zero deposit amount is a hard failure
+        if (amount == 0) revert IZapErrors.ZeroAmount();
+        if (receiver == address(0)) revert IZapErrors.ZeroAddress();
+
+        uint256 balance = IERC20(wrapped).balanceOf(address(this));
+        if (balance < amount) revert IZapErrors.InsufficientBalance(balance, amount);
+
+        uint256 sharesBefore = IGenesis(genesis).balanceOf(receiver);
+
+        // Exact per-deposit approval (no standing max allowance): wrapped collateral is on the `_sweep`
+        // denylist, so the zap must never leave Genesis with spending power over stuck balances.
+        IERC20(wrapped).forceApprove(genesis, amount);
+
+        IGenesis(genesis).deposit(amount, receiver);
+
+        // Genesis consumes the full approval (1:1 deposit); reset defensively in case it ever doesn't.
+        IERC20(wrapped).forceApprove(genesis, 0);
+
+        uint256 sharesAfter = IGenesis(genesis).balanceOf(receiver);
+        uint256 sharesReceived = sharesAfter - sharesBefore;
+        if (sharesReceived != amount) {
+            revert IZapErrors.MintMismatchExpected(amount, sharesReceived);
+        }
+    }
+
+    /// @dev Genesis vault: 1:1 shares for wrapped collateral amount (shared by ETH and USDC zaps).
+    function _previewGenesisSharesFromWrappedCollateral(
+        uint256 wrappedCollateralAmount
+    ) internal pure returns (uint256 sharesOut) {
+        sharesOut = wrappedCollateralAmount;
+    }
+
+    /// @dev Human-readable label: `"Genesis zap "` + pegged token name from `IGenesis`.
+    function _genesisZapDisplayName() internal view returns (string memory) {
+        address peggedToken = IGenesis(_genesisAddress()).PEGGED_TOKEN();
+        return string(abi.encodePacked("Genesis zap ", IERC20Metadata(peggedToken).name()));
+    }
+}

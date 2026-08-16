@@ -14,23 +14,23 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IBaoOwnable} from "@bao/interfaces/IBaoOwnable.sol";
 import {IBaoRoles} from "@bao/interfaces/IBaoRoles.sol";
 
-import {Minter_v1} from "src/minter/Minter_v1.sol";
+import {Minter_v1} from "@harbor/minter/Minter_v1.sol";
 import {MintableBurnableERC20_v1} from "@bao/MintableBurnableERC20_v1.sol";
-import {ReservePool_v1} from "src/minter/ReservePool_v1.sol";
+import {ReservePool_v1} from "@harbor/minter/ReservePool_v1.sol";
 
-import {IMinter} from "src/interfaces/IMinter.sol";
+import {IMinter} from "@harbor/interfaces/IMinter.sol";
 import {Token} from "@bao/Token.sol";
 import {IMintable} from "@bao/interfaces/IMintable.sol";
-import {IWrappedPriceOracle} from "src/interfaces/IWrappedPriceOracle.sol";
+import {IWrappedPriceOracle} from "@harbor/interfaces/IWrappedPriceOracle.sol";
 
 import {Deployed} from "@bao/Deployed.sol";
-import {MockWrappedPriceOracle} from "test/mock/MockWrappedPriceOracle.sol";
-import {IBaoUSD} from "test/IBaoUSD.sol";
-import {MockERC20, MockERC20Burn2Arg, MockERC20Burn1Arg, MockERC20BurnFrom} from "test/mock/MockERC20.sol";
-import "test/Useful.sol";
-import {Array} from "test/Array.sol";
+import {MockWrappedPriceOracle} from "@harborzap-test/mock/MockWrappedPriceOracle.sol";
+import {IBaoUSD} from "@harborzap-test/IBaoUSD.sol";
+import {MockERC20, MockERC20Burn2Arg, MockERC20Burn1Arg, MockERC20BurnFrom} from "@harborzap-test/mock/MockERC20.sol";
+import "@harborzap-test/Useful.sol";
+import {Array} from "@harborzap-test/Array.sol";
 
-import {ConfigFile} from "test/Config.sol";
+import {ConfigFile} from "@harborzap-test/Config.sol";
 
 abstract contract TestExtras is Test {
     function isNear(uint256 a, uint256 b, uint256 maxAbsDiff, uint256 maxRelDiff) internal pure returns (bool near) {
@@ -170,7 +170,7 @@ contract TestMinterSetUp is TestExtras, Clog, Array, ConfigFile {
     address minter;
     IMinter.Config config;
     bool isConfigSet = false;
-    int constant disallow = 10000;
+    int256 constant disallow = 10000;
 
     address peggedToken;
     string peggedTokenBurnSig;
@@ -202,28 +202,28 @@ contract TestMinterSetUp is TestExtras, Clog, Array, ConfigFile {
         vm.label(peggedToken, "peggedToken");
     }
 
-    function _percentToEther(uint amount) internal pure returns (uint256) {
+    function _percentToEther(uint256 amount) internal pure returns (uint256) {
         return (amount * 1 ether) / 100;
     }
 
-    function _etherToBasisPoint(int256 amount) internal pure returns (int) {
+    function _etherToBasisPoint(int256 amount) internal pure returns (int256) {
         return (amount * 10000) / 1 ether;
     }
 
-    function _basisPointToEther(int amount) private pure returns (int256) {
+    function _basisPointToEther(int256 amount) private pure returns (int256) {
         return (amount * 1 ether) / 10000;
     }
 
     function ic(
-        uint[] memory upToPercent,
-        int[] memory amountBasisPoints
+        uint256[] memory upToPercent,
+        int256[] memory amountBasisPoints
     ) internal pure returns (IMinter.IncentiveConfig memory band) {
         band.collateralRatioBandUpperBounds = new uint256[](upToPercent.length);
-        for (uint i = 0; i < upToPercent.length; i++) {
+        for (uint256 i = 0; i < upToPercent.length; i++) {
             band.collateralRatioBandUpperBounds[i] = _percentToEther(upToPercent[i]);
         }
         band.incentiveRatios = new int256[](amountBasisPoints.length);
-        for (uint i = 0; i < amountBasisPoints.length; i++) {
+        for (uint256 i = 0; i < amountBasisPoints.length; i++) {
             band.incentiveRatios[i] = _basisPointToEther(amountBasisPoints[i]);
         }
     }
@@ -368,7 +368,7 @@ contract TestMinterSetUp is TestExtras, Clog, Array, ConfigFile {
             expected.collateralRatioBandUpperBounds.length,
             string.concat(name, " collateralRatioBandUpperBounds.length differ")
         );
-        for (uint i = 0; i < actual.collateralRatioBandUpperBounds.length; i++) {
+        for (uint256 i = 0; i < actual.collateralRatioBandUpperBounds.length; i++) {
             assertEq(
                 actual.collateralRatioBandUpperBounds[i],
                 expected.collateralRatioBandUpperBounds[i],
@@ -376,7 +376,7 @@ contract TestMinterSetUp is TestExtras, Clog, Array, ConfigFile {
             );
         }
         assertEq(actual.incentiveRatios.length, expected.incentiveRatios.length, "incentiveRatios.length differ ");
-        for (uint i = 0; i < actual.incentiveRatios.length; i++) {
+        for (uint256 i = 0; i < actual.incentiveRatios.length; i++) {
             assertEq(
                 actual.incentiveRatios[i],
                 expected.incentiveRatios[i],
@@ -403,6 +403,7 @@ contract TestMinterSetUp is TestExtras, Clog, Array, ConfigFile {
             "redeem leveraged"
         );
     }
+
     function setUpConfig() internal virtual {
         setUp_config(
             ic(ua(131, 140), ia(disallow, 100, 50)),

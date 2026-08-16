@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "chainId": 1,
+  "chainName": "Mainnet",
+  "deploymentTime": "2026-04-06T20:38:13Z",
+  "contract": "MinterETHZap_v4",
+  "implementation": "0x79F63c34362E74e02B237BD504cEd712D8B5456e",
+  "proxy": "0xDE9C51f8d2ddE6E7F13DC297A140BA5d43Ef14d3",
+  "constructorArgs": {
+    "minter": "0xF42516EB885E737780EB864dd07cEc8628000919",
+    "referral": "0x0000000000000000000000000000000000000000"
+  },
+  "initializer": {
+    "signature": "initialize(address,address,address)",
+    "args": {
+      "deployerOwner": "0x2F1567c4A651ED93dB0FC6D9Df1EA9196054f63e",
+      "pendingOwner": "0x2F1567c4A651ED93dB0FC6D9Df1EA9196054f63e",
+      "referral": "0x0000000000000000000000000000000000000000"
+    }
+  },
+  "initializerData": "0xc0c53b8b0000000000000000000000002f1567c4a651ed93db0fc6d9df1ea9196054f63e0000000000000000000000002f1567c4a651ed93db0fc6d9df1ea9196054f63e0000000000000000000000000000000000000000000000000000000000000000",
+  "finalOwner": "0x2F1567c4A651ED93dB0FC6D9Df1EA9196054f63e"
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "version": "zaps",
+  "network": "mainnet",
+  "chainId": 1,
+  "baoFactory": "0xD696E56b3A054734d4C6DCBD32E11a278b0EC458",
+  "owner": "0x2F1567c4A651ED93dB0FC6D9Df1EA9196054f63e",
+  "implementations": {},
+  "proxies": {},
+  "market": "BTC"
+}

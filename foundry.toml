@@ -3,13 +3,20 @@ src = "src"
 out = "out"
 libs = ["lib"]
 evm_version = "cancun"
+# Emit storage layout JSON under `out/` for upgrade diffing (`forge inspect <Contract> storageLayout`).
+extra_output = ["storageLayout"]
+
+# Cap parallel test workers so fork suites (mainnet RPC) do not stampede Alchemy.
+# 5 still 429'd on a typical Alchemy key; keep this low for fork-heavy suites.
+# Override locally with `forge test --jobs N` if needed.
+threads = 2
 
 auto_detect_remappings = false # remappings seem to cause problems
 optimizer = true
 
 optimizer_runs = 700 # 500 builds & tests but 200 deploys
 
-# via_ir = true   # makes the compiler run 7-10 times slower, is good at reducing code size or lower gas usage
+via_ir = true   # Required for permit functions to avoid stack too deep errors
 # deny = "warnings" # enable to stop compilations if there are warnings
 # Note: Library dependencies (lib/) may have warnings, but our source code (src/) has none.
 # Warnings are currently disabled to allow compilation with library warnings.
@@ -29,9 +36,14 @@ fs_permissions = [
   { access = "read", path = "./" },
   { access = "read-write", path = "./results" },
   { access = "read-write", path = "./log" },
+  { access = "read-write", path = "./deployments" },
 ]
 
 gas_limit = "18446744073709551615"
+
+[lint]
+exclude_lints = ["mixed-case-function"]
+lint_on_build = false
 
 # slither building profile - removes vyper
 [profile.novyper]
@@ -51,7 +63,9 @@ mainnet = { key = "${ETHERSCAN_KEY}" }
 
 [rpc_endpoints]
 sepolia = "${SEPOLIA_RPC_URL}"
-mainnet = "${MAINNET_RPC_URL}"
+# Self-throttle + retry on 429 (Alchemy / istio). Lower CUPS = forge paces requests more.
+mainnet = { endpoint = "${MAINNET_RPC_URL}", retries = 12, retry_backoff = 1500, compute_units_per_second = 100 }
+megaeth = "${MEGAETH_RPC_URL}"
 local = "${LOCAL_URL}"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

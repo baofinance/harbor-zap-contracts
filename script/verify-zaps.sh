@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$ROOT_DIR"
+
+FORGE=${FORGE:-$HOME/.foundry/bin/forge}
+CAST=${CAST:-$HOME/.foundry/bin/cast}
+
+if [[ -f "$ROOT_DIR/script/_load-env.sh" ]]; then
+  source "$ROOT_DIR/script/_load-env.sh"
+fi
+
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
+if [[ -z "${MAINNET_RPC_URL:-}" ]]; then
+  echo "❌ ERROR: MAINNET_RPC_URL is not set"
+  exit 1
+fi
+
+if [[ -z "${ETHERSCAN_API_KEY:-}" ]]; then
+  echo "❌ ERROR: ETHERSCAN_API_KEY is not set"
+  exit 1
+fi
+
+CHAIN_ID=$("$CAST" chain-id --rpc-url "$MAINNET_RPC_URL" 2>/dev/null || echo "unknown")
+echo "=== Network Check ==="
+echo "RPC URL: $MAINNET_RPC_URL"
+echo "Chain ID: $CHAIN_ID"
+if [[ "$CHAIN_ID" != "0x1" ]] && [[ "$CHAIN_ID" != "1" ]]; then
+  echo "⚠️  WARNING: Expected Mainnet chain ID (1), got: $CHAIN_ID"
+  echo "   Press Ctrl+C to cancel, or wait 10 seconds to continue..."
+  sleep 10
+fi
+echo ""
+
+DEPLOYMENT_FILES=()
+if [[ -n "${DEPLOYMENT_FILE:-}" ]]; then
+  # Explicit override may target a historical v3/v4 manifest (verify from a matching git revision).
+  DEPLOYMENT_FILES=("$DEPLOYMENT_FILE")
+else
+  # Dated deploy folders live under deployments/mainnet/<YYYY-MM-DD>/.
+  # Default: only current-tree _v1 records. Pre-rename v3/v4 manifests are skipped
+  # (they fail against this source tree); pass DEPLOYMENT_FILE=... to verify one explicitly.
+  while IFS= read -r -d '' f; do
+    contract=$(jq -r '.contract // empty' "$f" 2>/dev/null || echo "")
+    case "$contract" in
+      GenesisETHZap_v1 | GenesisUSDCZap_v1 | MinterETHZap_v1 | MinterUSDCZap_v1)
+        DEPLOYMENT_FILES+=("$f")
+        ;;
+    esac
+  done < <(find deployments/mainnet -type f -name '*-zap-*.json' -print0 2>/dev/null)
+fi
+
+if [[ ${#DEPLOYMENT_FILES[@]} -eq 0 ]]; then
+  if [[ -n "${DEPLOYMENT_FILE:-}" ]]; then
+    echo "❌ Deployment file not found: $DEPLOYMENT_FILE"
+    exit 1
+  fi
+  echo "ℹ️  No _v1 deployment manifests under deployments/mainnet/."
+  echo "   Historical v3/v4 records are skipped by default."
+  echo "   Set DEPLOYMENT_FILE=<path> to verify a specific manifest (from a matching source revision)."
+  exit 0
+fi
+
+verify_contract() {
+  local address=$1
+  local contract_path=$2
+  local constructor_args=$3
+  local label=$4
+
+  echo "Verifying $label at $address..."
+
+  local code
+  code=$("$CAST" code "$address" --rpc-url "$MAINNET_RPC_URL" 2>/dev/null | head -1 || echo "0x")
+  if [[ "$code" == "0x" ]]; then
+    echo "  ❌ No contract code at address"
+    return 1
+  fi
+
+  local max_retries=3
+  local retry=0
+
+  while [[ $retry -lt $max_retries ]]; do
+    local verify_output
+    verify_output=$("$FORGE" verify-contract \
+      "$address" \
+      "$contract_path" \
+      --verifier etherscan \
+      --etherscan-api-key "$ETHERSCAN_API_KEY" \
+      --compiler-version 0.8.30 \
+      --chain mainnet \
+      --constructor-args "$constructor_args" \
+      --watch 2>&1 || true)
+
+    if echo "$verify_output" | grep -q "Contract successfully verified"; then
+      echo "  ✅ Verified successfully"
+      return 0
+    elif echo "$verify_output" | grep -qi "already verified"; then
+      echo "  ✅ Already verified"
+      return 0
+    else
+      retry=$((retry + 1))
+      if [[ $retry -lt $max_retries ]]; then
+        echo "  ⏳ Retrying verification ($retry/$max_retries)..."
+        sleep 5
+      else
+        echo "  ❌ Verification failed"
+        echo "  Error output:"
+        echo "$verify_output" | grep -E "(Error|error|Failed|failed)" | head -5
+      fi
+    fi
+  done
+
+  return 1
+}
+
+total=0
+success=0
+failed=0
+
+for file in "${DEPLOYMENT_FILES[@]}"; do
+  if [[ ! -f "$file" ]]; then
+    echo "⚠️  Deployment file not found: $file"
+    continue
+  fi
+
+  echo "=== Verifying File ==="
+  echo "File: $file"
+  echo ""
+
+  contract=$(jq -r '.contract // empty' "$file" 2>/dev/null || echo "")
+  impl_address=$(jq -r '.implementation // empty' "$file" 2>/dev/null || echo "")
+  proxy_address=$(jq -r '.proxy // empty' "$file" 2>/dev/null || echo "")
+  init_data=$(jq -r '.initializerData // empty' "$file" 2>/dev/null || echo "")
+
+  if [[ -z "$contract" ]] || [[ -z "$impl_address" ]] || [[ -z "$proxy_address" ]] || [[ -z "$init_data" ]]; then
+    echo "❌ Missing required fields in $file"
+    failed=$((failed + 1))
+    continue
+  fi
+
+  case "$contract" in
+    GenesisETHZap_v4 | GenesisUSDCZap_v4 | MinterETHZap_v3 | MinterETHZap_v4 | MinterUSDCZap_v3 | MinterUSDCZap_v4)
+      # Reached only via DEPLOYMENT_FILE=... (default discovery excludes these).
+      echo "❌ Deployment JSON uses a pre-rename contract label ($contract). This tree ships"
+      echo "   GenesisETHZap_v1, GenesisUSDCZap_v1, MinterETHZap_v1, and MinterUSDCZap_v1."
+      echo "   Verify from an older git revision, or re-deploy _v1 and update the JSON."
+      failed=$((failed + 1))
+      continue
+      ;;
+    GenesisETHZap_v1)
+      impl_path="src/zap/upgradeable/GenesisETHZap_v1.sol:GenesisETHZap_v1"
+      impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$(jq -r '.constructorArgs.genesis' "$file")")
+      ;;
+    GenesisUSDCZap_v1)
+      impl_path="src/zap/upgradeable/GenesisUSDCZap_v1.sol:GenesisUSDCZap_v1"
+      impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$(jq -r '.constructorArgs.genesis' "$file")")
+      ;;
+    MinterETHZap_v1)
+      impl_path="src/zap/upgradeable/MinterETHZap_v1.sol:MinterETHZap_v1"
+      if jq -e '.constructorArgs | has("referral")' "$file" >/dev/null 2>&1; then
+        impl_ctor_args=$("$CAST" abi-encode "constructor(address,address)" \
+          "$(jq -r '.constructorArgs.minter' "$file")" \
+          "$(jq -r '.constructorArgs.referral' "$file")")
+      else
+        impl_ctor_args=$("$CAST" abi-encode "constructor(address)" \
+          "$(jq -r '.constructorArgs.minter' "$file")")
+      fi
+      ;;
+    MinterUSDCZap_v1)
+      impl_path="src/zap/upgradeable/MinterUSDCZap_v1.sol:MinterUSDCZap_v1"
+      impl_ctor_args=$("$CAST" abi-encode "constructor(address)" "$(jq -r '.constructorArgs.minter' "$file")")
+      ;;
+    *)
+      echo "❌ Unsupported contract type: $contract"
+      failed=$((failed + 1))
+      continue
+      ;;
+  esac
+
+  proxy_path="lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy"
+  proxy_ctor_args=$("$CAST" abi-encode "constructor(address,bytes)" "$impl_address" "$init_data")
+
+  total=$((total + 2))
+
+  if verify_contract "$impl_address" "$impl_path" "$impl_ctor_args" "$contract implementation"; then
+    success=$((success + 1))
+  else
+    failed=$((failed + 1))
+  fi
+
+  if verify_contract "$proxy_address" "$proxy_path" "$proxy_ctor_args" "$contract proxy"; then
+    success=$((success + 1))
+  else
+    failed=$((failed + 1))
+  fi
+
+  echo ""
+done
+
+echo "=== Verification Summary ==="
+echo "Total: $total"
+echo "Successful: $success"
+echo "Failed: $failed"
+echo ""
+
+if [[ $failed -eq 0 ]]; then
+  echo "✅ All contracts verified!"
+else
+  echo "⚠️  Some contracts failed verification. Check the output above for details."
+  exit 1
+fi

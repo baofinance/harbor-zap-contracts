@@ -1,0 +1,26 @@
+{
+  "lib/bao-base": {
+    "rev": "7c757cacd9dfd6f435041dd3cc724a19585edc28"
+  },
+  "lib/bao-base-audit-2025-07": {
+    "branch": {
+      "name": "audit-2025-07",
+      "rev": "2016ba72c99dc5a0c2cc46cd3f715160ca8a63d4"
+    }
+  },
+  "lib/chainlink-brownie-contracts": {
+    "rev": "67887b84d3add02a25ef4145fc014e2f549509da"
+  },
+  "lib/forge-std": {
+    "rev": "f61e4dd133379a4536a54ee57a808c9c00019b60"
+  },
+  "lib/openzeppelin-contracts-upgradeable": {
+    "rev": "aa677e9d28ed78fc427ec47ba2baef2030c58e7c"
+  },
+  "lib/openzeppelin-foundry-upgrades": {
+    "rev": "cfd861bc18ef4737e82eae6ec75304e27af699ef"
+  },
+  "lib/solady": {
+    "rev": "90db92ce173856605d24a554969f2c67cadbc7e9"
+  }
+}
